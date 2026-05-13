@@ -46,6 +46,7 @@ dev = [
     "import-linter>=2.1.0",               # enforces ADR-0005 layer boundaries
     "pydantic-to-typescript>=2.0.0",      # generates frontend types from Pydantic
     "mypy>=1.13.0",
+    "reportlab>=4.5.1",
 ]
 
 [build-system]

@@ -47,6 +47,7 @@ backend/.import_linter_cache/
 backend/uploads/
 *.pdf
 !tests/fixtures/**/*.pdf
+!backend/tests/fixtures/**/*.pdf
 
 # Logs
 *.log
