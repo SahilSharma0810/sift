@@ -42,6 +42,38 @@ DATE_FORMATS = (
 )
 
 
+# Common invoice currencies — covers >95% of in-scope cases. Not the full
+# ISO 4217 set; not worth the dependency.
+COMMON_CURRENCIES = frozenset(
+    {
+        "USD",
+        "EUR",
+        "GBP",
+        "INR",
+        "CAD",
+        "AUD",
+        "JPY",
+        "CHF",
+        "CNY",
+        "SEK",
+        "NOK",
+        "DKK",
+        "SGD",
+        "HKD",
+        "MXN",
+        "BRL",
+        "ZAR",
+    }
+)
+
+
+def is_valid_currency_code(value: str | None) -> bool:
+    """True if `value` looks like a valid ISO-style currency code."""
+    if not value:
+        return False
+    return value.strip().upper() in COMMON_CURRENCIES
+
+
 def is_valid_date(value: str | None) -> bool:
     """True if `value` parses as a date in any common invoice format.
 
