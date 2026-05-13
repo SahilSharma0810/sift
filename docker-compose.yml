@@ -1,0 +1,76 @@
+# Sift — full-stack dev environment.
+#
+#   make dev      → bring everything up + run migrations (one-shot bootstrap)
+#   make up/down  → control the stack
+#   make test     → run pytest + vitest inside their containers
+#
+# Source code is bind-mounted for live reload. The .venv and node_modules
+# live in named volumes so the host's binaries never clobber the container's.
+# Postgres data persists across restarts via sift_pgdata.
+
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    container_name: sift-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: sift
+      POSTGRES_PASSWORD: sift
+      POSTGRES_DB: sift
+    ports:
+      - "5432:5432"
+    volumes:
+      - sift_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sift -d sift"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+    container_name: sift-backend
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+psycopg://sift:sift@db:5432/sift
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      SIFT_MODEL_TIER_1: ${SIFT_MODEL_TIER_1:-claude-haiku-4-5}
+      SIFT_MODEL_TIER_2: ${SIFT_MODEL_TIER_2:-claude-sonnet-4-6}
+      SIFT_MODEL_TIER_3: ${SIFT_MODEL_TIER_3:-claude-opus-4-7}
+      SIFT_UPLOAD_DIR: /data/uploads
+      SIFT_LOG_FORMAT: console
+      SIFT_LOG_LEVEL: DEBUG
+      SIFT_CORS_ORIGINS: http://localhost:5173
+    volumes:
+      - ./backend:/app
+      - sift_backend_venv:/app/.venv       # mask host's .venv
+      - sift_uploads:/data/uploads
+    ports:
+      - "8000:8000"
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    container_name: sift-frontend
+    depends_on:
+      - backend
+    environment:
+      # Vite proxy target — uses the docker service name from inside the
+      # frontend container. Native dev defaults to localhost:8000.
+      VITE_BACKEND_URL: http://backend:8000
+    volumes:
+      - ./frontend:/app
+      - sift_frontend_node_modules:/app/node_modules  # mask host's modules
+    ports:
+      - "5173:5173"
+
+volumes:
+  sift_pgdata:
+  sift_backend_venv:
+  sift_frontend_node_modules:
+  sift_uploads:

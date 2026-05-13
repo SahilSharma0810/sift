@@ -1,0 +1,99 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  backend:
+    name: Backend — lint, layer contracts, tests
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: sift
+          POSTGRES_PASSWORD: sift
+          POSTGRES_DB: sift
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U sift -d sift"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    defaults:
+      run:
+        working-directory: ./backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: uv sync --all-groups
+
+      - name: Ruff (format + lint)
+        run: |
+          uv run ruff format --check .
+          uv run ruff check .
+
+      - name: import-linter — enforce ADR-0005 layer boundaries
+        run: uv run lint-imports
+
+      - name: Pytest
+        env:
+          DATABASE_URL: postgresql+psycopg://sift:sift@localhost:5432/sift
+        run: uv run pytest -q
+
+  frontend:
+    name: Frontend — type-check + tests + types-up-to-date
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Type-check
+        run: pnpm tsc --noEmit
+
+      - name: Vitest
+        run: pnpm vitest run
+
+  generated-types-fresh:
+    name: Generated TS types are up to date (ADR-0005 rule 3)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install backend deps
+        working-directory: ./backend
+        run: uv sync --all-groups
+
+      - name: Verify generated/domain.ts is fresh
+        run: uv --project backend run python scripts/generate_types.py --check

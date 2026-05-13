@@ -1,0 +1,23 @@
+# Sift frontend — development image.
+# Vite dev server with HMR. node_modules lives in a named volume (see
+# docker-compose) so the host's binaries never collide with the container's.
+
+FROM node:20-bookworm-slim
+
+ENV CI=true
+
+RUN corepack enable && corepack prepare pnpm@9 --activate
+
+WORKDIR /app
+
+# Lockfile-pinned install. pnpm fetch caches by content hash; install is offline.
+COPY package.json pnpm-lock.yaml ./
+RUN pnpm fetch
+
+COPY . .
+RUN pnpm install --frozen-lockfile --offline
+
+EXPOSE 5173
+
+# --host 0.0.0.0 exposes the dev server outside the container.
+CMD ["pnpm", "dev", "--host", "0.0.0.0"]

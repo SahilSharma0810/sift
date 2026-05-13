@@ -1,0 +1,53 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+*.egg-info/
+dist/
+build/
+.coverage
+htmlcov/
+
+# Node
+node_modules/
+.pnpm-store/
+dist/
+.vite/
+*.tsbuildinfo
+
+# Env
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Generated
+frontend/src/types/generated/*
+!frontend/src/types/generated/.gitkeep
+backend/app/db/alembic_version
+backend/.import_linter_cache/
+*.tsbuildinfo
+
+# Uploads
+backend/uploads/
+*.pdf
+!tests/fixtures/**/*.pdf
+
+# Logs
+*.log
+logs/
