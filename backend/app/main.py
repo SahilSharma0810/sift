@@ -70,12 +70,9 @@ def create_app() -> FastAPI:
         """Liveness probe — used by Fly for deploy verification."""
         return {"status": "ok", "version": __version__}
 
-    # Routers will be mounted here as they come online:
-    # from app.api import invoices, extractions, search, exports
-    # app.include_router(invoices.router, prefix="/api/invoices", tags=["invoices"])
-    # app.include_router(extractions.router, prefix="/api/extractions", tags=["extractions"])
-    # app.include_router(search.router, prefix="/api/search", tags=["search"])
-    # app.include_router(exports.router, prefix="/api/exports", tags=["exports"])
+    from app.api import invoices
+
+    app.include_router(invoices.router, prefix="/api/invoices", tags=["invoices"])
 
     # SPA serving — in prod the Vite-built bundle lives at /app/frontend/dist
     # (see Dockerfile). In dev, Vite serves the SPA itself on :5173.

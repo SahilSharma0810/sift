@@ -11,6 +11,7 @@ from __future__ import annotations
 import hashlib
 from dataclasses import dataclass
 from pathlib import Path
+from uuid import UUID
 
 import structlog
 from sqlalchemy.orm import Session
@@ -20,6 +21,7 @@ from app.adapters.pdf_reader import has_text, read_digital
 from app.adapters.storage import extraction_repo, invoice_repo, vendor_repo
 from app.config import get_settings
 from app.db.models import Extraction, Invoice
+from app.domain.models import ExtractionOut, InvoiceOut
 from app.domain.scoring import compute_composite_confidence
 from app.domain.triage import derive_triage
 from app.domain.validators import compute_structural_scores, math_reconciles
@@ -213,3 +215,70 @@ def extract_from_pdf(session: Session, *, pdf_path: Path) -> ExtractResult:
         n_reasons=len(reasons),
     )
     return ExtractResult(invoice=invoice, extraction=extraction)
+
+
+# ---------- DTO helpers — used by the api layer ----------
+
+
+def _orm_extraction_to_dto(extraction: Extraction) -> ExtractionOut:
+    """Convert an ORM Extraction row to an ExtractionOut DTO."""
+    return ExtractionOut.model_validate(
+        {
+            "id": extraction.id,
+            "invoice_id": extraction.invoice_id,
+            "model": extraction.model,
+            "cascade_trace": extraction.cascade_trace,
+            "extracted_fields": extraction.extracted_fields,
+            "confidence_per_field": extraction.confidence_per_field,
+            "predicted_triage_state": extraction.predicted_triage_state,
+            "predicted_triage_reasons": extraction.predicted_triage_reasons,
+            "is_current": extraction.is_current,
+            "created_at": extraction.created_at,
+        }
+    )
+
+
+def _orm_invoice_to_dto(invoice: Invoice, session: Session) -> InvoiceOut:
+    """Convert an ORM Invoice row (+ its current extraction) to an InvoiceOut DTO."""
+    current = extraction_repo.get_current_extraction(session, invoice_id=invoice.id)
+    current_out: ExtractionOut | None = (
+        _orm_extraction_to_dto(current) if current is not None else None
+    )
+    return InvoiceOut(
+        id=invoice.id,
+        file_path=invoice.file_path,
+        file_hash=invoice.file_hash,
+        perceptual_hash=invoice.perceptual_hash,
+        vendor_id=invoice.vendor_id,
+        uploaded_at=invoice.uploaded_at,
+        review_status=invoice.review_status,  # type: ignore[arg-type]
+        current_extraction=current_out,
+    )
+
+
+def extract_and_serialize(session: Session, *, pdf_path: Path) -> InvoiceOut:
+    """Run the full extraction pipeline and return a serialized DTO."""
+    result = extract_from_pdf(session, pdf_path=pdf_path)
+    return _orm_invoice_to_dto(result.invoice, session)
+
+
+def list_invoice_dtos(session: Session, *, limit: int = 200) -> list[InvoiceOut]:
+    """Return newest-first list of InvoiceOut DTOs."""
+    invoices = invoice_repo.list_invoices(session, limit=limit)
+    return [_orm_invoice_to_dto(inv, session) for inv in invoices]
+
+
+def get_invoice_dto(session: Session, invoice_id: UUID) -> InvoiceOut | None:
+    """Return an InvoiceOut DTO for the given invoice_id, or None."""
+    inv = invoice_repo.get_invoice(session, invoice_id)
+    if inv is None:
+        return None
+    return _orm_invoice_to_dto(inv, session)
+
+
+def get_invoice_file_path(session: Session, invoice_id: UUID) -> Path | None:
+    """Return the file path for an invoice, or None if not found."""
+    inv = invoice_repo.get_invoice(session, invoice_id)
+    if inv is None:
+        return None
+    return Path(inv.file_path)

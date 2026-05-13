@@ -73,8 +73,9 @@ select = [
 ignore = ["E501"]        # ruff format handles line length
 
 [tool.ruff.lint.per-file-ignores]
-"tests/*" = ["S101"]     # asserts ok in tests
-"alembic/*" = ["E402"]   # alembic templates do late imports
+"tests/*" = ["S101"]              # asserts ok in tests
+"alembic/*" = ["E402"]            # alembic templates do late imports
+"app/api/*" = ["B008"]            # FastAPI Depends/File() in defaults is idiomatic
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -107,4 +108,9 @@ name = "api is a thin shell — no domain or adapter imports"
 type = "forbidden"
 source_modules = ["app.api"]
 forbidden_modules = ["app.adapters", "app.db"]
-# api imports services only; services orchestrate domain + adapters
+# Check direct imports only — services are allowed to import adapters/db.
+# The one permitted direct db import is app.db.session (FastAPI DI glue).
+allow_indirect_imports = "true"
+ignore_imports = [
+    "app.api.invoices -> app.db.session",
+]
