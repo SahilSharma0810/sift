@@ -6,6 +6,7 @@ no LLM calls, no DB. The eval harness sits on this seam.
 
 from __future__ import annotations
 
+from datetime import datetime
 from decimal import Decimal
 
 # Rounding tolerance for amount validators — accommodates 1-2 cent OCR drift
@@ -27,3 +28,33 @@ def math_reconciles(subtotal: float, tax: float, total: float) -> bool:
     if s < 0 or t < 0 or tt < 0:
         return False
     return abs((s + t) - tt) <= AMOUNT_TOLERANCE
+
+
+DATE_FORMATS = (
+    "%Y-%m-%d",
+    "%m/%d/%Y",
+    "%d/%m/%Y",
+    "%Y/%m/%d",
+    "%d-%m-%Y",
+    "%d.%m.%Y",
+    "%B %d, %Y",
+    "%d %B %Y",
+)
+
+
+def is_valid_date(value: str | None) -> bool:
+    """True if `value` parses as a date in any common invoice format.
+
+    The validator does NOT pick a canonical format — that's the LLM's job and
+    a per-vendor memory rule's job. This just answers: is the field
+    structurally a date at all?
+    """
+    if not value:
+        return False
+    for fmt in DATE_FORMATS:
+        try:
+            datetime.strptime(value, fmt)
+            return True
+        except ValueError:
+            continue
+    return False

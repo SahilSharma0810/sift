@@ -8,7 +8,7 @@ be marked `confident`.
 
 from __future__ import annotations
 
-from app.domain.validators import math_reconciles
+from app.domain.validators import is_valid_date, math_reconciles
 
 
 class TestMathReconciles:
@@ -24,3 +24,23 @@ class TestMathReconciles:
 
     def test_negative_amounts_rejected(self) -> None:
         assert math_reconciles(subtotal=-100.0, tax=18.0, total=-82.0) is False
+
+
+class TestIsValidDate:
+    def test_iso_date(self) -> None:
+        assert is_valid_date("2026-05-13") is True
+
+    def test_us_format(self) -> None:
+        assert is_valid_date("05/13/2026") is True
+
+    def test_uk_format(self) -> None:
+        assert is_valid_date("13/05/2026") is True
+
+    def test_garbage(self) -> None:
+        assert is_valid_date("not a date") is False
+
+    def test_empty(self) -> None:
+        assert is_valid_date("") is False
+
+    def test_none(self) -> None:
+        assert is_valid_date(None) is False
