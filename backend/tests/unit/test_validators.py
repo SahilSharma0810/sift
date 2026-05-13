@@ -9,6 +9,7 @@ be marked `confident`.
 from __future__ import annotations
 
 from app.domain.validators import (
+    compute_structural_scores,
     find_missing_required,
     is_valid_currency_code,
     is_valid_date,
@@ -110,3 +111,85 @@ class TestFindMissingRequired:
             "currency": "USD",
         }
         assert find_missing_required(fields) == ["invoice_number"]
+
+
+class TestComputeStructuralScores:
+    def test_clean_invoice_all_high(self) -> None:
+        fields = {
+            "vendor_name": "Vega Logistics",
+            "invoice_number": "INV-001",
+            "invoice_date": "2026-05-13",
+            "subtotal": 1000.0,
+            "tax": 180.0,
+            "total": 1180.0,
+            "currency": "USD",
+        }
+        scores = compute_structural_scores(fields)
+        # Math reconciles → amount fields high.
+        assert scores["total"] >= 0.99
+        assert scores["subtotal"] >= 0.99
+        # Date parses → date field high.
+        assert scores["invoice_date"] >= 0.99
+        # Currency valid → currency field high.
+        assert scores["currency"] >= 0.99
+
+    def test_math_failure_floors_amount_fields(self) -> None:
+        fields = {
+            "vendor_name": "Vega Logistics",
+            "invoice_number": "INV-001",
+            "invoice_date": "2026-05-13",
+            "subtotal": 1000.0,
+            "tax": 180.0,
+            "total": 1181.0,  # off
+            "currency": "USD",
+        }
+        scores = compute_structural_scores(fields)
+        # Amount fields pinned to 0.2 per ADR-0003.
+        assert scores["total"] == 0.2
+        assert scores["subtotal"] == 0.2
+        assert scores["tax"] == 0.2
+        # Other fields unaffected.
+        assert scores["invoice_date"] >= 0.99
+        assert scores["currency"] >= 0.99
+
+    def test_missing_field_floors_to_zero(self) -> None:
+        fields = {
+            "vendor_name": "Vega Logistics",
+            "invoice_number": "INV-001",
+            "invoice_date": "2026-05-13",
+            "subtotal": 1000.0,
+            "tax": 180.0,
+            "total": 1180.0,
+            # currency missing
+        }
+        scores = compute_structural_scores(fields)
+        assert scores["currency"] == 0.0
+
+    def test_bad_date_floors_to_zero(self) -> None:
+        fields = {
+            "vendor_name": "Vega Logistics",
+            "invoice_number": "INV-001",
+            "invoice_date": "not a date",
+            "subtotal": 1000.0,
+            "tax": 180.0,
+            "total": 1180.0,
+            "currency": "USD",
+        }
+        scores = compute_structural_scores(fields)
+        assert scores["invoice_date"] == 0.0
+
+    def test_neutral_ceiling_for_unstructurable_fields(self) -> None:
+        # vendor_name has no structural rule that can validate it without
+        # vendor history — per ADR-0003 it gets a neutral 0.9 ceiling.
+        fields = {
+            "vendor_name": "Vega Logistics",
+            "invoice_number": "INV-001",
+            "invoice_date": "2026-05-13",
+            "subtotal": 1000.0,
+            "tax": 180.0,
+            "total": 1180.0,
+            "currency": "USD",
+        }
+        scores = compute_structural_scores(fields)
+        assert scores["vendor_name"] == 0.9
+        assert scores["invoice_number"] == 0.9

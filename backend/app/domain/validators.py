@@ -111,3 +111,68 @@ def find_missing_required(fields: dict[str, object]) -> list[str]:
         if value is None or value == "":
             missing.append(name)
     return missing
+
+
+# Per ADR-0003: fields without a structural rule get a neutral 0.9 ceiling
+# so history_score governs them. Math-failing amount fields drop to 0.2.
+NEUTRAL_SCORE = 0.9
+MATH_FAIL_FLOOR = 0.2
+MISSING_OR_INVALID = 0.0
+HIGH_SCORE = 1.0
+
+AMOUNT_FIELDS = ("subtotal", "tax", "total")
+
+
+def compute_structural_scores(fields: dict[str, object]) -> dict[str, float]:
+    """Map each known field to a structural_score per ADR-0003.
+
+    Returns a score per REQUIRED_FIELDS entry plus `subtotal` and `tax`.
+    """
+    scores: dict[str, float] = {}
+
+    # Missing fields → 0.0
+    missing = set(find_missing_required(fields))
+
+    # Math reconciliation check — drives amount-field scores.
+    math_ok = False
+    try:
+        math_ok = math_reconciles(
+            subtotal=float(fields.get("subtotal", 0) or 0),
+            tax=float(fields.get("tax", 0) or 0),
+            total=float(fields.get("total", 0) or 0),
+        )
+    except (TypeError, ValueError):
+        math_ok = False
+
+    for field in AMOUNT_FIELDS:
+        if field in missing:
+            scores[field] = MISSING_OR_INVALID
+        elif math_ok:
+            scores[field] = HIGH_SCORE
+        else:
+            scores[field] = MATH_FAIL_FLOOR
+
+    # Date — format-validate.
+    if "invoice_date" in missing:
+        scores["invoice_date"] = MISSING_OR_INVALID
+    else:
+        scores["invoice_date"] = (
+            HIGH_SCORE if is_valid_date(str(fields.get("invoice_date"))) else MISSING_OR_INVALID
+        )
+
+    # Currency — code-validate.
+    if "currency" in missing:
+        scores["currency"] = MISSING_OR_INVALID
+    else:
+        scores["currency"] = (
+            HIGH_SCORE
+            if is_valid_currency_code(str(fields.get("currency")))
+            else MISSING_OR_INVALID
+        )
+
+    # Fields without a structural rule (vendor_name, invoice_number) get the
+    # neutral 0.9 ceiling per ADR-0003 unless missing.
+    for field in ("vendor_name", "invoice_number"):
+        scores[field] = MISSING_OR_INVALID if field in missing else NEUTRAL_SCORE
+
+    return scores
