@@ -36,9 +36,8 @@ dist/
 *.swo
 .DS_Store
 
-# Generated
-frontend/src/types/generated/*
-!frontend/src/types/generated/.gitkeep
+# Generated (frontend types are hand-maintained for now — see
+# frontend/src/types/generated/domain.ts header for rationale)
 backend/app/db/alembic_version
 backend/.import_linter_cache/
 *.tsbuildinfo
