@@ -8,7 +8,12 @@ be marked `confident`.
 
 from __future__ import annotations
 
-from app.domain.validators import is_valid_currency_code, is_valid_date, math_reconciles
+from app.domain.validators import (
+    find_missing_required,
+    is_valid_currency_code,
+    is_valid_date,
+    math_reconciles,
+)
 
 
 class TestMathReconciles:
@@ -64,3 +69,44 @@ class TestIsValidCurrencyCode:
 
     def test_empty(self) -> None:
         assert is_valid_currency_code("") is False
+
+
+class TestFindMissingRequired:
+    def test_all_present(self) -> None:
+        fields = {
+            "vendor_name": "Vega Logistics",
+            "invoice_number": "INV-001",
+            "invoice_date": "2026-05-13",
+            "total": 1180.0,
+            "currency": "USD",
+        }
+        assert find_missing_required(fields) == []
+
+    def test_missing_total(self) -> None:
+        fields = {
+            "vendor_name": "Vega Logistics",
+            "invoice_number": "INV-001",
+            "invoice_date": "2026-05-13",
+            "currency": "USD",
+        }
+        assert find_missing_required(fields) == ["total"]
+
+    def test_blank_string_counts_as_missing(self) -> None:
+        fields = {
+            "vendor_name": "",
+            "invoice_number": "INV-001",
+            "invoice_date": "2026-05-13",
+            "total": 1180.0,
+            "currency": "USD",
+        }
+        assert find_missing_required(fields) == ["vendor_name"]
+
+    def test_none_counts_as_missing(self) -> None:
+        fields = {
+            "vendor_name": "Vega Logistics",
+            "invoice_number": None,
+            "invoice_date": "2026-05-13",
+            "total": 1180.0,
+            "currency": "USD",
+        }
+        assert find_missing_required(fields) == ["invoice_number"]

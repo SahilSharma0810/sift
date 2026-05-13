@@ -90,3 +90,24 @@ def is_valid_date(value: str | None) -> bool:
         except ValueError:
             continue
     return False
+
+
+# Required fields per the Day-1 happy-path extraction shape. Day-3 line-items
+# and Day-4 tax_breakdown extend this list at their respective milestones.
+REQUIRED_FIELDS = (
+    "vendor_name",
+    "invoice_number",
+    "invoice_date",
+    "total",
+    "currency",
+)
+
+
+def find_missing_required(fields: dict[str, object]) -> list[str]:
+    """Names of required fields that are missing, None, or empty-string."""
+    missing: list[str] = []
+    for name in REQUIRED_FIELDS:
+        value = fields.get(name)
+        if value is None or value == "":
+            missing.append(name)
+    return missing
