@@ -1,0 +1,44 @@
+{
+  "name": "extract_invoice_header",
+  "description": "Extract header fields from a single vendor invoice.",
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "vendor_name": {
+        "type": ["string", "null"],
+        "description": "Name of the vendor issuing the invoice."
+      },
+      "invoice_number": {
+        "type": ["string", "null"],
+        "description": "Vendor's invoice identifier."
+      },
+      "invoice_date": {
+        "type": ["string", "null"],
+        "description": "Date of the invoice, as it appears in the document."
+      },
+      "subtotal": { "type": ["number", "null"] },
+      "tax": { "type": ["number", "null"] },
+      "total": { "type": ["number", "null"] },
+      "currency": {
+        "type": ["string", "null"],
+        "description": "3-letter ISO currency code (USD, EUR, ...)."
+      },
+      "confidence": {
+        "type": "object",
+        "description": "Self-reported per-field confidence — LOGGED, NEVER TRUSTED for triage.",
+        "additionalProperties": { "type": "number", "minimum": 0, "maximum": 1 }
+      },
+      "extraction_failed": { "type": "boolean", "default": false },
+      "extraction_failure_reason": { "type": ["string", "null"] }
+    },
+    "required": [
+      "vendor_name",
+      "invoice_number",
+      "invoice_date",
+      "subtotal",
+      "tax",
+      "total",
+      "currency"
+    ]
+  }
+}
