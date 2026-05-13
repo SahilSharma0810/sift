@@ -1,0 +1,172 @@
+"""Storage repo tests — against real Postgres."""
+
+from __future__ import annotations
+
+from sqlalchemy.orm import Session
+
+from app.adapters.storage.extraction_repo import (
+    create_extraction,
+    get_current_extraction,
+    mark_current,
+)
+from app.adapters.storage.invoice_repo import (
+    create_invoice,
+    find_by_file_hash,
+    list_invoices,
+)
+from app.adapters.storage.vendor_repo import (
+    normalize_name,
+    upsert_by_normalized_name,
+)
+
+
+class TestVendorRepo:
+    def test_normalize_name_strips_punctuation(self) -> None:
+        assert normalize_name("Acme, Inc.") == "acme inc"
+        assert normalize_name("  Vega   Logistics  ") == "vega logistics"
+
+    def test_upsert_creates_when_absent(self, db_session: Session) -> None:
+        v = upsert_by_normalized_name(db_session, name="Vega Logistics A")
+        assert v.id is not None
+        assert v.name == "Vega Logistics A"
+        assert v.normalized_name == "vega logistics a"
+        assert v.memory == {}  # default empty per schema
+
+    def test_upsert_returns_existing(self, db_session: Session) -> None:
+        v1 = upsert_by_normalized_name(db_session, name="Vega Logistics B")
+        v2 = upsert_by_normalized_name(db_session, name="vega logistics b ")
+        assert v1.id == v2.id
+
+    def test_normalize_treats_punctuation_variants_as_same_vendor(
+        self, db_session: Session
+    ) -> None:
+        v1 = upsert_by_normalized_name(db_session, name="Acme Repo Inc.")
+        v2 = upsert_by_normalized_name(db_session, name="Acme Repo Inc")
+        assert v1.id == v2.id
+
+
+class TestInvoiceRepo:
+    def test_create_and_fetch(self, db_session: Session) -> None:
+        v = upsert_by_normalized_name(db_session, name="Vega Inv A")
+        inv = create_invoice(
+            db_session,
+            file_path="/data/uploads/abc.pdf",
+            file_hash="hash-abc-1",
+            vendor_id=v.id,
+        )
+        assert inv.id is not None
+        assert inv.review_status == "pending"
+
+        found = find_by_file_hash(db_session, "hash-abc-1")
+        assert found is not None
+        assert found.id == inv.id
+
+    def test_find_by_file_hash_returns_none_when_absent(self, db_session: Session) -> None:
+        assert find_by_file_hash(db_session, "definitely-not-there-xyz") is None
+
+    def test_list_invoices_returns_recently_uploaded(self, db_session: Session) -> None:
+        v = upsert_by_normalized_name(db_session, name="Vega List Test")
+        a = create_invoice(db_session, file_path="/a", file_hash="ha-list-1", vendor_id=v.id)
+        b = create_invoice(db_session, file_path="/b", file_hash="hb-list-1", vendor_id=v.id)
+        invoices = list_invoices(db_session, limit=10)
+        # Both newly-created invoices should appear at the top of the list
+        # (same transaction → same uploaded_at → tie-broken by DB order).
+        ids = {inv.id for inv in invoices[:5]}
+        assert a.id in ids
+        assert b.id in ids
+
+
+class TestExtractionRepo:
+    def _make_invoice(self, db_session: Session, hash_suffix: str):
+        v = upsert_by_normalized_name(db_session, name=f"Vega Ext {hash_suffix}")
+        return create_invoice(
+            db_session,
+            file_path=f"/x-{hash_suffix}",
+            file_hash=f"hext-{hash_suffix}",
+            vendor_id=v.id,
+        )
+
+    def test_create_and_get_current(self, db_session: Session) -> None:
+        inv = self._make_invoice(db_session, "create")
+        ext = create_extraction(
+            db_session,
+            invoice_id=inv.id,
+            model="claude-haiku-4-5",
+            extracted_fields={
+                "vendor_name": {
+                    "value": "Vega",
+                    "confidence": 0.95,
+                    "source": "pymupdf+haiku",
+                    "bbox": None,
+                    "page": 0,
+                }
+            },
+            confidence_per_field={"vendor_name": 0.85},
+            predicted_triage_state="confident",
+            predicted_triage_reasons=[],
+            cascade_trace={},
+        )
+        current = get_current_extraction(db_session, invoice_id=inv.id)
+        assert current is not None
+        assert current.id == ext.id
+
+    def test_mark_current_demotes_previous(self, db_session: Session) -> None:
+        inv = self._make_invoice(db_session, "demote")
+        first = create_extraction(
+            db_session,
+            invoice_id=inv.id,
+            model="claude-haiku-4-5",
+            extracted_fields={},
+            confidence_per_field={},
+            predicted_triage_state="confident",
+            predicted_triage_reasons=[],
+            cascade_trace={},
+        )
+        second = create_extraction(
+            db_session,
+            invoice_id=inv.id,
+            model="claude-sonnet-4-6",
+            extracted_fields={},
+            confidence_per_field={},
+            predicted_triage_state="confident",
+            predicted_triage_reasons=[],
+            cascade_trace={},
+        )
+        # Second is now current; first should be demoted.
+        db_session.refresh(first)
+        db_session.refresh(second)
+        assert first.is_current is False
+        assert second.is_current is True
+        # And get_current returns the second.
+        current = get_current_extraction(db_session, invoice_id=inv.id)
+        assert current is not None
+        assert current.id == second.id
+
+    def test_mark_current_promotes_explicit(self, db_session: Session) -> None:
+        inv = self._make_invoice(db_session, "promote")
+        first = create_extraction(
+            db_session,
+            invoice_id=inv.id,
+            model="claude-haiku-4-5",
+            extracted_fields={},
+            confidence_per_field={},
+            predicted_triage_state="confident",
+            predicted_triage_reasons=[],
+            cascade_trace={},
+        )
+        second = create_extraction(
+            db_session,
+            invoice_id=inv.id,
+            model="claude-sonnet-4-6",
+            extracted_fields={},
+            confidence_per_field={},
+            predicted_triage_state="needs_review",
+            predicted_triage_reasons=[],
+            cascade_trace={},
+        )
+        # second is currently current; promote the first.
+        mark_current(db_session, extraction_id=first.id)
+        db_session.refresh(first)
+        db_session.refresh(second)
+        assert first.is_current is True
+        assert second.is_current is False
