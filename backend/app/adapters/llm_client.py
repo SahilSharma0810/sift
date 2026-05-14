@@ -61,6 +61,22 @@ class ExtractionResult:
     usage: dict[str, int]
 
 
+@dataclass(frozen=True, slots=True)
+class LineItemsResult:
+    """Output of extract_line_items — list of raw line-item dicts.
+
+    Each dict matches the schema in prompts/schemas/extraction_line_items_schema.json:
+    {description, quantity?, unit_price?, line_total, confidence?}.
+    Service-layer code wraps these into domain.LineItem before persisting.
+    """
+
+    items: list[dict[str, Any]]
+    model: str
+    prompt_hash: str
+    schema_hash: str
+    usage: dict[str, int]
+
+
 class LLMClient(Protocol):
     """Structural interface for LLM adapters. Services depend on this Protocol."""
 
@@ -79,6 +95,14 @@ class LLMClient(Protocol):
         model: str,
         prompt_name: str = "extraction_header_vision_v1",
     ) -> ExtractionResult: ...
+
+    def extract_line_items(
+        self,
+        *,
+        invoice_text: str,
+        model: str,
+        prompt_name: str = "extraction_line_items_v1",
+    ) -> LineItemsResult: ...
 
 
 # ---------- Anthropic implementation -----------------------------------------
@@ -194,6 +218,83 @@ class AnthropicLLMClient:
             self_reported_confidence=confidence,
             extraction_failed=failed,
             extraction_failure_reason=failure_reason,
+            model=response.model,
+            prompt_hash=prompt.body_hash,
+            schema_hash=prompt.schema_hash,
+            usage=usage,
+        )
+
+    @_retry_decorator
+    def extract_line_items(
+        self,
+        *,
+        invoice_text: str,
+        model: str,
+        prompt_name: str = "extraction_line_items_v1",
+    ) -> LineItemsResult:
+        """Extract every line item via tool-use. Day-3.
+
+        Same prompt-cache + tenacity-retry shape as extract_header. Returns
+        a LineItemsResult; service-layer converts the raw dicts to LineItem.
+        """
+        prompt: LoadedPrompt = load(prompt_name)
+        system = [
+            {
+                "type": "text",
+                "text": prompt.body,
+                "cache_control": {"type": "ephemeral"},
+            }
+        ]
+        tool = {
+            "name": prompt.schema["name"],
+            "description": prompt.schema["description"],
+            "input_schema": prompt.schema["input_schema"],
+        }
+
+        log.info(
+            "llm.extract_line_items.start",
+            model=model,
+            prompt_hash=prompt.body_hash,
+            input_chars=len(invoice_text),
+        )
+
+        response = self._client.messages.create(
+            model=model,
+            max_tokens=_HEADER_MAX_TOKENS,
+            system=system,
+            tools=[tool],
+            tool_choice={"type": "tool", "name": tool["name"]},
+            messages=[{"role": "user", "content": invoice_text}],
+        )
+
+        tool_input: dict[str, Any] | None = None
+        for block in response.content:
+            if getattr(block, "type", None) == "tool_use" and block.name == tool["name"]:
+                tool_input = dict(block.input)
+                break
+
+        if tool_input is None:
+            raise RuntimeError(f"LLM did not emit the {tool['name']} tool call")
+
+        items = list(tool_input.get("items") or [])
+        usage_obj = getattr(response, "usage", None)
+        usage = {
+            "input_tokens": getattr(usage_obj, "input_tokens", 0),
+            "output_tokens": getattr(usage_obj, "output_tokens", 0),
+            "cache_creation_input_tokens": getattr(usage_obj, "cache_creation_input_tokens", 0),
+            "cache_read_input_tokens": getattr(usage_obj, "cache_read_input_tokens", 0),
+        }
+
+        log.info(
+            "llm.extract_line_items.done",
+            model=model,
+            prompt_hash=prompt.body_hash,
+            n_items=len(items),
+            usage=usage,
+        )
+
+        return LineItemsResult(
+            items=items,
             model=response.model,
             prompt_hash=prompt.body_hash,
             schema_hash=prompt.schema_hash,
@@ -327,6 +428,10 @@ class StubLLMClient:
             "total_tier1": 34_063.50,  # off by $1 vs tier-2
             "total_tier2": 34_062.50,
             "currency": "USD",
+            "line_items": [
+                {"description": "Annual Platform License — Enterprise tier", "quantity": 1, "unit_price": 24_000.00, "line_total": 24_000.00},
+                {"description": "Premium Support Add-on (24x7)", "quantity": 1, "unit_price": 4_900.00, "line_total": 4_900.00},
+            ],
         },
         "bramble": {
             "vendor_name": "Bramble Catering",
@@ -336,6 +441,13 @@ class StubLLMClient:
             "total_tier1": 751.00,  # off by $1
             "total_tier2": 750.00,
             "currency": "USD",
+            "line_items": [
+                {"description": "House Salad (small bowl)", "quantity": 20, "unit_price": 8.50, "line_total": 170.00},
+                {"description": "Roast Vegetable Platter", "quantity": 8, "unit_price": 24.50, "line_total": 196.00},
+                {"description": "Sourdough Sandwiches (assorted)", "quantity": 18, "unit_price": 9.99, "line_total": 179.82},
+                {"description": "Sparkling Water (1L)", "quantity": 12, "unit_price": 4.50, "line_total": 54.00},
+                {"description": "Service & Setup Fee", "quantity": None, "unit_price": None, "line_total": 35.77},
+            ],
         },
         "default": {
             "vendor_name": "Vega Logistics",
@@ -345,6 +457,11 @@ class StubLLMClient:
             "total_tier1": 1_181.00,  # off by $1 → triggers cascade
             "total_tier2": 1_180.00,
             "currency": "USD",
+            "line_items": [
+                {"description": "Last-Mile Delivery — Aurora freight", "quantity": 12, "unit_price": 65.00, "line_total": 780.00},
+                {"description": "Pallet Handling & Sorting", "quantity": 4, "unit_price": 35.00, "line_total": 140.00},
+                {"description": "Fuel Surcharge", "quantity": None, "unit_price": None, "line_total": 80.00},
+            ],
         },
     }
 
@@ -419,6 +536,45 @@ class StubLLMClient:
             model=model,
             prompt_hash="stub-vision-v1",
             schema_hash="stub-vision-v1",
+            usage=_stub_usage(),
+        )
+
+    def extract_line_items(
+        self,
+        *,
+        invoice_text: str,
+        model: str,
+        prompt_name: str = "extraction_line_items_v1",
+    ) -> LineItemsResult:
+        """Return canned line items for the matched scenario.
+
+        Failure-mode keyword still returns an empty list (the failure surface
+        is owned by extract_header — line items just go quiet on failure).
+        """
+        if self._is_failure_trigger(invoice_text):
+            return LineItemsResult(
+                items=[],
+                model=model,
+                prompt_hash="stub-line-items-v1",
+                schema_hash="stub-line-items-v1",
+                usage=_stub_usage(),
+            )
+        scenario = self._pick_scenario(invoice_text)
+        items_template = scenario.get("line_items", [])
+        items = [
+            {**item, "confidence": 0.92, "page": 0} for item in items_template
+        ]
+        log.info(
+            "llm.extract_line_items.stub",
+            model=model,
+            scenario=scenario["vendor_name"],
+            n_items=len(items),
+        )
+        return LineItemsResult(
+            items=items,
+            model=model,
+            prompt_hash="stub-line-items-v1",
+            schema_hash="stub-line-items-v1",
             usage=_stub_usage(),
         )
 

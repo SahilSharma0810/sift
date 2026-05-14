@@ -1,0 +1,42 @@
+{
+  "name": "extract_invoice_line_items",
+  "description": "Extract every line item (itemized row) from a single vendor invoice.",
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "items": {
+        "type": "array",
+        "description": "One entry per visible line-item row. Empty array if no itemized table is present.",
+        "items": {
+          "type": "object",
+          "properties": {
+            "description": {
+              "type": "string",
+              "description": "Exact text of the line as it appears in the document."
+            },
+            "quantity": {
+              "type": ["number", "null"],
+              "description": "Quantity if present; null for flat-fee service lines."
+            },
+            "unit_price": {
+              "type": ["number", "null"],
+              "description": "Unit price if present; null for flat-fee service lines."
+            },
+            "line_total": {
+              "type": "number",
+              "description": "Total for this line. Required."
+            },
+            "confidence": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1,
+              "description": "Self-reported per-row certainty. LOGGED, NEVER TRUSTED for triage."
+            }
+          },
+          "required": ["description", "line_total"]
+        }
+      }
+    },
+    "required": ["items"]
+  }
+}

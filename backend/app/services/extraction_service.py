@@ -57,6 +57,7 @@ from app.domain.triage import derive_triage
 from app.domain.validators import (
     REQUIRED_FIELDS,
     compute_structural_scores,
+    line_items_sum_check,
     math_reconciles,
 )
 from app.services.vendor_memory_service import compute_history_scores
@@ -109,6 +110,45 @@ def _get_or_create_invoice(
         vendor_id=vendor_id,
         perceptual_hash=perceptual_hash,
     )
+
+
+def _extract_line_items_if_digital(
+    *,
+    llm: LLMClient,
+    use_vision: bool,
+    invoice_text: str | None,
+    final_model: str,
+    subtotal: Any,
+) -> list[dict[str, Any]]:
+    """Run line-item extraction on the digital path; vision returns empty.
+
+    Logs (does not raise) on sum-check mismatch — line items are
+    quality-gated for Day 3 per PLAN.md and the sum check is a warning
+    rather than a triage signal.
+    """
+    if use_vision or invoice_text is None:
+        return []
+    try:
+        result = llm.extract_line_items(invoice_text=invoice_text, model=final_model)
+    except Exception as exc:
+        log.warning("extraction.line_items.failed", error=str(exc), model=final_model)
+        return []
+
+    items = result.items
+    try:
+        sub_float = float(subtotal) if subtotal is not None else None
+    except (TypeError, ValueError):
+        sub_float = None
+
+    matches, delta = line_items_sum_check(items, sub_float)
+    if not matches:
+        log.info(
+            "extraction.line_items.sum_mismatch",
+            delta=str(delta),
+            n_items=len(items),
+            subtotal=sub_float,
+        )
+    return items
 
 
 def _build_extracted_fields_shape(
@@ -502,6 +542,17 @@ def extract_from_pdf(
         anomalies=anomalies,
     )
 
+    # Line items — Day 3. Quality-gated: sum-check logged but does NOT alter
+    # triage. Vision path returns [] for now (vision line-item extraction
+    # is a Day 4+ stretch). Use the cascade-final model tier.
+    line_items_raw = _extract_line_items_if_digital(
+        llm=llm,
+        use_vision=use_vision,
+        invoice_text=invoice_text,
+        final_model=cascade_trace_tiers[-1]["model"],
+        subtotal=final_fields.get("subtotal"),
+    )
+
     extraction = extraction_repo.create_extraction(
         session,
         invoice_id=invoice.id,
@@ -511,6 +562,7 @@ def extract_from_pdf(
         predicted_triage_state=state,
         predicted_triage_reasons=reasons,
         cascade_trace={"tiers": cascade_trace_tiers},
+        line_items=line_items_raw,
     )
     session.commit()
     log.info(
@@ -601,6 +653,7 @@ def _orm_extraction_to_dto(extraction: Extraction) -> ExtractionOut:
             "confidence_per_field": extraction.confidence_per_field,
             "predicted_triage_state": extraction.predicted_triage_state,
             "predicted_triage_reasons": extraction.predicted_triage_reasons,
+            "line_items": extraction.line_items or [],
             "is_current": extraction.is_current,
             "created_at": extraction.created_at,
         }

@@ -30,6 +30,31 @@ def math_reconciles(subtotal: float, tax: float, total: float) -> bool:
     return abs((s + t) - tt) <= AMOUNT_TOLERANCE
 
 
+def line_items_sum_check(
+    line_items: list[dict] | tuple[dict, ...], subtotal: float | None
+) -> tuple[bool, Decimal]:
+    """Sum of line_total values vs. header subtotal, within AMOUNT_TOLERANCE.
+
+    Returns (matches, delta). The Day-3 service logs this delta when it's
+    nonzero but does NOT change triage state — line-item extraction is
+    quality-gated and false-positive math mismatches would pollute the inbox.
+
+    A None / empty line_items list returns (True, 0) — vacuously fine.
+    """
+    if not line_items or subtotal is None:
+        return (True, Decimal("0"))
+    try:
+        total: Decimal = Decimal("0")
+        for li in line_items:
+            raw = li.get("line_total", 0) or 0
+            total += Decimal(str(raw))
+    except (TypeError, ValueError, ArithmeticError):
+        return (False, Decimal("0"))
+    sub = Decimal(str(subtotal))
+    delta = total - sub
+    return (abs(delta) <= AMOUNT_TOLERANCE, delta)
+
+
 DATE_FORMATS = (
     "%Y-%m-%d",
     "%m/%d/%Y",

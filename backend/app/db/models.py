@@ -102,6 +102,11 @@ class Extraction(Base):
     predicted_triage_state: Mapped[str] = mapped_column(String(32), nullable=False)
     predicted_triage_reasons: Mapped[list] = mapped_column(JSONB, default=list, nullable=False)
 
+    # Day 3 — line items. Empty list when extraction returned no items or
+    # the document has no itemized table. Quality-gated; sum-check is logged
+    # but does NOT alter triage state per Day-3 plan decision.
+    line_items: Mapped[list] = mapped_column(JSONB, default=list, nullable=False)
+
     is_current: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False

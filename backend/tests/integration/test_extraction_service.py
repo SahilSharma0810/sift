@@ -6,7 +6,7 @@ from pathlib import Path
 
 from sqlalchemy.orm import Session
 
-from app.adapters.llm_client import ExtractionResult
+from app.adapters.llm_client import ExtractionResult, LineItemsResult
 from app.services.extraction_service import extract_from_pdf
 from tests.conftest import patch_make_llm_client
 
@@ -452,3 +452,61 @@ class TestExtractFromPdfDuplicate:
         ]
         assert len(dup_reasons) == 1
         assert dup_reasons[0]["invoice_id"] == str(r1.invoice.id)
+
+
+class TestExtractFromPdfLineItems:
+    def test_line_items_returned_on_digital_path(
+        self, db_session: Session, tmp_path: Path
+    ) -> None:
+        test_pdf = tmp_path / "line-items.pdf"
+        test_pdf.write_bytes(CLEAN_PDF.read_bytes() + b"\n%line-items-test\n")
+
+        items = [
+            {"description": "Freight", "quantity": 1, "unit_price": 1000.0, "line_total": 1000.0, "confidence": 0.95},
+        ]
+        line_items_result = LineItemsResult(
+            items=items,
+            model="claude-haiku-4-5",
+            prompt_hash="h",
+            schema_hash="h",
+            usage={"input_tokens": 100, "output_tokens": 20, "cache_creation_input_tokens": 0, "cache_read_input_tokens": 0},
+        )
+
+        with patch_make_llm_client(header=_fake_llm_result(), line_items=line_items_result):
+            result = extract_from_pdf(db_session, pdf_path=test_pdf)
+
+        assert result.extraction.line_items == items
+
+    def test_vision_path_skips_line_items_in_day3(
+        self, db_session: Session, tmp_path: Path
+    ) -> None:
+        """Vision branch returns no line items in Day 3 — vision line-item
+        extraction is a Day 4+ stretch. The mock's line_items return value
+        should NOT be observed because the service short-circuits."""
+        test_pdf = tmp_path / "vision-no-lineitems.pdf"
+        test_pdf.write_bytes(SCAN_PDF.read_bytes() + b"\n%vision-no-li\n")
+
+        items = [{"description": "Should not be reached", "line_total": 1.0}]
+        line_items_result = LineItemsResult(
+            items=items, model="claude-sonnet-4-6", prompt_hash="x", schema_hash="x",
+            usage={"input_tokens": 0, "output_tokens": 0, "cache_creation_input_tokens": 0, "cache_read_input_tokens": 0},
+        )
+        vision_result = ExtractionResult(
+            fields={
+                "vendor_name": {"value": "V", "bbox": [0.1, 0.1, 0.2, 0.2], "page": 0, "confidence": 0.9},
+                "invoice_number": {"value": "X-1", "bbox": [0.1, 0.1, 0.2, 0.2], "page": 0, "confidence": 0.9},
+                "invoice_date": {"value": "2026-01-01", "bbox": [0.1, 0.1, 0.2, 0.2], "page": 0, "confidence": 0.9},
+                "subtotal": {"value": 100.0, "bbox": [0.1, 0.1, 0.2, 0.2], "page": 0, "confidence": 0.9},
+                "tax": {"value": 18.0, "bbox": [0.1, 0.1, 0.2, 0.2], "page": 0, "confidence": 0.9},
+                "total": {"value": 118.0, "bbox": [0.1, 0.1, 0.2, 0.2], "page": 0, "confidence": 0.9},
+                "currency": {"value": "USD", "bbox": [0.1, 0.1, 0.2, 0.2], "page": 0, "confidence": 0.9},
+            },
+            self_reported_confidence={"total": 0.9},
+            extraction_failed=False, extraction_failure_reason=None,
+            model="claude-sonnet-4-6", prompt_hash="vh", schema_hash="vh",
+            usage={"input_tokens": 0, "output_tokens": 0, "cache_creation_input_tokens": 0, "cache_read_input_tokens": 0},
+        )
+        with patch_make_llm_client(vision=vision_result, line_items=line_items_result):
+            result = extract_from_pdf(db_session, pdf_path=test_pdf)
+
+        assert result.extraction.line_items == []  # vision short-circuits

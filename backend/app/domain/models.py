@@ -47,6 +47,28 @@ class ExtractedField(BaseModel):
     source: ExtractionSource
 
 
+# ---------- LineItem — Day 3 ----------
+class LineItem(BaseModel):
+    """A single invoice line item (one row of the line-items table).
+
+    Day-3 quality-gated extraction surface. `description` is the only field
+    we trust enough to require; quantity/unit_price are commonly missing on
+    service invoices where the line is a flat-fee item. Math checks (sum
+    of `line_total` vs subtotal) are logged but do NOT alter triage state
+    in Day 3 — see PLAN.md Day-3 gate.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    description: str
+    quantity: float | None = None
+    unit_price: float | None = None
+    line_total: float
+    bbox: tuple[float, float, float, float] | None = None
+    page: int = 0
+    confidence: float = Field(ge=0.0, le=1.0, default=0.0)
+
+
 # ---------- Triage reasons — discriminated union ----------
 class _BaseReason(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -168,6 +190,7 @@ class ExtractionOut(BaseModel):
     confidence_per_field: dict[str, float]
     predicted_triage_state: TriageState
     predicted_triage_reasons: list[TriageReason]
+    line_items: list[LineItem] = Field(default_factory=list)
     is_current: bool
     created_at: datetime
 
