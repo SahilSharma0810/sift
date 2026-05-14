@@ -156,9 +156,16 @@ export function ReviewScreen() {
   }
 
   const pdfSrc = `/api/invoices/${invoice.id}/file`
-  const fieldsWithBbox = Object.entries(fields)
-    .filter(([_, f]) => Array.isArray(f.bbox))
-    .map(([name, f]) => ({ name, field: f }))
+  const bboxes = useMemo(
+    () =>
+      Object.entries(fields)
+        .filter(([_, f]) => Array.isArray(f?.bbox))
+        .map(([name, f]) => ({
+          name,
+          bbox: f!.bbox as [number, number, number, number],
+        })),
+    [fields]
+  )
 
   const vendorName = String(fields.vendor_name?.value ?? 'Invoice')
   const invoiceNumber = String(fields.invoice_number?.value ?? 'no invoice #')
@@ -194,44 +201,12 @@ export function ReviewScreen() {
             </div>
           </div>
         ) : (
-          <div style={{ position: 'relative', width: '100%', maxWidth: 720 }}>
-            <PdfViewer src={pdfSrc} />
-            {/* Bbox overlays for fields that have a stored bbox.
-                Day-1 stores bbox=null on every field; this renders nothing until
-                the Day-2 bbox-extraction pass lands. */}
-            {fieldsWithBbox.length > 0 && (
-              <div
-                style={{
-                  position: 'absolute',
-                  inset: 0,
-                  pointerEvents: 'none',
-                }}
-                aria-hidden
-              >
-                {fieldsWithBbox.map(({ name, field }) => {
-                  const [x0, y0, x1, y1] = field.bbox!
-                  return (
-                    <div
-                      key={name}
-                      className="bbox"
-                      data-active={activeField === name ? 'true' : 'false'}
-                      style={{
-                        position: 'absolute',
-                        left: `${x0 * 100}%`,
-                        top: `${y0 * 100}%`,
-                        width: `${(x1 - x0) * 100}%`,
-                        height: `${(y1 - y0) * 100}%`,
-                        pointerEvents: 'auto',
-                      }}
-                      onMouseEnter={() => setActiveField(name)}
-                      onMouseLeave={() => setActiveField(null)}
-                      title={`${name}: ${field.value}`}
-                    />
-                  )
-                })}
-              </div>
-            )}
-          </div>
+          <PdfViewer
+            src={pdfSrc}
+            bboxes={bboxes}
+            activeField={activeField}
+            onHoverBbox={setActiveField}
+          />
         )}
       </div>
 

@@ -6,13 +6,39 @@ import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
 
 pdfjs.GlobalWorkerOptions.workerSrc = workerUrl
 
-export function PdfViewer({ src }: { src: string }) {
-  const containerRef = useRef<HTMLDivElement>(null)
+export type BboxRect = {
+  name: string
+  bbox: [number, number, number, number] // normalized 0-1
+}
+
+/**
+ * PdfViewer — renders page 1 of a PDF on a canvas, with optional bbox overlay
+ * rectangles positioned in normalized 0-1 space relative to the canvas itself
+ * (NOT the parent — that was the Day-1 misalignment).
+ *
+ * Day-2: bboxes render as a sibling absolute overlay div sized to wrap the
+ * canvas exactly. The overlay's pointer-events allow hover-to-highlight via
+ * the `data-active` attribute (CSS in styles/sift.css handles the look).
+ */
+export function PdfViewer({
+  src,
+  bboxes = [],
+  activeField = null,
+  onHoverBbox,
+}: {
+  src: string
+  bboxes?: BboxRect[]
+  activeField?: string | null
+  onHoverBbox?: (name: string | null) => void
+}) {
+  const stageRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    if (!containerRef.current) return
-    const container = containerRef.current
-    container.innerHTML = ''
+    if (!stageRef.current) return
+    const stage = stageRef.current
+    // Remove any prior canvas — overlay div is recreated each render so we
+    // only clear the canvas, not the overlay (which React manages).
+    stage.querySelectorAll('canvas').forEach((c) => c.remove())
     let cancelled = false
 
     void (async () => {
@@ -24,13 +50,19 @@ export function PdfViewer({ src }: { src: string }) {
         const context = canvas.getContext('2d')!
         canvas.width = viewport.width
         canvas.height = viewport.height
-        canvas.className = 'max-w-full shadow'
+        canvas.style.maxWidth = '100%'
+        canvas.style.height = 'auto'
+        canvas.style.boxShadow = 'var(--shadow-product)'
+        canvas.style.display = 'block'
         if (cancelled) return
-        container.appendChild(canvas)
+        stage.insertBefore(canvas, stage.firstChild)
         await page.render({ canvasContext: context, viewport }).promise
       } catch {
         if (!cancelled) {
-          container.textContent = 'Could not render this PDF.'
+          const msg = document.createElement('div')
+          msg.textContent = 'Could not render this PDF.'
+          msg.style.color = 'var(--ink-60)'
+          stage.appendChild(msg)
         }
       }
     })()
@@ -41,6 +73,41 @@ export function PdfViewer({ src }: { src: string }) {
   }, [src])
 
   return (
-    <div ref={containerRef} className="flex justify-center bg-muted/20 p-4" />
+    <div
+      ref={stageRef}
+      style={{ position: 'relative', display: 'inline-block', maxWidth: '100%' }}
+    >
+      {bboxes.length > 0 && (
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            pointerEvents: 'none',
+          }}
+        >
+          {bboxes.map(({ name, bbox }) => {
+            const [x0, y0, x1, y1] = bbox
+            return (
+              <div
+                key={name}
+                className="bbox"
+                data-active={activeField === name ? 'true' : 'false'}
+                onMouseEnter={() => onHoverBbox?.(name)}
+                onMouseLeave={() => onHoverBbox?.(null)}
+                style={{
+                  position: 'absolute',
+                  left: `${x0 * 100}%`,
+                  top: `${y0 * 100}%`,
+                  width: `${(x1 - x0) * 100}%`,
+                  height: `${(y1 - y0) * 100}%`,
+                  pointerEvents: 'auto',
+                }}
+                title={name}
+              />
+            )
+          })}
+        </div>
+      )}
+    </div>
   )
 }
