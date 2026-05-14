@@ -47,9 +47,16 @@ confidence = min(structural_score, history_score)
   `min_field_confidence < 0.7` OR math fails OR unseen vendor. When the
   cascade fires, the disputed fields' confidence is **replaced** by an
   agreement score between the upstream and downstream model outputs (exact
-  match → 1.0, fuzzy match → 0.7, mismatch → 0.3). The cascade is not run
+  match → 1.0, mismatch → 0.3). The cascade is not run
   preemptively — it only runs on extractions the composite has already
   flagged.
+
+  > **Note (Day-2 update):** The 0.7 fuzzy-match bucket was evaluated during
+  > Day-2 planning and dropped. Two-bucket scoring (1.0 / 0.3) with a Decimal
+  > 1-cent tolerance handles the realistic near-match case for amount fields
+  > without introducing string-fuzzy heuristics that can't be calibrated
+  > cheaply. Revisit if EVAL.md surfaces a class of "almost agrees" that the
+  > current logic misclassifies.
 
 LLM self-reported confidence stays in the tool-use schema but is **logged
 only**, never used as a triage input. `EVAL.md` plots both curves on the

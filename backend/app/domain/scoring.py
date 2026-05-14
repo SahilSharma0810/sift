@@ -12,6 +12,10 @@ without a rule), it defaults to 0.85 per ADR-0003.
 
 from __future__ import annotations
 
+from decimal import Decimal
+
+from app.domain.validators import AMOUNT_FIELDS
+
 # Cold-start default per ADR-0003 — "slightly hedged" so structural_score
 # dominates when no per-vendor history exists.
 DEFAULT_HISTORY_SCORE = 0.85
@@ -57,3 +61,30 @@ def should_trigger_cascade(
     if not confidence:
         return True  # failsafe: missing signal = cascade
     return min(confidence.values()) < CASCADE_THRESHOLD
+
+
+# 1-cent tolerance for cross-model agreement — stricter than the 2-cent
+# AMOUNT_TOLERANCE in validators.py because two models seeing the same
+# input have no reason to diverge by more than a rounding artifact.
+# The 2-cent math-reconciliation budget absorbs OCR drift before agreement
+# is even checked.
+NUMERIC_AGREEMENT_TOLERANCE = Decimal("0.01")
+
+
+def agreement_score(left: object, right: object, field: str) -> float:
+    """Two-bucket cascade-agreement score per ADR-0003.
+
+    1.0 when two model outputs agree on a field, 0.3 when they don't.
+    Amount fields use a Decimal 1-cent tolerance.
+    """
+    if left is None and right is None:
+        return 1.0
+    if left is None or right is None:
+        return 0.3
+    if field in AMOUNT_FIELDS:
+        try:
+            diff = abs(Decimal(str(left)) - Decimal(str(right)))
+            return 1.0 if diff <= NUMERIC_AGREEMENT_TOLERANCE else 0.3
+        except Exception:
+            return 0.3
+    return 1.0 if str(left).strip() == str(right).strip() else 0.3
