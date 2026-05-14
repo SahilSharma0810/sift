@@ -37,6 +37,7 @@ services:
         condition: service_healthy
     environment:
       DATABASE_URL: postgresql+psycopg://sift:sift@db:5432/sift
+      SIFT_LLM_PROVIDER: ${SIFT_LLM_PROVIDER:-stub}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       SIFT_MODEL_TIER_1: ${SIFT_MODEL_TIER_1:-claude-haiku-4-5}
       SIFT_MODEL_TIER_2: ${SIFT_MODEL_TIER_2:-claude-sonnet-4-6}

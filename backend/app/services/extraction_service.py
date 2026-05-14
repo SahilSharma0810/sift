@@ -81,6 +81,31 @@ def _hash_file(path: Path) -> str:
     return h.hexdigest()
 
 
+def _maybe_float(v: Any) -> float | None:
+    """Coerce a field value to float or pass through None.
+
+    Crucial: preserves the "field genuinely absent" signal so
+    math_reconciles can be vacuous on incomplete breakdowns. Old behaviour
+    (`float(v or 0)`) coerced None → 0.0 which broke math reconciliation
+    on real invoices that lack a subtotal/tax breakdown.
+    """
+    if v is None:
+        return None
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return None
+
+
+def _math_ok(fields: dict[str, Any]) -> bool:
+    """Run math_reconciles on the fields dict, treating absent values as None."""
+    return math_reconciles(
+        subtotal=_maybe_float(fields.get("subtotal")),
+        tax=_maybe_float(fields.get("tax")),
+        total=_maybe_float(fields.get("total")),
+    )
+
+
 def _normalize_value(field_value: Any) -> Any:
     """Vision-path values come as {"value": ..., "bbox": ...}; text-path values are bare."""
     if isinstance(field_value, dict) and "value" in field_value:
@@ -225,6 +250,26 @@ def _build_extracted_fields_shape(
     return out
 
 
+def _should_escalate_to_opus_from_single_tier(
+    initial: ExtractionResult, flat_fields: dict[str, Any]
+) -> bool:
+    """Vision-path escalation decision.
+
+    Returns True if the initial Sonnet result on the vision path looks
+    risky enough to deserve an Opus second opinion. Two triggers:
+    math doesn't reconcile, or the model self-reported low confidence
+    on any REQUIRED field. (Self-reported confidence is logged but not
+    *trusted* for composite scoring — it IS used here as a routing
+    signal because false-positive escalations only cost money, not
+    correctness.)
+    """
+    math_ok = _math_ok(flat_fields)
+    if not math_ok:
+        return True
+    self_conf = initial.self_reported_confidence
+    return any(self_conf.get(f, 1.0) < 0.7 for f in REQUIRED_FIELDS)
+
+
 def _run_cascade(
     *,
     llm: LLMClient,
@@ -251,12 +296,45 @@ def _run_cascade(
         }
     ]
 
-    # Tier 2: Sonnet
+    # Tier 2: Sonnet (digital path only — vision starts at Sonnet)
     sonnet_result: ExtractionResult | None = None
     if invoice_text is not None:
         sonnet_result = llm.extract_header(invoice_text=invoice_text, model=settings.model_tier_2)
     elif page_pngs is not None and initial_tier != "sonnet":
         sonnet_result = llm.extract_header_vision(page_pngs=page_pngs, model=settings.model_tier_2)
+
+    # Vision path special case: initial tier is already Sonnet (tier 2).
+    # The original code returned here without ever escalating to Opus, which
+    # meant scanned invoices ran exactly one LLM call regardless of confidence
+    # or math. Now we check the same conditions a digital cascade would use
+    # after Sonnet runs, and escalate Sonnet → Opus on vision when warranted.
+    if sonnet_result is None and initial_tier == "sonnet" and page_pngs is not None:
+        if _should_escalate_to_opus_from_single_tier(initial, fields):
+            opus_vision = llm.extract_header_vision(
+                page_pngs=page_pngs, model=settings.model_tier_3
+            )
+            opus_flat = _flat_fields(opus_vision.fields)
+            trace_tiers.append(
+                {
+                    "model": opus_vision.model,
+                    "prompt_hash": opus_vision.prompt_hash,
+                    "schema_hash": opus_vision.schema_hash,
+                    "usage": opus_vision.usage,
+                    "llm_self_confidence": opus_vision.self_reported_confidence,
+                }
+            )
+            # Compare Sonnet (initial) vs Opus per field. On disagreement,
+            # prefer Opus's value — it's the more capable model on the harder
+            # cases that triggered escalation in the first place.
+            for field in (*REQUIRED_FIELDS, "subtotal", "tax"):
+                s_val = fields.get(field)
+                o_val = opus_flat.get(field)
+                score = agreement_score(s_val, o_val, field)
+                overrides[field] = score
+                if score <= 0.3:
+                    fields[field] = o_val
+                    per_field_source[field] = "opus"
+        return fields, overrides, trace_tiers, per_field_source
 
     if sonnet_result is None:
         return fields, overrides, trace_tiers, per_field_source
@@ -283,6 +361,15 @@ def _run_cascade(
             # Prefer Sonnet's value on dispute.
             fields[field] = s_val
             per_field_source[field] = "sonnet"
+
+    # Force-escalate to Opus if math doesn't reconcile on the post-Sonnet
+    # values, even when Haiku and Sonnet agreed. Same-error agreement is
+    # the cascade's known blind spot — math is an independent ground truth
+    # the agreement score can't catch (see DocILE smoke-test case
+    # 04345516, where both tiers picked the wrong line for `total`).
+    post_sonnet_math_ok = _math_ok(fields)
+    if not post_sonnet_math_ok and "total" not in disputed:
+        disputed.append("total")
 
     # Tier 3: Opus — only if disputed REQUIRED fields remain at low agreement.
     required_disputes = [f for f in disputed if f in REQUIRED_FIELDS]
@@ -477,11 +564,7 @@ def extract_from_pdf(
     # Validate + score on initial result (before cascade decision)
     fields_flat = _flat_fields(initial_result.fields)
     structural = compute_structural_scores(fields_flat)
-    math_ok = math_reconciles(
-        subtotal=float(fields_flat.get("subtotal") or 0),
-        tax=float(fields_flat.get("tax") or 0),
-        total=float(fields_flat.get("total") or 0),
-    )
+    math_ok = _math_ok(fields_flat)
     vendor_name = fields_flat.get("vendor_name") or "Unknown"
     vendor = vendor_repo.upsert_by_normalized_name(session, name=str(vendor_name))
     history_scores = compute_history_scores(vendor=vendor, fields=fields_flat)
@@ -516,11 +599,7 @@ def extract_from_pdf(
         )
         # Re-validate after cascade replacement
         structural = compute_structural_scores(final_fields)
-        math_ok = math_reconciles(
-            subtotal=float(final_fields.get("subtotal") or 0),
-            tax=float(final_fields.get("tax") or 0),
-            total=float(final_fields.get("total") or 0),
-        )
+        math_ok = _math_ok(final_fields)
         composite = compute_composite_confidence(structural, history=history_scores)
         # Apply agreement overrides on disputed fields
         for field, override_score in overrides.items():

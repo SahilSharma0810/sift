@@ -118,7 +118,7 @@ class LLMClient(Protocol):
         *,
         invoice_text: str,
         model: str,
-        prompt_name: str = "extraction_header_v1",
+        prompt_name: str = "extraction_header_v2",
     ) -> ExtractionResult: ...
 
     def extract_header_vision(
@@ -126,7 +126,7 @@ class LLMClient(Protocol):
         *,
         page_pngs: list[bytes],
         model: str,
-        prompt_name: str = "extraction_header_vision_v1",
+        prompt_name: str = "extraction_header_vision_v2",
     ) -> ExtractionResult: ...
 
     def extract_line_items(
@@ -197,7 +197,7 @@ class AnthropicLLMClient:
         *,
         invoice_text: str,
         model: str,
-        prompt_name: str = "extraction_header_v1",
+        prompt_name: str = "extraction_header_v2",
     ) -> ExtractionResult:
         """Extract header fields via tool-use. Prompt-cached system block."""
         prompt: LoadedPrompt = load(prompt_name)
@@ -511,7 +511,7 @@ class AnthropicLLMClient:
         *,
         page_pngs: list[bytes],
         model: str,
-        prompt_name: str = "extraction_header_vision_v1",
+        prompt_name: str = "extraction_header_vision_v2",
     ) -> ExtractionResult:
         """Vision tool-use for scanned PDFs. Each PNG → base64 image block."""
         prompt = load(prompt_name)
@@ -736,7 +736,7 @@ class StubLLMClient:
         *,
         invoice_text: str,
         model: str,
-        prompt_name: str = "extraction_header_v1",
+        prompt_name: str = "extraction_header_v2",
     ) -> ExtractionResult:
         if self._is_failure_trigger(invoice_text):
             return self._failure_result(model=model, vision=False)
@@ -766,7 +766,7 @@ class StubLLMClient:
         *,
         page_pngs: list[bytes],
         model: str,
-        prompt_name: str = "extraction_header_vision_v1",
+        prompt_name: str = "extraction_header_vision_v2",
     ) -> ExtractionResult:
         # Use the PNG bytes as the seed so different scans → different invoice numbers.
         seed_text = hashlib.sha256(b"".join(page_pngs)).hexdigest()

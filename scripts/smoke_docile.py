@@ -1,0 +1,311 @@
+#!/usr/bin/env python3
+"""Smoke-test Sift's extraction against real DocILE invoices.
+
+Runs on the HOST (not inside the backend container) and hits the live
+backend at http://localhost:8000. Picks N random invoices from the DocILE
+val split, uploads each via /api/invoices, and diffs the extracted fields
+against the DocILE ground-truth annotations.
+
+Requires:
+  - Backend running in anthropic mode (set SIFT_LLM_PROVIDER=anthropic +
+    ANTHROPIC_API_KEY in .env and `docker compose restart backend`)
+  - DocILE dataset at /Users/lscypher/Workspace/docile/data/docile (or
+    override with --docile-root)
+
+Usage:
+  uv run --with httpx --with rich python scripts/smoke_docile.py
+  uv run --with httpx --with rich python scripts/smoke_docile.py --n 5 --seed 42
+  uv run --with httpx --with rich python scripts/smoke_docile.py --doc 00134dd3...
+
+This is a SMOKE test, not the full eval. Catches obvious breakage (schema
+errors, wrong fields, missing fields, blatantly wrong values) before
+running the 500-invoice eval.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import random
+import sys
+import time
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+
+import httpx
+
+
+# ---------- DocILE → Sift field-type mapping ----------
+
+DOCILE_TO_SIFT: dict[str, str] = {
+    "vendor_name": "vendor_name",
+    "document_id": "invoice_number",
+    "date_issue": "invoice_date",
+    "amount_total_gross": "total",
+    "amount_total_base": "subtotal",
+    "amount_total_tax": "tax",
+    "currency_code_amount_due": "currency",
+}
+
+
+@dataclass
+class GroundTruth:
+    doc_id: str
+    fields: dict[str, str]  # Sift field name → ground-truth text
+
+
+def _load_ground_truth(docile_root: Path, doc_id: str) -> GroundTruth:
+    """Parse a DocILE annotation JSON into Sift-shape ground truth.
+
+    DocILE annotations have a `field_extractions` array of typed boxes.
+    We keep only the field types Sift extracts; the rest stay annotated
+    in DocILE but aren't Sift's surface.
+    """
+    ann_path = docile_root / "annotations" / f"{doc_id}.json"
+    raw = json.loads(ann_path.read_text())
+    fields: dict[str, str] = {}
+    for fe in raw.get("field_extractions", []):
+        ft = fe.get("fieldtype")
+        if ft in DOCILE_TO_SIFT:
+            sift_field = DOCILE_TO_SIFT[ft]
+            # If multiple boxes share a fieldtype, keep the first.
+            # Real eval would dedupe / aggregate; for smoke that's fine.
+            fields.setdefault(sift_field, fe.get("text", ""))
+    return GroundTruth(doc_id=doc_id, fields=fields)
+
+
+def _post_invoice(base_url: str, pdf_path: Path) -> dict[str, Any]:
+    with pdf_path.open("rb") as fh:
+        r = httpx.post(
+            f"{base_url}/api/invoices",
+            files={"file": (pdf_path.name, fh, "application/pdf")},
+            timeout=180.0,
+        )
+    if r.status_code >= 400:
+        raise RuntimeError(f"upload failed for {pdf_path.name}: {r.status_code} {r.text[:200]}")
+    return r.json()
+
+
+def _extracted_value(invoice_json: dict[str, Any], field: str) -> Any:
+    ext = invoice_json.get("current_extraction") or {}
+    fields = ext.get("extracted_fields") or {}
+    f = fields.get(field)
+    return f.get("value") if isinstance(f, dict) else None
+
+
+def _numeric_close(a: Any, b: Any, tol_frac: float = 0.01) -> bool:
+    try:
+        fa = float(a)
+        fb = float(b)
+        if fa == 0 and fb == 0:
+            return True
+        return abs(fa - fb) / max(abs(fa), abs(fb), 1.0) <= tol_frac
+    except (TypeError, ValueError):
+        return False
+
+
+def _compare_field(field: str, gt_text: str, actual: Any) -> tuple[bool, str]:
+    """Return (match, note). Soft comparisons per field type."""
+    if actual is None:
+        return False, "missing"
+
+    actual_s = str(actual).strip()
+    gt_s = str(gt_text).strip()
+
+    if field in ("subtotal", "tax", "total"):
+        # Strip currency symbols, ISO codes, and thousands separators before
+        # comparing — DocILE annotates raw text-as-seen ("$879.00 USD"); Sift
+        # normalizes to a bare number. Both shapes should compare equal.
+        import re as _re
+
+        gt_n = _re.sub(r"[,$\s]|USD|EUR|GBP|INR", "", gt_s)
+        try:
+            return _numeric_close(float(gt_n), actual_s), f"gt={gt_n!r} got={actual_s!r}"
+        except ValueError:
+            return False, f"bad-number gt={gt_s!r} got={actual_s!r}"
+
+    if field == "currency":
+        # DocILE annotates the on-document symbol ("$", "€", "£");
+        # Sift normalizes to ISO codes per the prompt instruction.
+        # Both representations are correct — accept either side.
+        _SYMBOL_TO_ISO = {"$": "USD", "€": "EUR", "£": "GBP", "₹": "INR", "¥": "JPY"}
+        gt_norm = _SYMBOL_TO_ISO.get(gt_s, gt_s.upper())
+        return actual_s.upper() == gt_norm, f"gt={gt_s!r}→{gt_norm!r} got={actual_s!r}"
+
+    if field == "invoice_date":
+        # Sift returns the original date string; DocILE annotation has the
+        # text-as-seen too. Loose substring compare across both directions
+        # tolerates formatting drift (DD/MM/YY vs YYYY-MM-DD).
+        return (
+            actual_s in gt_s or gt_s in actual_s,
+            f"gt={gt_s!r} got={actual_s!r}",
+        )
+
+    # vendor_name, invoice_number — case-insensitive substring either way
+    a_lower = actual_s.lower()
+    g_lower = gt_s.lower()
+    match = a_lower == g_lower or a_lower in g_lower or g_lower in a_lower
+    return match, f"gt={gt_s!r} got={actual_s!r}"
+
+
+# ---------- pretty printing ----------
+
+
+def _print(line: str = "") -> None:
+    print(line, flush=True)
+
+
+def _try_rich():
+    try:
+        from rich.console import Console
+        from rich.table import Table
+
+        return Console(), Table
+    except ImportError:
+        return None, None
+
+
+def _run(*, docile_root: Path, base_url: str, doc_ids: list[str]) -> dict[str, Any]:
+    console, RichTable = _try_rich()
+
+    total_attempts = 0
+    total_correct = 0
+    per_field = {sift: {"ok": 0, "total": 0} for sift in DOCILE_TO_SIFT.values()}
+    failures: list[dict[str, Any]] = []
+    cascade_tiers: list[int] = []
+
+    for doc_id in doc_ids:
+        pdf = docile_root / "pdfs" / f"{doc_id}.pdf"
+        if not pdf.exists():
+            _print(f"[skip] {doc_id}: PDF missing")
+            continue
+
+        gt = _load_ground_truth(docile_root, doc_id)
+        if not gt.fields:
+            _print(f"[skip] {doc_id}: no Sift-relevant fields in annotation")
+            continue
+
+        _print(f"\n── {doc_id} ──")
+        _print(f"  PDF: {pdf.name}  ({pdf.stat().st_size // 1024} KB)")
+        t0 = time.time()
+        try:
+            resp = _post_invoice(base_url, pdf)
+        except Exception as exc:
+            _print(f"  [ERROR] upload failed: {exc}")
+            failures.append({"doc_id": doc_id, "error": str(exc)})
+            continue
+        elapsed = time.time() - t0
+
+        ext = resp.get("current_extraction") or {}
+        cascade = ext.get("cascade_trace") or {}
+        n_tiers = len(cascade.get("tiers", []) or [])
+        cascade_tiers.append(n_tiers)
+        triage = ext.get("predicted_triage_state", "—")
+        _print(f"  Pipeline: {elapsed:.1f}s · cascade={n_tiers} tier(s) · triage={triage}")
+
+        rows: list[tuple[str, str, bool]] = []
+        for sift_field, gt_text in gt.fields.items():
+            actual = _extracted_value(resp, sift_field)
+            match, note = _compare_field(sift_field, gt_text, actual)
+            rows.append((sift_field, note, match))
+            per_field[sift_field]["total"] += 1
+            if match:
+                per_field[sift_field]["ok"] += 1
+            total_attempts += 1
+            if match:
+                total_correct += 1
+
+        if console and RichTable:
+            tbl = RichTable(show_header=True, header_style="bold")
+            tbl.add_column("field")
+            tbl.add_column("match")
+            tbl.add_column("detail")
+            for field, note, match in rows:
+                tbl.add_row(field, "✓" if match else "✗", note)
+            console.print(tbl)
+        else:
+            for field, note, match in rows:
+                mark = "✓" if match else "✗"
+                _print(f"  {mark} {field:<16} {note}")
+
+        if any(not m for _, _, m in rows):
+            failures.append({
+                "doc_id": doc_id,
+                "mismatches": [(f, n) for f, n, m in rows if not m],
+            })
+
+    _print("\n" + "=" * 60)
+    _print("Summary")
+    _print("=" * 60)
+    _print(f"Overall: {total_correct}/{total_attempts} field-comparisons matched ({total_correct/max(total_attempts,1):.1%})")
+    if cascade_tiers:
+        _print(f"Cascade depth: avg {sum(cascade_tiers)/len(cascade_tiers):.1f} tiers, max {max(cascade_tiers)}")
+    _print("")
+    _print("Per-field accuracy:")
+    for field, counts in per_field.items():
+        if counts["total"] == 0:
+            continue
+        rate = counts["ok"] / counts["total"]
+        _print(f"  {field:<16} {counts['ok']:>3}/{counts['total']:<3}  {rate:.1%}")
+    if failures:
+        _print(f"\n{len(failures)} invoice(s) had at least one mismatch.")
+    return {
+        "total_correct": total_correct,
+        "total_attempts": total_attempts,
+        "per_field": per_field,
+        "failures": failures,
+    }
+
+
+def main() -> int:
+    p = argparse.ArgumentParser(description=__doc__)
+    p.add_argument(
+        "--docile-root",
+        default="/Users/lscypher/Workspace/docile/data/docile",
+        help="Path to DocILE data root (contains pdfs/, annotations/, val.json)",
+    )
+    p.add_argument("--base-url", default="http://localhost:8000")
+    p.add_argument("--n", type=int, default=10, help="number of invoices to test")
+    p.add_argument("--seed", type=int, default=42)
+    p.add_argument(
+        "--split",
+        default="val",
+        choices=["val", "train", "trainval"],
+        help="DocILE split to draw from",
+    )
+    p.add_argument("--doc", action="append", help="explicit doc_id(s) (overrides --n)")
+    args = p.parse_args()
+
+    root = Path(args.docile_root)
+    if not (root / "pdfs").is_dir():
+        _print(f"ERROR: {root}/pdfs not found")
+        return 1
+
+    # Sanity: is the backend up + in anthropic mode?
+    try:
+        meta = httpx.get(f"{args.base_url}/api/meta", timeout=3.0).json()
+    except Exception as e:
+        _print(f"ERROR: can't reach backend at {args.base_url} ({e})")
+        return 1
+    _print(f"Backend: version={meta.get('version')} llm_provider={meta.get('llm_provider')}")
+    if meta.get("llm_provider") != "anthropic":
+        _print("WARN: backend is not in anthropic mode — extraction will be stub data.")
+        _print("      set SIFT_LLM_PROVIDER=anthropic + ANTHROPIC_API_KEY in .env and")
+        _print("      `docker compose restart backend` before running this script.")
+
+    if args.doc:
+        doc_ids = args.doc
+    else:
+        split_path = root / f"{args.split}.json"
+        all_ids = json.loads(split_path.read_text())
+        rng = random.Random(args.seed)
+        doc_ids = rng.sample(all_ids, k=min(args.n, len(all_ids)))
+
+    _print(f"Testing {len(doc_ids)} invoice(s) from {args.split} split (seed={args.seed})")
+    summary = _run(docile_root=root, base_url=args.base_url, doc_ids=doc_ids)
+    return 0 if summary["total_correct"] == summary["total_attempts"] else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

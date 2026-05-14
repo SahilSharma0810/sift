@@ -13,6 +13,7 @@ from __future__ import annotations
 from typing import Any
 
 from app.domain.scoring import CASCADE_THRESHOLD
+from app.domain.validators import REQUIRED_FIELDS
 
 
 def derive_triage(
@@ -60,31 +61,36 @@ def derive_triage(
         for a in anomalies:
             reasons.append({"type": "anomaly", **a})
 
-    # 4) Missing fields — two sources:
-    #    a) field present in extracted_fields but null/empty
-    #    b) field absent from extracted_fields but confidence score == 0.0
-    #       (extraction produced no value for that field)
+    # 4) Missing fields — ONLY for REQUIRED_FIELDS. Optional fields like
+    #    subtotal and tax are commonly absent on real invoices (single-line
+    #    Total only) — they shouldn't push to needs_review when missing.
     missing_fields: set[str] = set()
-    for field, value in extracted_fields.items():
+    for field in REQUIRED_FIELDS:
+        value = extracted_fields.get(field)
         if value is None or value == "":
             missing_fields.add(field)
             reasons.append({"type": "missing_field", "field": field})
-    for field, score in confidence.items():
-        if score == 0.0 and field not in extracted_fields and field not in missing_fields:
-            missing_fields.add(field)
-            reasons.append({"type": "missing_field", "field": field})
 
-    # 5) Low confidence fields (below cascade threshold, not zero — zero is "missing")
+    # 5) Low confidence — only on fields the model actually extracted a value
+    #    for. A null/missing field gives a 0 confidence score that's
+    #    semantically "absent" not "uncertain"; don't double-count it as
+    #    low_confidence on top of the missing_field reason (and don't fire
+    #    low_confidence on optional fields like subtotal/tax that weren't
+    #    on the invoice in the first place).
     for field, score in confidence.items():
-        if 0.0 < score < CASCADE_THRESHOLD:
-            reasons.append(
-                {
-                    "type": "low_confidence",
-                    "field": field,
-                    "score": round(score, 3),
-                    "reason": "below_threshold",
-                }
-            )
+        if not (0.0 < score < CASCADE_THRESHOLD):
+            continue
+        value = extracted_fields.get(field)
+        if value is None or value == "":
+            continue
+        reasons.append(
+            {
+                "type": "low_confidence",
+                "field": field,
+                "score": round(score, 3),
+                "reason": "below_threshold",
+            }
+        )
 
     # 6) Unseen vendor — reason only, doesn't gate the state alone.
     if is_unseen_vendor:

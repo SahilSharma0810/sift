@@ -14,14 +14,25 @@ from decimal import Decimal
 AMOUNT_TOLERANCE = Decimal("0.02")
 
 
-def math_reconciles(subtotal: float, tax: float, total: float) -> bool:
+def math_reconciles(
+    subtotal: float | None,
+    tax: float | None,
+    total: float | None,
+) -> bool:
     """True if subtotal + tax ≈ total within AMOUNT_TOLERANCE.
 
-    Uses Decimal internally to avoid IEEE 754 precision drift on OCR-sourced
-    amounts (e.g. $1234.56, $19.99 — not exactly representable as floats).
+    Vacuously True when any of subtotal / tax / total is `None` — many
+    real-world invoices show only a `Total` line without a separate
+    subtotal+tax breakout. Treating absent fields as zero and then failing
+    `0 + 0 ≠ total` mis-flags every such invoice with a spurious
+    math_fails reason. The right semantics: math reconciliation isn't
+    applicable unless the breakdown is actually present.
 
+    Uses Decimal internally to avoid IEEE 754 drift on OCR-sourced amounts.
     Rejects negative amounts (real invoices never have negative subtotals).
     """
+    if subtotal is None or tax is None or total is None:
+        return True
     s = Decimal(str(subtotal))
     t = Decimal(str(tax))
     tt = Decimal(str(total))
@@ -183,19 +194,29 @@ def compute_structural_scores(fields: dict[str, object]) -> dict[str, float]:
     missing = set(find_missing_required(fields))
 
     # Math reconciliation check — drives amount-field scores.
-    math_ok = False
-    try:
-        math_ok = math_reconciles(
-            subtotal=float(fields.get("subtotal", 0) or 0),
-            tax=float(fields.get("tax", 0) or 0),
-            total=float(fields.get("total", 0) or 0),
-        )
-    except (TypeError, ValueError):
-        math_ok = False
+    # Pass None through (not coerced to 0) so the vacuous-on-null behaviour
+    # in math_reconciles kicks in for invoices that only show a Total line.
+    def _maybe_float(v: object) -> float | None:
+        if v is None:
+            return None
+        try:
+            return float(v)  # type: ignore[arg-type]
+        except (TypeError, ValueError):
+            return None
+
+    math_ok = math_reconciles(
+        subtotal=_maybe_float(fields.get("subtotal")),
+        tax=_maybe_float(fields.get("tax")),
+        total=_maybe_float(fields.get("total")),
+    )
 
     for field in AMOUNT_FIELDS:
-        if field in missing:
-            scores[field] = MISSING_OR_INVALID
+        value_present = fields.get(field) is not None
+        if not value_present:
+            # The field genuinely isn't on this invoice — neutral score.
+            # Differs from MISSING_OR_INVALID (0.0) so triage doesn't flag
+            # low_confidence on a field that's simply absent.
+            scores[field] = NEUTRAL_SCORE
         elif math_ok:
             scores[field] = HIGH_SCORE
         else:
