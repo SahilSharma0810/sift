@@ -168,13 +168,14 @@ class TestSearchFTS:
 
     def test_fts_contains_substring(self, api_client: TestClient) -> None:
         """`contains` falls back to ILIKE for substring matching."""
-        _upload(api_client, "fts-c-1", "Acme Catering", 100.0)
-        _upload(api_client, "fts-c-2", "Beta Bakery", 100.0)
+        # Use unique tokens that won't collide with demo/eval seed data
+        _upload(api_client, "fts-c-1", "QA SearchFTS UniqXyzpdq", 100.0)
+        _upload(api_client, "fts-c-2", "QA SearchFTS OtherLmnopq", 100.0)
 
         res = api_client.post(
             "/api/search",
             json={
-                "filters": [{"field": "raw_text", "op": "contains", "value": "Cater"}],
+                "filters": [{"field": "raw_text", "op": "contains", "value": "UniqXyz"}],
                 "limit": 50,
             },
         )
@@ -182,7 +183,7 @@ class TestSearchFTS:
         assert len(body) == 1
         assert (
             body[0]["current_extraction"]["extracted_fields"]["vendor_name"]["value"]
-            == "Acme Catering"
+            == "QA SearchFTS UniqXyzpdq"
         )
 
 

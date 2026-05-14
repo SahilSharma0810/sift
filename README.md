@@ -2,9 +2,21 @@
 
 Vendor invoices in mixed formats → clean, structured data an AP clerk can review and query.
 
-> Built for the Zamp Engineering Project Round (Problem 01).
-> See [CONTEXT.md](./CONTEXT.md) for domain language and [PLAN.md](./PLAN.md) for the 5-day execution plan.
-> Architecture decisions live in [docs/adr/](./docs/adr/).
+Built for the Zamp Engineering Project Round (Problem 01: messy documents → structured queryable data).
+
+---
+
+## 60-second demo
+
+The three beats live in `make demo`:
+
+1. **It understands messy.** Drop a PDF on the inbox. The pipeline runs through a Haiku → Sonnet → Opus cascade, resolves bboxes per field, renders the review screen with hover-highlight overlays on the PDF — even on scanned-image PDFs where the vision path takes over.
+2. **It catches what a clerk would catch.** A `$89,000` Halcyon Software invoice lands flagged as `needs_review` with two reason cards stacked: `anomaly` (Z=219 vs vendor mean $34,250 ±$250) and `low_confidence` (cascade agreement override fired). The clerk sees *why* in one glance — no PDF reading required.
+3. **It gets better with use.** A second Vega invoice with identical visual content flags as `likely_duplicate`, pointing back at the original. The duplicate-review screen shows both PDFs side-by-side with a field-diff panel.
+
+Plus a fourth beat that's the queryable half of the promise:
+
+4. **It's actually queryable.** Type `anomalies from Halcyon Software` at `/search`. The backend translator returns a typed `StructuredQuery`; the URL state updates; the result list shows one row — the $89k anomaly. Hit "Export CSV" to get a self-describing audit file.
 
 ---
 
@@ -14,15 +26,11 @@ Vendor invoices in mixed formats → clean, structured data an AP clerk can revi
 git clone <this repo>
 cd sift
 cp .env.example .env       # defaults are safe for local dev — no key needed
-make dev                   # docker compose up backend + frontend + Postgres
+make demo                  # = reset-db + seed 7 curated invoices
 open http://localhost:5173
 ```
 
-Drop a PDF on the inbox. The pipeline runs end-to-end with **zero external API calls** — the default `SIFT_LLM_PROVIDER=stub` setting routes every LLM call through `StubLLMClient`, which returns deterministic canned extractions that exercise the full cascade (Haiku → Sonnet → Opus → agreement-score override). Useful for:
-
-- Reviewing the codebase without spending anything
-- Running the demo on a flight / offline
-- CI: every test runs offline against the stub
+`make demo` runs the full pipeline with `SIFT_LLM_PROVIDER=stub` — every LLM call goes through `StubLLMClient`, which returns deterministic canned extractions that exercise the entire cascade (Haiku→Sonnet→Opus → agreement override). **Zero API key. Zero credits burned.** Reviewers can clone, demo, and read the codebase without any setup beyond Docker.
 
 Switch to real model calls by editing `.env`:
 
@@ -31,11 +39,114 @@ SIFT_LLM_PROVIDER=anthropic
 ANTHROPIC_API_KEY=sk-ant-...
 ```
 
-The architecture documents the swap as a single setting change — see ADR-0005 (`adapters/llm_client.py` Protocol + factory). Adding an OpenAI or local provider is a new implementation class + one factory branch.
+The architecture supports this as a single setting change — see ADR-0005 (`adapters/llm_client.py` Protocol + factory). Adding an OpenAI or local provider is a new implementation class plus one factory branch.
+
+---
+
+## Architecture
+
+```
+                  ┌──────────────────────────────────────────────┐
+                  │  Frontend (React + TanStack Query)           │
+                  │                                              │
+                  │  /inbox  /invoice/:id  /duplicate-review/:id │
+                  │  /search ←─── chips ARE the URL state        │
+                  └────────────────┬─────────────────────────────┘
+                                   │ JSON
+                  ┌────────────────▼─────────────────────────────┐
+                  │  api/       thin handlers, no DB / no LLM    │
+                  ├──────────────────────────────────────────────┤
+                  │  services/  extraction · nl_translation ·    │
+                  │             search · vendor_memory · triage  │
+                  ├──────────────────────────────────────────────┤
+                  │  domain/    pure: models · validators ·      │
+                  │             scoring · triage · anomalies ·   │
+                  │             duplicates · nl_schema           │
+                  ├──────────────────────────────────────────────┤
+                  │  adapters/  llm_client · pdf_reader ·        │
+                  │             storage/*_repo                   │
+                  └────┬────────────────────┬────────────────────┘
+                       │                    │
+            ┌──────────▼─┐         ┌───────▼─────────┐
+            │ Anthropic  │         │ Postgres        │
+            │ (or Stub)  │         │  + tsvector FTS │
+            │ via the    │         │  + pgvector     │
+            │ Protocol   │         └─────────────────┘
+            └────────────┘
+```
+
+Four layers with strict one-way dependencies (enforced by `import-linter` in CI per ADR-0005):
+
+- `api/` is a thin shell. No imports from `adapters/` or `db/`. One exception in CI config for FastAPI's `Depends(get_session)`.
+- `services/` orchestrates everything else. Knows about `domain/` and `adapters/`.
+- `domain/` is pure. No I/O, no DB, no LLM. The eval harness sits on this seam.
+- `adapters/` are the IO seams. `LLMClient` is a Protocol — Anthropic + Stub implementations live behind it.
+
+---
+
+## What's extracted
+
+| Field group | Surface | Where it lands |
+|---|---|---|
+| Header fields | vendor_name, invoice_number, invoice_date, subtotal, tax, total, currency | `extracted_fields` JSONB on extractions |
+| Bounding boxes | Per-field rect on the PDF for hover-highlight | inside each `ExtractedField` |
+| Cascade trace | Every tier the request hit + token usage | `cascade_trace` JSONB |
+| Anomaly / duplicate flags | Reason cards in the review pane | `predicted_triage_reasons` JSONB |
+| Line items | description / qty / unit / line_total per row | `line_items` JSONB |
+| Tax breakdown | Per-jurisdiction tax rows | `tax_breakdown` JSONB |
+| FTS index | Concatenated extracted text, GIN-indexed | `raw_text_tsv` generated column |
+
+---
+
+## Scope decisions
+
+Anchored to PLAN.md's cut-down ladder:
+
+| Shipped | Why it stays |
+|---|---|
+| Scanned-PDF vision path + bbox highlight | Beat-1 hero. Without it, "messy" means "messy text"; PLAN.md anchors on "messy documents". |
+| Triage cards (math · anomaly · duplicate · low-conf · missing · unseen-vendor · extraction-failed) | Beat-2 backbone. The system tells the clerk *why* it's flagged. |
+| Composite confidence + cascade agreement override (ADR-0003) | Calibrated triage states across every beat — `min(structural, history)` with cascade override. |
+| `ExtractionFailedCard` with Retry / Mark unprocessable / Manual entry (ADR-0006) | Demo never dead-ends on a bad PDF. |
+| Inbox + ReviewScreen + DuplicateReviewScreen + `/search` | Minimum UX shell that exercises all three demo beats. |
+| NL→SQL translator (whitelist + per-field-op compatibility + partial-translation surface) | Anchor-1 "queryable" promise. |
+| CSV/JSON export with serialized-query audit header | Anchor-1 deep-link + audit trust signal. |
+| Provider pattern (`Stub` + `Anthropic` + factory) | Interview-review path. Clone → demo, zero cost. |
+
+| Deliberately out | Why |
+|---|---|
+| Active learning (clerk-correction → vendor.memory rules → memory-applied auto-fill on next invoice) | Day-5 stretch in PLAN.md. Skipped to hold the quality bar on Phases 1-5. The bones are there (`field_corrections` table, `vendor.memory` shape, `source: memory-applied` flag) — the loop just isn't wired. |
+| Multi-currency invoices | Out per PLAN.md rung 5. Surfaces in the export "currency" column but isn't a first-class feature. |
+| Vision-path line items + vision-path tax breakdown | Day-4 stretch in PLAN.md. Returns `[]` on scanned PDFs; documented in code. |
+| Sort UI on `/search` | The `StructuredQuery.sort` field is supported by the backend SQL builder; the frontend just doesn't expose a sort picker yet. |
+| Bulk-confirm with delayed-dispatch undo | Bulk-confirm ships with informational sonner-undo (toast says "applied"); the queued-send-with-cancel version is a polish item. |
+
+---
+
+## Eval
+
+Run `make eval` to reproduce. Headline numbers from the latest stub-mode pass:
+
+| Metric | Value | Detail |
+|---|---|---|
+| Extraction `vendor_name` exact-match | **100.0%** | 55/55 synthetic cases |
+| Extraction `total` exact-match (±$0.50) | **100.0%** | 55/55 |
+| Triage `predicted_triage_state` accuracy | **100.0%** | confusion matrix in `backend/eval/extraction.md` |
+| NL→SQL translator exact-match | **90.9%** | 20/22 — the 2 "misses" are partial-translation cases surfacing in `untranslated_intent` by design |
+
+Full reports:
+- [EVAL.md](./EVAL.md) — extraction + calibration methodology
+- [TRIAGE-EVAL.md](./TRIAGE-EVAL.md) — synthetic triage corpus
+- [NL_EVAL.md](./NL_EVAL.md) — NL translator
+- [backend/eval/extraction.md](./backend/eval/extraction.md), [nl.md](./backend/eval/nl.md), [calibration.png](./backend/eval/calibration.png) — auto-generated detail
+
+Stub-mode 100% accuracy isn't the boast — what matters is that the same corpus + same pipeline produces the same number every run. Anthropic-mode rerun is a single env-var flip (`SIFT_LLM_PROVIDER=anthropic`) on the same harness; cost ~$0.50–$2.00 per pass.
+
+---
 
 ## Stub-mode scenarios
 
-`StubLLMClient` ships with three keyword-keyed scenarios so the demo narrative still works without keys:
+`StubLLMClient` ships with three keyword-keyed scenarios so the demo narrative works without keys:
 
 | Keyword in invoice text | Scenario | Drives demo beat |
 |---|---|---|
@@ -44,95 +155,75 @@ The architecture documents the swap as a single setting change — see ADR-0005 
 | `[stub:fail]` / `encrypted` | extraction_failed=True | Unprocessable + retry |
 | (anything else)      | Vega Logistics, $1,180.00    | Cascade + agreement-override |
 
-Every scenario returns a `total` that's off by $1 on tier-1 (Haiku) vs tier-2 (Sonnet) so the cascade actually fires and the trace shows real disagreement / agreement-override behavior. Different invoice text → different invoice numbers (seeded from SHA-256), so multiple uploads in stub mode show as distinct rows.
+Every scenario returns a `total` off by $1 on tier-1 (Haiku) vs tier-2 (Sonnet), so the cascade actually fires and the trace shows real disagreement / agreement-override behavior. Different invoice text → different invoice numbers (seeded from SHA-256), so multiple uploads in stub mode show as distinct rows.
 
 ---
 
-## What gets extracted
+## Setup details
 
-| Field group        | Surface              | Source / status |
-|---|---|---|
-| Header fields      | vendor_name, invoice_number, invoice_date, subtotal, tax, total, currency | Shipped Day 1 / 2 |
-| Bounding boxes     | per-field rect on the PDF for hover-highlight | Shipped Day 2 (digital + vision) |
-| Cascade trace      | every tier the request hit, with token usage   | Shipped Day 2 |
-| Anomaly + duplicate flags | flagged in the review pane with the matching reason card | Shipped Day 2 |
-| **Line items**     | description / quantity / unit price / line total per row | Shipped Day 3 — quality-gated |
-| **Tax breakdown**  | per-jurisdiction tax rows | Shipped Day 4 — quality-gated |
+### Requirements
 
-### Day-3 line items — what's in vs deliberately out
+- Docker + Docker Compose
+- That's it. The backend runs `uv` + Python 3.12 inside the container; the frontend runs `pnpm` + Node inside its own container.
 
-**In:** `extractions.line_items` JSONB column · separate LLM method (`extract_line_items`) at the cascade-final tier · stub returns scenario-appropriate line items (Vega freight x3 / Halcyon software x2 / Bramble catering x5) · read-only table mounted in `ReviewScreen` below the header fields panel · `line_items_sum_check` validator runs after extraction.
+### Environment variables (`.env`)
 
-**Deliberately out for Day 3:** inline editing of line items · per-line bbox-on-hover · vision-path line items (the vision branch returns `[]` for line items in Day 3) · line-item-level cascade · `line_items_dont_sum` as a triage reason (sum mismatch is logged but does NOT change `predicted_triage_state` — Day-3 line items are quality-gated and false-positive math reasons would pollute the inbox).
+```env
+DATABASE_URL=postgresql+psycopg://sift:sift@db:5432/sift
+SIFT_LLM_PROVIDER=stub           # 'stub' (default) or 'anthropic'
+ANTHROPIC_API_KEY=               # required only when provider=anthropic
+SIFT_MODEL_TIER_1=claude-haiku-4-5
+SIFT_MODEL_TIER_2=claude-sonnet-4-6
+SIFT_MODEL_TIER_3=claude-opus-4-7
+SIFT_UPLOAD_DIR=/data/uploads
+SIFT_LOG_LEVEL=INFO
+SIFT_LOG_FORMAT=json
+SIFT_CORS_ORIGINS=http://localhost:5173
+```
 
-**Eval gate (Day 5):** when running with `SIFT_LLM_PROVIDER=anthropic`, the line-items section will be benchmarked against a DocILE subset. If the per-line F1 falls below the threshold documented in `EVAL.md`, the section gets cut from the demo seed with a written failure analysis — that's the PLAN.md "honest cut" path rather than half-shipping unreliable extraction.
+### Common commands
 
-### Day-4 tax breakdown — what's in vs deliberately out
-
-**In:** `extractions.tax_breakdown` JSONB column · separate `extract_tax_breakdown` LLM method at the cascade-final tier · stub returns scenario-appropriate jurisdiction rows · read-only table mounted in `ReviewScreen` below the line-items panel · `tax_breakdown_sum_check` validator (sum of `amount` vs header `tax`).
-
-**Deliberately out:** inline editing · vision-path tax breakdown (returns `[]` for now) · `tax_breakdown_dont_sum` as a triage reason. Same quality-gating logic as line items — a noisy sum mismatch would erode the inbox's trust signal.
+```bash
+make dev               # bring everything up
+make demo              # reset DB + seed 7 curated invoices (beats 1-4)
+make test              # full backend + frontend test suite
+make lint              # ruff + import-linter + tsc
+make eval              # full eval pipeline (reset + seed-eval + score + write reports)
+make seed-demo         # populate inbox without resetting (idempotent: skips dupes)
+make reset-db          # drop schema + recreate + migrate + wipe uploads
+```
 
 ---
 
-## Search & query — NL → structured query (Day 4)
+## Deployment
 
-Sift's "messy documents → **queryable** data" promise (Anchor 1) ships as a real search page at `/search`, plus a ⌘K palette that uses the same backend. Both surfaces route through:
+The backend builds a single Docker image with the production Vite bundle served by FastAPI's `StaticFiles`. `fly.toml` is in the repo; Neon Postgres is the recommended managed DB. CI deploys on push to `main` via `.github/workflows/deploy.yml`.
 
-```
-NL input  →  POST /api/search/translate  →  StructuredQuery
-StructuredQuery  →  POST /api/search       →  list[InvoiceOut]
-```
-
-### Architecture stakes (ADR-0004)
-
-- **Whitelisted field set + per-field op compatibility.** The whitelist lives in `domain/nl_schema.py`, gets reflected into the LLM tool-use schema (so the model only sees legal ops), and is re-checked by the Pydantic validator before any SQL builder sees it. Malformed payloads → 422 with field-level errors — never silently coerced.
-- **No raw text from the LLM hits SQL.** The LLM emits a typed `StructuredQuery` (filters / sort / limit / `untranslated_intent`); the SQL builder dispatches each (field, op) pair through a hand-written, type-checked SQLAlchemy expression. Values come in as typed Python objects.
-- **Chips ARE the state.** The search page stores the entire `StructuredQuery` in the URL `?q=` param. Editing or removing a chip mutates the URL → TanStack Query re-runs the search. Browser back/forward Just Works. Deep-link sharing preserves the exact search verbatim.
-- **Partial translation always surfaces.** If the LLM can't translate part of the request, that text comes back in `untranslated_intent` and renders in an amber notice above the results — never silently dropped.
-- **One translator, everywhere.** The ⌘K palette uses the same `/api/search/translate` endpoint as the full `/search` page. No client-side translation map that can diverge.
-
-### What you can search on
-
-```
-field            ops                                  value type
-─────────────    ──────────────────────────────────   ───────────────
-vendor_name      eq, neq, in, contains                string / list
-invoice_date     eq, neq, gt, gte, lt, lte, between   YYYY-MM-DD / pair
-total            eq, neq, gt, gte, lt, lte, between   number
-subtotal         (same as total)
-tax_total        (same as total)
-currency         eq, neq, in                          ISO 4217 string
-triage_state     eq, neq, in                          confident | needs_review | likely_duplicate
-review_status    eq, neq, in                          pending | confirmed | dismissed_duplicate | unprocessable
-has_anomaly      eq                                   boolean
-is_duplicate     eq                                   boolean
-raw_text         contains, fts_matches                string
-```
-
-`raw_text` is Postgres FTS via a `tsvector` generated column maintained automatically on every extraction. The service writes a `raw_text` column from the concatenation of every extracted field value + line-item description + tax-jurisdiction label; the database derives `raw_text_tsv` and a GIN index from it.
-
-### Demo prompts (stub mode)
-
-The stub provider's deterministic regex translator covers the demo phrasings end-to-end. Try these on `/search`:
-
-- *"duplicates from Vega"*
-- *"anomalies from Halcyon Software"*
-- *"invoices over $5,000"*
-- *"encrypted invoices"*
-- *"confirmed from Halcyon Software"*
-
-Anything outside the demo phrasings shows up in the amber "partial translation" notice — the system tells you what it couldn't translate instead of guessing.
-
-### CSV / JSON export
-
-`/search` has Export CSV and Export JSON buttons. Both go through `POST /api/search/export?format=...` with the current `StructuredQuery` as the body, and return a self-describing file:
-
-- CSV: leading `# Sift export · <timestamp>` / `# Rows: N` / `# Query: {...}` comment lines, then the standard header + data rows.
-- JSON: wrapper `{ exported_at, row_count, query, rows }`.
-
-Anyone who finds the exported file later can see exactly what query produced it.
+See **[DEPLOY.md](./DEPLOY.md)** for the full guide — Neon setup, Fly app creation, secrets, GitHub Actions wire-up, migration safety, rollback. A live URL will land here once the first deploy goes through.
 
 ---
 
-This README is still a placeholder for the rest of the project narrative. The real README ships on Day 5 with the 60-second demo story, architecture diagram, eval numbers, and live URL.
+## Future work
+
+Order matches what would ship next given another sprint:
+
+1. **Active learning loop.** Clerk corrections persist to `field_corrections`; `vendor_memory_service.consolidate()` aggregates corrections into `vendor.memory.rules`; the stub provider applies those rules on subsequent extractions. The "watch it learn" demo line. All the bones are in place — needs ~4-6 small tasks of wiring.
+2. **DocILE-based eval.** Replace synthetic corpus with a real subset; per-row human-reviewed ground truth; surface the cut decision on line items / tax breakdown if anthropic-mode F1 falls below threshold.
+3. **Vision-path line items + tax breakdown.** The current vision branch returns `[]` for both; extending the vision tool-use schema is straightforward, and the eval gate would say whether they're worth shipping.
+4. **Sort UI on `/search`.** Backend supports it via `StructuredQuery.sort`; the frontend needs a column-header click handler.
+5. **Bulk-confirm with delayed dispatch.** Replace the "applied + informational undo toast" pattern with a queued-send model so undo actually cancels in-flight confirmations.
+6. **pgvector semantic search.** "Find invoices similar to this one" — pgvector is enabled from day one per ADR-0002 but unused.
+
+---
+
+## References
+
+- [PLAN.md](./PLAN.md) — 5-day execution plan, cut-down ladder, seed-corpus design
+- [CONTEXT.md](./CONTEXT.md) — domain language
+- [docs/adr/](./docs/adr/) — six locked architecture decisions:
+  - ADR-0001: extraction pipeline (no Docling)
+  - ADR-0002: Postgres on Neon over SQLite
+  - ADR-0003: composite confidence scoring
+  - ADR-0004: NL→SQL via flat conjunction + field whitelist
+  - ADR-0005: layered architecture (api → services → domain ← adapters)
+  - ADR-0006: failure modes

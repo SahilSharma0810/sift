@@ -10,18 +10,30 @@ export function Shell() {
   const location = useLocation()
   const params = useParams()
   const [paletteOpen, setPaletteOpen] = useState(false)
+  const [helpOpen, setHelpOpen] = useState(false)
   const { data: invoices = [] } = useInboxQuery()
   const { data: meta } = useAppMetaQuery()
   const navigate = useNavigate()
 
-  // ⌘K opens palette · Esc closes
+  // ⌘K opens palette · ? opens help · Esc closes
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      // Don't intercept keys typed into form fields
+      const target = e.target as HTMLElement | null
+      const isEditable =
+        target &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.isContentEditable)
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault()
         setPaletteOpen(true)
+      } else if (!isEditable && e.key === '?') {
+        e.preventDefault()
+        setHelpOpen((v) => !v)
       } else if (e.key === 'Escape') {
         setPaletteOpen(false)
+        setHelpOpen(false)
       }
     }
     window.addEventListener('keydown', onKey)
@@ -197,6 +209,75 @@ export function Shell() {
           }}
         />
       )}
+
+      {helpOpen && <KeyboardHelp onClose={() => setHelpOpen(false)} />}
+    </div>
+  )
+}
+
+const SHORTCUTS: { keys: string[]; description: string }[] = [
+  { keys: ['⌘', 'K'], description: 'Open search palette' },
+  { keys: ['?'], description: 'Toggle this help' },
+  { keys: ['Esc'], description: 'Close any open overlay' },
+  { keys: ['↵'], description: 'Open a row / submit chip' },
+  { keys: ['C'], description: 'Confirm (on review)' },
+  { keys: ['D'], description: 'Dismiss (on review)' },
+  { keys: ['U'], description: 'Mark unprocessable (on review)' },
+]
+
+function KeyboardHelp({ onClose }: { onClose: () => void }) {
+  return (
+    <div
+      className="scrim"
+      onClick={onClose}
+      style={{ display: 'grid', placeItems: 'center' }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: 'var(--paper)',
+          border: '1px solid var(--hairline)',
+          minWidth: 380,
+          maxWidth: 460,
+          padding: 0,
+        }}
+      >
+        <div
+          style={{
+            padding: '14px 18px',
+            borderBottom: '1px solid var(--hairline)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            fontSize: 13,
+            fontWeight: 500,
+          }}
+        >
+          <span>Keyboard shortcuts</span>
+          <Kbd>esc</Kbd>
+        </div>
+        <div style={{ padding: '4px 0' }}>
+          {SHORTCUTS.map((s, i) => (
+            <div
+              key={i}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 10,
+                padding: '7px 18px',
+                fontSize: 12.5,
+              }}
+            >
+              <div style={{ display: 'flex', gap: 4, width: 90 }}>
+                {s.keys.map((k, j) => (
+                  <Kbd key={j}>{k}</Kbd>
+                ))}
+              </div>
+              <span style={{ color: 'var(--ink-80)' }}>{s.description}</span>
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   )
 }

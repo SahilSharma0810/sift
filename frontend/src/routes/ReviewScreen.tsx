@@ -74,7 +74,7 @@ function cascadeTiers(inv: InvoiceOut): string[] {
 export function ReviewScreen() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
-  const { data: invoice, isLoading } = useInvoiceQuery(id)
+  const { data: invoice, isLoading, error } = useInvoiceQuery(id)
   const { data: allInvoices = [] } = useInboxQuery()
   const { data: vendor } = useInvoiceVendorQuery(id)
 
@@ -110,9 +110,20 @@ export function ReviewScreen() {
     return out
   }, [invoice, overrides])
 
-  if (isLoading || !invoice) {
+  if (isLoading) {
+    return <div style={{ padding: 24, color: 'var(--ink-60)' }}>Loading invoice…</div>
+  }
+  if (error || !invoice) {
     return (
-      <div style={{ padding: 24, color: 'var(--ink-60)' }}>Loading invoice…</div>
+      <div style={{ padding: 24, color: 'var(--ink-60)' }}>
+        <div style={{ fontSize: 16, marginBottom: 6 }}>Invoice not found.</div>
+        <div style={{ fontSize: 12.5, marginBottom: 16 }}>
+          It may have been removed, or the ID is wrong.
+        </div>
+        <Btn icon={Icons.arrowL} onClick={() => navigate('/inbox')}>
+          Back to inbox
+        </Btn>
+      </div>
     )
   }
 
