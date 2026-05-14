@@ -1,0 +1,114 @@
+"""Vendor-memory service per ADR-0003.
+
+`update_stats_from_extraction` is called only after a clerk confirms an
+extraction — see ADR-0003 + Day-2 Plan-agent recommendation (stats built
+from confirmed rows are semantically sound; unconfirmed rows can pollute).
+
+`compute_history_scores` reads the per-vendor stats and emits per-field
+history_score values for composite confidence (ADR-0003).
+
+Critical: SQLAlchemy ORM does not detect in-place dict/list mutations on
+JSONB columns. After mutating `vendor.memory`, we MUST call
+`flag_modified(vendor, "memory")` or the change silently doesn't persist.
+"""
+
+from __future__ import annotations
+
+import math
+from typing import Any
+
+from sqlalchemy.orm import Session
+from sqlalchemy.orm.attributes import flag_modified
+
+from app.db.models import Extraction, Vendor
+
+NUMERIC_HISTORY_FIELDS = ("total",)
+
+
+def _history_bucket(z: float) -> float:
+    az = abs(z)
+    if az < 1.0:
+        return 1.0
+    if az < 2.0:
+        return 0.85
+    if az < 3.0:
+        return 0.6
+    return 0.3
+
+
+def update_stats_from_extraction(
+    session: Session, *, vendor: Vendor, extraction: Extraction
+) -> None:
+    """Recompute Welford-style running mean + std for numeric fields.
+
+    Called from the /confirm API endpoint (and from any future automated
+    confirmer). Never called from `extract_from_pdf` — that path runs
+    before clerk validation and would corrupt stats with wrong extractions.
+    """
+    memory = dict(vendor.memory or {})
+    stats = dict(memory.get("stats", {}) or {})
+    rules = list(memory.get("rules", []) or [])
+
+    fields = extraction.extracted_fields or {}
+    for fname in NUMERIC_HISTORY_FIELDS:
+        spec = fields.get(fname) or {}
+        value = spec.get("value") if isinstance(spec, dict) else None
+        if value is None:
+            continue
+        try:
+            x = float(value)
+        except (TypeError, ValueError):
+            continue
+        n = int(stats.get("total_seen", 0) or 0)
+        prev_mean = float(stats.get(f"avg_{fname}", 0.0) or 0.0)
+        prev_var_n = float(stats.get(f"_var_n_{fname}", 0.0) or 0.0)
+        n_new = n + 1
+        new_mean = prev_mean + (x - prev_mean) / n_new
+        new_var_n = prev_var_n + (x - prev_mean) * (x - new_mean)
+        sample_std = math.sqrt(new_var_n / (n_new - 1)) if n_new > 1 else 0.0
+        stats["total_seen"] = n_new
+        stats[f"avg_{fname}"] = round(new_mean, 4)
+        stats[f"std_{fname}"] = round(sample_std, 4)
+        stats[f"_var_n_{fname}"] = new_var_n
+
+    memory["stats"] = stats
+    memory["rules"] = rules
+    vendor.memory = memory
+    flag_modified(vendor, "memory")  # JSONB mutation needs explicit dirty flag
+    session.flush()
+
+
+def compute_history_scores(
+    *,
+    vendor: Vendor | None,
+    fields: dict[str, Any],
+) -> dict[str, float]:
+    """Per-field history_score per ADR-0003.
+
+    Returns scores only for fields where we can compute one (numeric fields
+    with sufficient vendor history). Cold-start / missing vendor → {}
+    (the scorer defaults to 0.85 for missing keys).
+    """
+    if vendor is None:
+        return {}
+    memory = vendor.memory or {}
+    stats = memory.get("stats", {}) or {}
+    n = int(stats.get("total_seen", 0) or 0)
+    if n < 3:  # min vendor history for meaningful Z-score
+        return {}
+    out: dict[str, float] = {}
+    for fname in NUMERIC_HISTORY_FIELDS:
+        value = fields.get(fname)
+        if value is None:
+            continue
+        try:
+            x = float(value)
+        except (TypeError, ValueError):
+            continue
+        mean = float(stats.get(f"avg_{fname}", 0.0) or 0.0)
+        std = float(stats.get(f"std_{fname}", 0.0) or 0.0)
+        if std <= 0:
+            continue
+        z = (x - mean) / std
+        out[fname] = _history_bucket(z)
+    return out
