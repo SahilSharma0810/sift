@@ -1,0 +1,41 @@
+{
+  "name": "extract_invoice_header_vision",
+  "description": "Extract header fields from invoice page images.",
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "vendor_name":    { "type": ["object", "null"], "$ref": "#/definitions/field_string" },
+      "invoice_number": { "type": ["object", "null"], "$ref": "#/definitions/field_string" },
+      "invoice_date":   { "type": ["object", "null"], "$ref": "#/definitions/field_string" },
+      "subtotal":       { "type": ["object", "null"], "$ref": "#/definitions/field_number" },
+      "tax":            { "type": ["object", "null"], "$ref": "#/definitions/field_number" },
+      "total":          { "type": ["object", "null"], "$ref": "#/definitions/field_number" },
+      "currency":       { "type": ["object", "null"], "$ref": "#/definitions/field_string" },
+      "extraction_failed":         { "type": "boolean", "default": false },
+      "extraction_failure_reason": { "type": ["string", "null"] }
+    },
+    "required": ["vendor_name", "invoice_number", "invoice_date", "subtotal", "tax", "total", "currency"],
+    "definitions": {
+      "field_string": {
+        "type": "object",
+        "properties": {
+          "value": { "type": ["string", "null"] },
+          "bbox": { "type": ["array", "null"], "items": { "type": "number" }, "minItems": 4, "maxItems": 4 },
+          "page": { "type": "integer", "default": 0 },
+          "confidence": { "type": "number", "minimum": 0, "maximum": 1 }
+        },
+        "required": ["value"]
+      },
+      "field_number": {
+        "type": "object",
+        "properties": {
+          "value": { "type": ["number", "null"] },
+          "bbox": { "type": ["array", "null"], "items": { "type": "number" }, "minItems": 4, "maxItems": 4 },
+          "page": { "type": "integer", "default": 0 },
+          "confidence": { "type": "number", "minimum": 0, "maximum": 1 }
+        },
+        "required": ["value"]
+      }
+    }
+  }
+}

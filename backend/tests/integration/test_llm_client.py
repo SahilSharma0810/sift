@@ -10,6 +10,7 @@ This test verifies:
 
 from __future__ import annotations
 
+import base64
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -162,3 +163,87 @@ class TestLLMClientExtractHeader:
             client = LLMClient(api_key="test")
             with pytest.raises(RuntimeError, match="tool call"):
                 client.extract_header(invoice_text="text", model="claude-haiku-4-5")
+
+
+def _fake_vision_response():
+    """Vision tool_input shape: each field is {value, bbox, page, confidence}."""
+    response = MagicMock()
+    block = MagicMock()
+    block.type = "tool_use"
+    block.name = "extract_invoice_header_vision"
+    block.input = {
+        "vendor_name": {
+            "value": "Vega Logistics",
+            "bbox": [0.08, 0.06, 0.55, 0.10],
+            "page": 0,
+            "confidence": 0.97,
+        },
+        "invoice_number": {
+            "value": "INV-2026-0042",
+            "bbox": [0.66, 0.13, 0.92, 0.16],
+            "page": 0,
+            "confidence": 0.99,
+        },
+        "invoice_date": {
+            "value": "2026-05-13",
+            "bbox": [0.66, 0.17, 0.92, 0.20],
+            "page": 0,
+            "confidence": 0.98,
+        },
+        "subtotal": {
+            "value": 1000.0,
+            "bbox": [0.70, 0.61, 0.92, 0.64],
+            "page": 0,
+            "confidence": 0.99,
+        },
+        "tax": {"value": 180.0, "bbox": [0.70, 0.65, 0.92, 0.68], "page": 0, "confidence": 0.99},
+        "total": {"value": 1180.0, "bbox": [0.70, 0.71, 0.92, 0.74], "page": 0, "confidence": 0.99},
+        "currency": {
+            "value": "USD",
+            "bbox": [0.62, 0.71, 0.69, 0.74],
+            "page": 0,
+            "confidence": 0.95,
+        },
+        "extraction_failed": False,
+    }
+    response.content = [block]
+    response.usage = MagicMock(
+        input_tokens=2000,
+        output_tokens=120,
+        cache_creation_input_tokens=400,
+        cache_read_input_tokens=0,
+    )
+    response.model = "claude-sonnet-4-6"
+    return response
+
+
+class TestLLMClientExtractHeaderVision:
+    def test_extract_header_vision_happy_path(self) -> None:
+        client_mock = MagicMock()
+        client_mock.messages.create.return_value = _fake_vision_response()
+        with patch("app.adapters.llm_client.Anthropic", return_value=client_mock):
+            client = LLMClient(api_key="test")
+            png = b"\x89PNG\r\n\x1a\nfakebytes"
+            result = client.extract_header_vision(page_pngs=[png], model="claude-sonnet-4-6")
+        assert result.fields["vendor_name"]["value"] == "Vega Logistics"
+        assert result.fields["total"]["bbox"] == [0.70, 0.71, 0.92, 0.74]
+        assert result.model == "claude-sonnet-4-6"
+
+    def test_vision_sends_image_content_block(self) -> None:
+        client_mock = MagicMock()
+        client_mock.messages.create.return_value = _fake_vision_response()
+        with patch("app.adapters.llm_client.Anthropic", return_value=client_mock):
+            client = LLMClient(api_key="test")
+            png = b"\x89PNG\r\n\x1a\nfake"
+            client.extract_header_vision(page_pngs=[png], model="claude-sonnet-4-6")
+        kwargs = client_mock.messages.create.call_args.kwargs
+        msg = kwargs["messages"][0]
+        assert msg["role"] == "user"
+        # First content item is an image block
+        items = msg["content"]
+        assert any(c.get("type") == "image" for c in items)
+        # Image is base64 PNG
+        img = next(c for c in items if c.get("type") == "image")
+        assert img["source"]["type"] == "base64"
+        assert img["source"]["media_type"] == "image/png"
+        assert img["source"]["data"] == base64.b64encode(png).decode()

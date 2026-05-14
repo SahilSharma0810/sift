@@ -7,6 +7,7 @@ auto-retry on transient errors per ADR-0006.
 
 from __future__ import annotations
 
+import base64
 from dataclasses import dataclass
 from typing import Any
 
@@ -147,6 +148,97 @@ class LLMClient:
         return ExtractionResult(
             fields=tool_input,
             self_reported_confidence=confidence,
+            extraction_failed=failed,
+            extraction_failure_reason=failure_reason,
+            model=response.model,
+            prompt_hash=prompt.body_hash,
+            schema_hash=prompt.schema_hash,
+            usage=usage,
+        )
+
+    @_retry_decorator
+    def extract_header_vision(
+        self,
+        *,
+        page_pngs: list[bytes],
+        model: str,
+        prompt_name: str = "extraction_header_vision_v1",
+    ) -> ExtractionResult:
+        """Vision tool-use for scanned PDFs.
+
+        Each PNG is base64-encoded and sent as an `image` content block in
+        the user message. The tool-use schema mirrors the text variant but
+        each field is an object {value, bbox, page, confidence}.
+        """
+        prompt = load(prompt_name)
+        system = [
+            {
+                "type": "text",
+                "text": prompt.body,
+                "cache_control": {"type": "ephemeral"},
+            }
+        ]
+        tool = {
+            "name": prompt.schema["name"],
+            "description": prompt.schema["description"],
+            "input_schema": prompt.schema["input_schema"],
+        }
+        user_content: list[dict[str, Any]] = []
+        for png in page_pngs:
+            user_content.append(
+                {
+                    "type": "image",
+                    "source": {
+                        "type": "base64",
+                        "media_type": "image/png",
+                        "data": base64.b64encode(png).decode(),
+                    },
+                }
+            )
+        user_content.append({"type": "text", "text": "Extract the header fields."})
+
+        log.info(
+            "llm.extract_header_vision.start",
+            model=model,
+            prompt_hash=prompt.body_hash,
+            n_pages=len(page_pngs),
+        )
+
+        response = self._client.messages.create(
+            model=model,
+            max_tokens=_HEADER_MAX_TOKENS,
+            system=system,
+            tools=[tool],
+            tool_choice={"type": "tool", "name": tool["name"]},
+            messages=[{"role": "user", "content": user_content}],
+        )
+
+        tool_input = None
+        for block in response.content:
+            if getattr(block, "type", None) == "tool_use" and block.name == tool["name"]:
+                tool_input = dict(block.input)  # detach from SDK before mutation
+                break
+        if tool_input is None:
+            raise RuntimeError(f"LLM did not emit the {tool['name']} tool call")
+
+        failed = bool(tool_input.pop("extraction_failed", False))
+        failure_reason = tool_input.pop("extraction_failure_reason", None)
+        usage_obj = getattr(response, "usage", None)
+        usage = {
+            "input_tokens": getattr(usage_obj, "input_tokens", 0),
+            "output_tokens": getattr(usage_obj, "output_tokens", 0),
+            "cache_creation_input_tokens": getattr(usage_obj, "cache_creation_input_tokens", 0),
+            "cache_read_input_tokens": getattr(usage_obj, "cache_read_input_tokens", 0),
+        }
+
+        # Confidence dict is per-field on this path — pull it from each field.
+        self_conf = {
+            k: float(v.get("confidence", 0.0)) for k, v in tool_input.items() if isinstance(v, dict)
+        }
+
+        return ExtractionResult(
+            fields=tool_input,
+            self_reported_confidence=self_conf,
             extraction_failed=failed,
             extraction_failure_reason=failure_reason,
             model=response.model,
