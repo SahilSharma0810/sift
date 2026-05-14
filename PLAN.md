@@ -309,6 +309,16 @@ Three seed scripts, separate purposes — **no overlap** between them:
 
 ## UX surface (locked Day 1, polished through Day 5)
 
+> **Design lock:** the visual design is mocked in `docs/design/` (exported
+> from Claude Design). Sharp edges, single quiet blue accent, dark sidebar,
+> Plus Jakarta Sans + Geist Mono fonts, parchment canvas. The frontend
+> ports those styles + primitives + screen structure directly. Static demo
+> data from the design bundle is *not* shipped — the real API drives
+> everything; Day-5 `seed_demo.py` plays the role the bundle's `data.jsx`
+> played for the design.
+
+
+
 Three named sub-screens. Each has its own route, its own keyboard map, its
 own component tree. Shared primitives (`FieldRow`, `PdfViewerWithBbox`,
 `ReasonCardStack`, `BboxOverlay`, `ConfidenceBadge`, `SourceBadge`) live in
