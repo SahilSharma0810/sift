@@ -123,3 +123,359 @@ class TestExtractFromPdf:
         assert "resume" in reasons[0]["detail"]
         # No structural validation ran — empty fields:
         assert result.extraction.extracted_fields == {}
+
+
+SCAN_PDF = FIXTURES / "scan_invoice.pdf"
+
+
+class TestExtractFromPdfVisionPath:
+    def test_vision_path_taken_for_scan(self, db_session: Session, tmp_path: Path) -> None:
+        from unittest.mock import patch
+
+        from app.adapters.llm_client import ExtractionResult
+
+        test_pdf = tmp_path / "scan.pdf"
+        test_pdf.write_bytes(SCAN_PDF.read_bytes())
+
+        vision_result = ExtractionResult(
+            fields={
+                "vendor_name": {
+                    "value": "Vega Logistics",
+                    "bbox": [0.08, 0.06, 0.55, 0.10],
+                    "page": 0,
+                    "confidence": 0.95,
+                },
+                "invoice_number": {
+                    "value": "INV-2026-0042",
+                    "bbox": [0.66, 0.13, 0.92, 0.16],
+                    "page": 0,
+                    "confidence": 0.97,
+                },
+                "invoice_date": {
+                    "value": "2026-05-13",
+                    "bbox": [0.66, 0.17, 0.92, 0.20],
+                    "page": 0,
+                    "confidence": 0.96,
+                },
+                "subtotal": {
+                    "value": 1000.0,
+                    "bbox": [0.70, 0.61, 0.92, 0.64],
+                    "page": 0,
+                    "confidence": 0.97,
+                },
+                "tax": {
+                    "value": 180.0,
+                    "bbox": [0.70, 0.65, 0.92, 0.68],
+                    "page": 0,
+                    "confidence": 0.97,
+                },
+                "total": {
+                    "value": 1180.0,
+                    "bbox": [0.70, 0.71, 0.92, 0.74],
+                    "page": 0,
+                    "confidence": 0.97,
+                },
+                "currency": {
+                    "value": "USD",
+                    "bbox": [0.62, 0.71, 0.69, 0.74],
+                    "page": 0,
+                    "confidence": 0.94,
+                },
+            },
+            self_reported_confidence={"total": 0.97},
+            extraction_failed=False,
+            extraction_failure_reason=None,
+            model="claude-sonnet-4-6",
+            prompt_hash="vh",
+            schema_hash="vh",
+            usage={
+                "input_tokens": 2000,
+                "output_tokens": 120,
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 0,
+            },
+        )
+        with patch(
+            "app.services.extraction_service.LLMClient.extract_header_vision",
+            return_value=vision_result,
+        ):
+            result = extract_from_pdf(db_session, pdf_path=test_pdf)
+
+        assert result.extraction.model == "claude-sonnet-4-6"
+        assert result.extraction.predicted_triage_state == "confident"
+        # Vision path stored per-field bboxes
+        v = result.extraction.extracted_fields["vendor_name"]
+        assert v["bbox"] == [0.08, 0.06, 0.55, 0.10]
+
+
+class TestExtractFromPdfCascade:
+    def test_low_haiku_confidence_triggers_sonnet(
+        self, db_session: Session, tmp_path: Path
+    ) -> None:
+        """When Haiku result hits the cascade trigger, Sonnet runs and
+        agreement-score replaces the disputed field's confidence."""
+        from unittest.mock import patch
+
+        from app.adapters.llm_client import ExtractionResult
+
+        test_pdf = tmp_path / "cascade.pdf"
+        # Use unique bytes to avoid file_hash collision with other committed tests.
+        test_pdf.write_bytes(CLEAN_PDF.read_bytes() + b"\n%cascade-unique\n")
+
+        haiku_result = ExtractionResult(
+            fields={
+                "vendor_name": "Vega Logistics",
+                "invoice_number": "INV-2026-0042",
+                "invoice_date": "2026-05-13",
+                "subtotal": 1000.0,
+                "tax": 180.0,
+                "total": 1181.0,  # math fails!
+                "currency": "USD",
+            },
+            self_reported_confidence={"total": 0.85},
+            extraction_failed=False,
+            extraction_failure_reason=None,
+            model="claude-haiku-4-5",
+            prompt_hash="h",
+            schema_hash="h",
+            usage={
+                "input_tokens": 500,
+                "output_tokens": 80,
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 0,
+            },
+        )
+        sonnet_result = ExtractionResult(
+            fields={
+                "vendor_name": "Vega Logistics",
+                "invoice_number": "INV-2026-0042",
+                "invoice_date": "2026-05-13",
+                "subtotal": 1000.0,
+                "tax": 180.0,
+                "total": 1180.0,  # disagrees on total with haiku
+                "currency": "USD",
+            },
+            self_reported_confidence={"total": 0.97},
+            extraction_failed=False,
+            extraction_failure_reason=None,
+            model="claude-sonnet-4-6",
+            prompt_hash="s",
+            schema_hash="s",
+            usage={
+                "input_tokens": 500,
+                "output_tokens": 80,
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 0,
+            },
+        )
+        # total is a REQUIRED_FIELD that disputes between haiku and sonnet,
+        # so the cascade escalates to Opus. Provide an Opus result that agrees
+        # with Sonnet's value so the override is lifted.
+        opus_result = ExtractionResult(
+            fields={
+                "vendor_name": "Vega Logistics",
+                "invoice_number": "INV-2026-0042",
+                "invoice_date": "2026-05-13",
+                "subtotal": 1000.0,
+                "tax": 180.0,
+                "total": 1180.0,  # agrees with sonnet
+                "currency": "USD",
+            },
+            self_reported_confidence={"total": 0.99},
+            extraction_failed=False,
+            extraction_failure_reason=None,
+            model="claude-opus-4-7",
+            prompt_hash="o",
+            schema_hash="o",
+            usage={
+                "input_tokens": 800,
+                "output_tokens": 80,
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 0,
+            },
+        )
+        with patch(
+            "app.services.extraction_service.LLMClient.extract_header",
+            side_effect=[haiku_result, sonnet_result, opus_result],
+        ):
+            result = extract_from_pdf(db_session, pdf_path=test_pdf)
+
+        # Sonnet's (and Opus's) total wins; math now reconciles
+        assert result.extraction.extracted_fields["total"]["value"] == 1180.0
+        trace = result.extraction.cascade_trace
+        assert len(trace["tiers"]) == 3
+        assert trace["tiers"][0]["model"] == "claude-haiku-4-5"
+        assert trace["tiers"][1]["model"] == "claude-sonnet-4-6"
+        assert trace["tiers"][2]["model"] == "claude-opus-4-7"
+
+    def test_sonnet_resolves_dispute_without_opus_escalation(
+        self, db_session: Session, tmp_path: Path
+    ) -> None:
+        """Cascade triggers (low confidence on a non-REQUIRED field), but
+        Sonnet agrees with Haiku on every REQUIRED field. Opus must NOT fire."""
+        from unittest.mock import patch
+
+        from app.adapters.llm_client import ExtractionResult
+
+        test_pdf = tmp_path / "cascade_2tier.pdf"
+        # Unique bytes so file_hash differs from prior test runs
+        test_pdf.write_bytes(CLEAN_PDF.read_bytes() + b"\n%cascade-2tier\n")
+
+        # Haiku result with a math failure (triggers cascade) but matching values
+        # on REQUIRED_FIELDS for both Haiku and Sonnet. Sonnet only disagrees
+        # on `subtotal` (which is NOT in REQUIRED_FIELDS) — so Opus must not fire.
+        haiku_result = ExtractionResult(
+            fields={
+                "vendor_name": "Vega Logistics",
+                "invoice_number": "INV-2026-0042",
+                "invoice_date": "2026-05-13",
+                "subtotal": 1000.0,
+                "tax": 180.0,
+                "total": 1181.0,  # math fails (off $1)
+                "currency": "USD",
+            },
+            self_reported_confidence={"total": 0.85},
+            extraction_failed=False,
+            extraction_failure_reason=None,
+            model="claude-haiku-4-5",
+            prompt_hash="h",
+            schema_hash="h",
+            usage={
+                "input_tokens": 500,
+                "output_tokens": 80,
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 0,
+            },
+        )
+        # Sonnet: SAME values as Haiku for every REQUIRED_FIELD (vendor_name,
+        # invoice_number, invoice_date, total, currency), only `subtotal` differs.
+        # subtotal disagreement → cascade override on subtotal but NOT a
+        # REQUIRED-field dispute → Opus does NOT fire.
+        sonnet_result = ExtractionResult(
+            fields={
+                "vendor_name": "Vega Logistics",
+                "invoice_number": "INV-2026-0042",
+                "invoice_date": "2026-05-13",
+                "subtotal": 1001.0,
+                "tax": 180.0,
+                "total": 1181.0,  # only subtotal differs
+                "currency": "USD",
+            },
+            self_reported_confidence={"total": 0.95},
+            extraction_failed=False,
+            extraction_failure_reason=None,
+            model="claude-sonnet-4-6",
+            prompt_hash="s",
+            schema_hash="s",
+            usage={
+                "input_tokens": 500,
+                "output_tokens": 80,
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 0,
+            },
+        )
+        with patch(
+            "app.services.extraction_service.LLMClient.extract_header",
+            side_effect=[haiku_result, sonnet_result],
+        ):
+            result = extract_from_pdf(db_session, pdf_path=test_pdf)
+
+        # Cascade trace has exactly 2 tiers — Opus did not fire.
+        trace = result.extraction.cascade_trace
+        assert len(trace["tiers"]) == 2, (
+            f"Expected 2 tiers (no Opus escalation), got {len(trace['tiers'])}: "
+            f"{[t['model'] for t in trace['tiers']]}"
+        )
+        assert trace["tiers"][0]["model"] == "claude-haiku-4-5"
+        assert trace["tiers"][1]["model"] == "claude-sonnet-4-6"
+
+
+class TestExtractFromPdfDuplicate:
+    def test_second_near_identical_upload_flags_duplicate(
+        self, db_session: Session, tmp_path: Path
+    ) -> None:
+        from unittest.mock import patch
+
+        from app.adapters.llm_client import ExtractionResult
+
+        # Use SCAN_PDF as the base: its rendered image (phash) is visually distinct
+        # from CLEAN_PDF, so it won't collide with phashes committed by other tests.
+        first = tmp_path / "dup-a.pdf"
+        first.write_bytes(SCAN_PDF.read_bytes())
+        second = tmp_path / "dup-b.pdf"
+        # Different bytes (so file_hash differs) but same rendered image → phash matches.
+        second.write_bytes(SCAN_PDF.read_bytes() + b"\n%dup-second-trailer\n")
+
+        # Vision path: both PDFs have no embedded text.
+        vision_good = ExtractionResult(
+            fields={
+                "vendor_name": {
+                    "value": "Dup Vendor",
+                    "bbox": [0.1, 0.05, 0.5, 0.09],
+                    "page": 0,
+                    "confidence": 0.95,
+                },
+                "invoice_number": {
+                    "value": "INV-DUP-001",
+                    "bbox": [0.6, 0.12, 0.9, 0.15],
+                    "page": 0,
+                    "confidence": 0.97,
+                },
+                "invoice_date": {
+                    "value": "2026-05-13",
+                    "bbox": [0.6, 0.16, 0.9, 0.19],
+                    "page": 0,
+                    "confidence": 0.96,
+                },
+                "subtotal": {
+                    "value": 500.0,
+                    "bbox": [0.7, 0.60, 0.9, 0.63],
+                    "page": 0,
+                    "confidence": 0.97,
+                },
+                "tax": {
+                    "value": 90.0,
+                    "bbox": [0.7, 0.64, 0.9, 0.67],
+                    "page": 0,
+                    "confidence": 0.97,
+                },
+                "total": {
+                    "value": 590.0,
+                    "bbox": [0.7, 0.70, 0.9, 0.73],
+                    "page": 0,
+                    "confidence": 0.97,
+                },
+                "currency": {
+                    "value": "USD",
+                    "bbox": [0.6, 0.70, 0.7, 0.73],
+                    "page": 0,
+                    "confidence": 0.94,
+                },
+            },
+            self_reported_confidence={"total": 0.97},
+            extraction_failed=False,
+            extraction_failure_reason=None,
+            model="claude-sonnet-4-6",
+            prompt_hash="dv",
+            schema_hash="dv",
+            usage={
+                "input_tokens": 2000,
+                "output_tokens": 120,
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 0,
+            },
+        )
+        with patch(
+            "app.services.extraction_service.LLMClient.extract_header_vision",
+            return_value=vision_good,
+        ):
+            r1 = extract_from_pdf(db_session, pdf_path=first)
+            r2 = extract_from_pdf(db_session, pdf_path=second)
+
+        assert r1.invoice.id != r2.invoice.id
+        assert r2.extraction.predicted_triage_state == "likely_duplicate"
+        dup_reasons = [
+            r for r in r2.extraction.predicted_triage_reasons if r["type"] == "duplicate_of"
+        ]
+        assert len(dup_reasons) == 1
+        assert dup_reasons[0]["invoice_id"] == str(r1.invoice.id)
