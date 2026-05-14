@@ -2,6 +2,10 @@
 GET  /api/invoices       — list newest-first
 GET  /api/invoices/{id} — single invoice + current extraction
 GET  /api/invoices/{id}/file — serves the raw PDF (used by PdfViewer)
+POST /api/invoices/{id}/confirm
+POST /api/invoices/{id}/dismiss-duplicate
+POST /api/invoices/{id}/mark-unprocessable
+POST /api/invoices/{id}/retry
 
 Thin route handlers per ADR-0005 — parse request, call one service method,
 serialize response. No direct imports from app.adapters or app.db.
@@ -14,19 +18,32 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from fastapi.responses import FileResponse
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.db.session import get_session
 from app.domain.models import InvoiceOut
 from app.services.extraction_service import (
+    confirm_invoice,
+    dismiss_duplicate,
     extract_and_serialize,
     get_invoice_dto,
     get_invoice_file_path,
     list_invoice_dtos,
+    mark_unprocessable,
+    retry_extraction,
 )
 
 router = APIRouter()
+
+
+def _serialize(invoice, session: Session) -> InvoiceOut:
+    """Convert an ORM Invoice to InvoiceOut DTO via the service layer."""
+    dto = get_invoice_dto(session, invoice.id)
+    if dto is None:
+        raise HTTPException(status_code=404, detail="not found")
+    return dto
 
 
 @router.post("", response_model=InvoiceOut, status_code=status.HTTP_201_CREATED)
@@ -71,3 +88,39 @@ def serve_invoice_pdf(invoice_id: UUID, session: Session = Depends(get_session))
     if path is None or not path.exists():
         raise HTTPException(status_code=404, detail="not found")
     return FileResponse(path, media_type="application/pdf")
+
+
+class _DismissBody(BaseModel):
+    against_id: UUID
+
+
+@router.post("/{invoice_id}/confirm", response_model=InvoiceOut)
+def confirm_endpoint(invoice_id: UUID, session: Session = Depends(get_session)) -> InvoiceOut:
+    inv = confirm_invoice(session, invoice_id=invoice_id)
+    return _serialize(inv, session)
+
+
+@router.post("/{invoice_id}/dismiss-duplicate", response_model=InvoiceOut)
+def dismiss_endpoint(
+    invoice_id: UUID,
+    body: _DismissBody,
+    session: Session = Depends(get_session),
+) -> InvoiceOut:
+    inv = dismiss_duplicate(session, invoice_id=invoice_id, against_id=body.against_id)
+    return _serialize(inv, session)
+
+
+@router.post("/{invoice_id}/mark-unprocessable", response_model=InvoiceOut)
+def unprocessable_endpoint(invoice_id: UUID, session: Session = Depends(get_session)) -> InvoiceOut:
+    inv = mark_unprocessable(session, invoice_id=invoice_id)
+    return _serialize(inv, session)
+
+
+@router.post("/{invoice_id}/retry", response_model=InvoiceOut)
+def retry_endpoint(
+    invoice_id: UUID,
+    force_tier: str | None = None,
+    session: Session = Depends(get_session),
+) -> InvoiceOut:
+    result = retry_extraction(session, invoice_id=invoice_id, force_tier=force_tier)
+    return _serialize(result.invoice, session)

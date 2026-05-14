@@ -182,6 +182,7 @@ class InvoiceOut(BaseModel):
     vendor_id: UUID | None
     uploaded_at: datetime
     review_status: ReviewStatus
+    duplicate_dismissals: list[UUID] = Field(default_factory=list)
     current_extraction: ExtractionOut | None = None
 
 

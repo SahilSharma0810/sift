@@ -535,6 +535,57 @@ def retry_extraction(
     )
 
 
+from app.db.models import Vendor as _VendorModel  # noqa: E402
+from app.services.vendor_memory_service import update_stats_from_extraction  # noqa: E402
+
+
+def confirm_invoice(session: Session, *, invoice_id) -> Invoice:
+    """Mark invoice confirmed; update vendor stats from its current extraction.
+
+    Stats are updated ONLY on confirm (not on every extraction) so that
+    unconfirmed / wrong values never pollute the vendor history that drives
+    history_score and anomaly detection.
+    """
+    invoice = invoice_repo.get_invoice(session, invoice_id)
+    if invoice is None:
+        raise LookupError(f"invoice {invoice_id} not found")
+    invoice = invoice_repo.update_review_status(
+        session, invoice_id=invoice_id, review_status="confirmed"
+    )
+    current = extraction_repo.get_current_extraction(session, invoice_id=invoice_id)
+    if current is not None and invoice.vendor_id is not None:
+        vendor = session.get(_VendorModel, invoice.vendor_id)
+        if vendor is not None:
+            update_stats_from_extraction(session, vendor=vendor, extraction=current)
+    session.commit()
+    return invoice
+
+
+def dismiss_duplicate(session: Session, *, invoice_id, against_id) -> Invoice:
+    """Persist that this invoice was reviewed and is NOT a duplicate of `against_id`.
+
+    The pair is added to invoices.duplicate_dismissals so the duplicate
+    detector skips this combination on subsequent re-extractions.
+    """
+    invoice_repo.record_duplicate_dismissal(
+        session, invoice_id=invoice_id, dismissed_against_id=against_id
+    )
+    session.commit()
+    invoice = invoice_repo.get_invoice(session, invoice_id)
+    if invoice is None:
+        raise LookupError(f"invoice {invoice_id} not found")
+    return invoice
+
+
+def mark_unprocessable(session: Session, *, invoice_id) -> Invoice:
+    """Set review_status=unprocessable. Used for failure-mode UX."""
+    inv = invoice_repo.update_review_status(
+        session, invoice_id=invoice_id, review_status="unprocessable"
+    )
+    session.commit()
+    return inv
+
+
 # ---------- DTO helpers — used by the api layer ----------
 
 
@@ -570,6 +621,7 @@ def _orm_invoice_to_dto(invoice: Invoice, session: Session) -> InvoiceOut:
         vendor_id=invoice.vendor_id,
         uploaded_at=invoice.uploaded_at,
         review_status=invoice.review_status,  # type: ignore[arg-type]
+        duplicate_dismissals=invoice.duplicate_dismissals or [],
         current_extraction=current_out,
     )
 

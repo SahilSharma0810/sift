@@ -142,6 +142,7 @@ export interface InvoiceOut {
   vendor_id: string | null
   uploaded_at: string
   review_status: ReviewStatus
+  duplicate_dismissals: string[]
   current_extraction: ExtractionOut | null
 }
 
