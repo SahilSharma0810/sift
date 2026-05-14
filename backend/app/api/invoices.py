@@ -23,13 +23,14 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.db.session import get_session
-from app.domain.models import InvoiceOut
+from app.domain.models import InvoiceOut, VendorOut
 from app.services.extraction_service import (
     confirm_invoice,
     dismiss_duplicate,
     extract_and_serialize,
     get_invoice_dto,
     get_invoice_file_path,
+    get_vendor_for_invoice,
     list_invoice_dtos,
     mark_unprocessable,
     retry_extraction,
@@ -88,6 +89,13 @@ def serve_invoice_pdf(invoice_id: UUID, session: Session = Depends(get_session))
     if path is None or not path.exists():
         raise HTTPException(status_code=404, detail="not found")
     return FileResponse(path, media_type="application/pdf")
+
+
+@router.get("/{invoice_id}/vendor", response_model=VendorOut | None)
+def get_invoice_vendor(
+    invoice_id: UUID, session: Session = Depends(get_session)
+) -> VendorOut | None:
+    return get_vendor_for_invoice(session, invoice_id=invoice_id)
 
 
 class _DismissBody(BaseModel):

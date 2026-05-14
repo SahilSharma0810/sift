@@ -47,7 +47,7 @@ from app.config import get_settings
 from app.db.models import Extraction, Invoice
 from app.domain.anomalies import detect_anomalies
 from app.domain.duplicates import classify_duplicate, hamming_distance
-from app.domain.models import ExtractionOut, InvoiceOut
+from app.domain.models import ExtractionOut, InvoiceOut, VendorMemory, VendorMemoryStats, VendorOut
 from app.domain.scoring import (
     agreement_score,
     compute_composite_confidence,
@@ -652,3 +652,32 @@ def get_invoice_file_path(session: Session, invoice_id: UUID) -> Path | None:
     if inv is None:
         return None
     return Path(inv.file_path)
+
+
+def get_vendor_for_invoice(session: Session, *, invoice_id) -> VendorOut | None:
+    """Return the vendor (with memory) associated with an invoice, or None."""
+    from app.db.models import Vendor as VendorModel
+
+    inv = invoice_repo.get_invoice(session, invoice_id)
+    if inv is None or inv.vendor_id is None:
+        return None
+    v = session.get(VendorModel, inv.vendor_id)
+    if v is None:
+        return None
+    memory_dict = v.memory or {}
+    memory = VendorMemory(
+        rules=memory_dict.get("rules", []) or [],
+        stats=VendorMemoryStats(
+            total_seen=int(memory_dict.get("stats", {}).get("total_seen", 0) or 0),
+            avg_total=float(memory_dict.get("stats", {}).get("avg_total", 0.0) or 0.0),
+            std_total=float(memory_dict.get("stats", {}).get("std_total", 0.0) or 0.0),
+        ),
+    )
+    return VendorOut(
+        id=v.id,
+        name=v.name,
+        tax_id=v.tax_id,
+        normalized_name=v.normalized_name,
+        first_seen_at=v.first_seen_at,
+        memory=memory,
+    )

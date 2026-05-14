@@ -17,11 +17,13 @@ import { Icons } from '@/components/primitives/Icons'
 import { PdfViewer } from '@/components/primitives/PdfViewer'
 import { ReasonCard, type ReasonAction } from '@/components/primitives/ReasonCard'
 import { TriagePill } from '@/components/primitives/TriagePill'
+import { VendorMemoryCard } from '@/components/primitives/VendorMemoryCard'
 import {
   useConfirmMutation,
   useDismissDuplicateMutation,
   useInboxQuery,
   useInvoiceQuery,
+  useInvoiceVendorQuery,
   useMarkUnprocessableMutation,
   useRetryMutation,
 } from '@/state/invoices'
@@ -72,6 +74,7 @@ export function ReviewScreen() {
   const navigate = useNavigate()
   const { data: invoice, isLoading } = useInvoiceQuery(id)
   const { data: allInvoices = [] } = useInboxQuery()
+  const { data: vendor } = useInvoiceVendorQuery(id)
 
   const confirm = useConfirmMutation()
   const dismissDup = useDismissDuplicateMutation()
@@ -341,6 +344,14 @@ export function ReviewScreen() {
           <div className="review-side-section">
             <div className="review-side-section-title">Cascade trace</div>
             <CascadeTrace tiers={tiers} />
+          </div>
+        )}
+
+        {/* Vendor memory */}
+        {vendor?.memory && (
+          <div className="review-side-section">
+            <div className="review-side-section-title">Vendor memory</div>
+            <VendorMemoryCard memory={vendor.memory} vendorName={vendor.name} />
           </div>
         )}
 

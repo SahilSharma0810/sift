@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
-import type { InvoiceOut } from '@/types/generated/domain'
+import type { InvoiceOut, VendorOut } from '@/types/generated/domain'
 
 import { api } from './api'
 
@@ -75,6 +75,14 @@ export function useMarkUnprocessableMutation() {
       qc.invalidateQueries({ queryKey: KEYS.inbox })
       qc.setQueryData(KEYS.invoice(inv.id), inv)
     },
+  })
+}
+
+export function useInvoiceVendorQuery(id: string | undefined) {
+  return useQuery({
+    queryKey: id ? ['invoices', id, 'vendor'] : ['invoices', '__none__', 'vendor'],
+    queryFn: () => api<VendorOut | null>(`/api/invoices/${id}/vendor`),
+    enabled: !!id,
   })
 }
 
