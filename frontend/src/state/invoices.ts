@@ -37,3 +37,57 @@ export function useUploadMutation() {
     },
   })
 }
+
+export function useConfirmMutation() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (id: string) =>
+      api<InvoiceOut>(`/api/invoices/${id}/confirm`, { method: 'POST' }),
+    onSuccess: (inv) => {
+      qc.invalidateQueries({ queryKey: KEYS.inbox })
+      qc.setQueryData(KEYS.invoice(inv.id), inv)
+    },
+  })
+}
+
+export function useDismissDuplicateMutation() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ id, againstId }: { id: string; againstId: string }) =>
+      api<InvoiceOut>(`/api/invoices/${id}/dismiss-duplicate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ against_id: againstId }),
+      }),
+    onSuccess: (inv) => {
+      qc.invalidateQueries({ queryKey: KEYS.inbox })
+      qc.setQueryData(KEYS.invoice(inv.id), inv)
+    },
+  })
+}
+
+export function useMarkUnprocessableMutation() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (id: string) =>
+      api<InvoiceOut>(`/api/invoices/${id}/mark-unprocessable`, { method: 'POST' }),
+    onSuccess: (inv) => {
+      qc.invalidateQueries({ queryKey: KEYS.inbox })
+      qc.setQueryData(KEYS.invoice(inv.id), inv)
+    },
+  })
+}
+
+export function useRetryMutation() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ id, forceTier }: { id: string; forceTier?: string }) => {
+      const qs = forceTier ? `?force_tier=${forceTier}` : ''
+      return api<InvoiceOut>(`/api/invoices/${id}/retry${qs}`, { method: 'POST' })
+    },
+    onSuccess: (inv) => {
+      qc.invalidateQueries({ queryKey: KEYS.inbox })
+      qc.setQueryData(KEYS.invoice(inv.id), inv)
+    },
+  })
+}
