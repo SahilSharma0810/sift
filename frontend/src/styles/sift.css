@@ -418,7 +418,11 @@ a { color: inherit; text-decoration: none; }
 /* ─── Field row ───────────────────────────────────────────────────────────── */
 .field {
   display: grid;
-  grid-template-columns: 116px 1fr auto;
+  /* `minmax(0, 1fr)` is critical — without it, the value column refuses
+     to shrink below its min-content width on long vendor names like
+     "PricewaterhouseCoopers", which pushes the source-badge in
+     .field-meta past the panel's right edge. */
+  grid-template-columns: 116px minmax(0, 1fr) auto;
   align-items: center;
   gap: 12px;
   padding: 11px 16px;
@@ -426,6 +430,7 @@ a { color: inherit; text-decoration: none; }
   cursor: pointer;
   transition: background 80ms;
   position: relative;
+  overflow: hidden;
 }
 .field:last-child { border-bottom: 0; }
 .field:hover { background: var(--surface-recess); }
@@ -442,10 +447,23 @@ a { color: inherit; text-decoration: none; }
 .field-value {
   font-size: 14px; color: var(--ink);
   display: flex; align-items: baseline; gap: 8px;
+  min-width: 0;          /* allow content to shrink inside grid track */
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.field-value > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .field-value .v-mono { font-family: var(--font-mono); }
 .field-value .v-empty { color: var(--ink-48); font-style: italic; }
-.field-meta { display: flex; align-items: center; gap: 8px; }
+.field-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;        /* never give up width to a long value */
+}
 .field-edit-input {
   border: 2px solid var(--primary-focus);
   background: var(--surface);
