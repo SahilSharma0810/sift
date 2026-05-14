@@ -18,19 +18,41 @@ from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
+from sqlalchemy import event
 from sqlalchemy.orm import Session
 
-from app.db.session import SessionLocal
+from app.db.session import engine
 
 
 @pytest.fixture
 def db_session() -> Generator[Session, None, None]:
-    session = SessionLocal()
+    """Per-test session bound to a SAVEPOINT inside an outer transaction.
+
+    Service-layer `session.commit()` calls only commit the savepoint; the
+    outer transaction stays open. On teardown we roll the outer transaction
+    back so nothing this test wrote persists to the dev database. The
+    `after_transaction_end` listener restarts the savepoint after each
+    inner commit so the same session stays usable across multiple service
+    calls within one test.
+    """
+    connection = engine.connect()
+    outer_txn = connection.begin()
+    session = Session(bind=connection, autocommit=False, autoflush=False, expire_on_commit=False)
+    nested = connection.begin_nested()
+
+    @event.listens_for(session, "after_transaction_end")
+    def _restart_savepoint(_session: Session, transaction) -> None:
+        nonlocal nested
+        if transaction.nested and not transaction._parent.nested:
+            nested = connection.begin_nested()
+
     try:
         yield session
-        session.rollback()
     finally:
         session.close()
+        if outer_txn.is_active:
+            outer_txn.rollback()
+        connection.close()
 
 
 def make_llm_mock(

@@ -7,7 +7,8 @@
 .DEFAULT_GOAL := help
 .PHONY: help dev up down restart logs ps build migrate migration revision \
         test test-backend test-frontend lint format types-gen \
-        sh-backend sh-frontend sh-db clean nuke
+        sh-backend sh-frontend sh-db clean nuke \
+        reset-db seed-demo demo
 
 help: ## Show this help.
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | \
@@ -81,6 +82,20 @@ sh-frontend: ## Open a shell in the frontend container.
 
 sh-db: ## Open a psql shell in the database container.
 	docker compose exec db psql -U sift -d sift
+
+# ---------- demo data ----------
+reset-db: ## Drop+recreate schema, re-run migrations, wipe uploads. Destructive.
+	@echo "Resetting database schema + uploads..."
+	docker compose exec -T db psql -U sift -d sift -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;" > /dev/null
+	docker compose exec -T backend uv run alembic upgrade head
+	docker compose exec -T backend sh -c 'rm -rf /data/uploads/* 2>/dev/null || true'
+	@echo "✓ Database reset."
+
+seed-demo: ## Populate the inbox with curated invoices that exercise every demo beat.
+	docker compose exec -T backend uv run python -m scripts.seed_demo
+
+demo: reset-db seed-demo ## One-shot: clean slate + curated demo state. Run before recording.
+	@echo "✓ Demo state ready.  Open http://localhost:5173"
 
 # ---------- cleanup ----------
 clean: ## Stop and remove containers (keep volumes).

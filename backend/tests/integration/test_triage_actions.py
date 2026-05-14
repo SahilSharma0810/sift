@@ -4,11 +4,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
 from fastapi.testclient import TestClient
 
 from app.adapters.llm_client import ExtractionResult
-from app.main import app
 from tests.conftest import patch_make_llm_client
 
 FIXTURES = Path(__file__).parents[1] / "fixtures"
@@ -41,11 +39,6 @@ def _fake_llm(file_suffix: str = "") -> ExtractionResult:
     )
 
 
-@pytest.fixture
-def client() -> TestClient:
-    return TestClient(app)
-
-
 def _upload(client: TestClient, unique: str) -> str:
     """Upload a unique-bytes copy of CLEAN_PDF and return the new invoice_id."""
     body = CLEAN_PDF.read_bytes() + f"\n%{unique}\n".encode()
@@ -59,29 +52,29 @@ def _upload(client: TestClient, unique: str) -> str:
 
 
 class TestTriageActions:
-    def test_confirm_changes_status(self, client: TestClient) -> None:
-        invoice_id = _upload(client, "confirm-1")
-        res = client.post(f"/api/invoices/{invoice_id}/confirm")
+    def test_confirm_changes_status(self, api_client: TestClient) -> None:
+        invoice_id = _upload(api_client, "confirm-1")
+        res = api_client.post(f"/api/invoices/{invoice_id}/confirm")
         assert res.status_code == 200
         assert res.json()["review_status"] == "confirmed"
 
-    def test_mark_unprocessable(self, client: TestClient) -> None:
-        invoice_id = _upload(client, "unproc-1")
-        res = client.post(f"/api/invoices/{invoice_id}/mark-unprocessable")
+    def test_mark_unprocessable(self, api_client: TestClient) -> None:
+        invoice_id = _upload(api_client, "unproc-1")
+        res = api_client.post(f"/api/invoices/{invoice_id}/mark-unprocessable")
         assert res.status_code == 200
         assert res.json()["review_status"] == "unprocessable"
 
-    def test_dismiss_duplicate_records_pair(self, client: TestClient) -> None:
-        a = _upload(client, "dismiss-a-1")
-        b = _upload(client, "dismiss-b-1")
-        res = client.post(f"/api/invoices/{b}/dismiss-duplicate", json={"against_id": a})
+    def test_dismiss_duplicate_records_pair(self, api_client: TestClient) -> None:
+        a = _upload(api_client, "dismiss-a-1")
+        b = _upload(api_client, "dismiss-b-1")
+        res = api_client.post(f"/api/invoices/{b}/dismiss-duplicate", json={"against_id": a})
         assert res.status_code == 200, res.text
         assert a in res.json().get("duplicate_dismissals", [])
 
-    def test_retry_creates_new_extraction(self, client: TestClient) -> None:
-        invoice_id = _upload(client, "retry-1")
+    def test_retry_creates_new_extraction(self, api_client: TestClient) -> None:
+        invoice_id = _upload(api_client, "retry-1")
         with patch_make_llm_client(header=_fake_llm()):
-            res = client.post(f"/api/invoices/{invoice_id}/retry")
+            res = api_client.post(f"/api/invoices/{invoice_id}/retry")
         assert res.status_code == 200
         body = res.json()
         assert body["current_extraction"] is not None

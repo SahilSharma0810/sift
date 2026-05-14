@@ -1,18 +1,17 @@
 """API integration tests via FastAPI TestClient.
 
-These exercise the route → service → repo → DB stack. The LLM client is
-patched at the import site in services/extraction_service.
+The `api_client` fixture (defined in tests/integration/conftest.py) wraps
+every request in a SAVEPOINT so service-layer commits don't pollute the
+dev DB. The LLM is patched at the factory site.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
 from fastapi.testclient import TestClient
 
 from app.adapters.llm_client import ExtractionResult
-from app.main import app
 from tests.conftest import patch_make_llm_client
 
 FIXTURES = Path(__file__).parents[1] / "fixtures"
@@ -45,18 +44,13 @@ def _fake_llm_result() -> ExtractionResult:
     )
 
 
-@pytest.fixture
-def client() -> TestClient:
-    return TestClient(app)
-
-
 class TestUploadInvoice:
-    def test_upload_returns_invoice_with_extraction(self, client: TestClient) -> None:
+    def test_upload_returns_invoice_with_extraction(self, api_client: TestClient) -> None:
         with (
             patch_make_llm_client(header=_fake_llm_result()),
             CLEAN_PDF.open("rb") as fh,
         ):
-            res = client.post(
+            res = api_client.post(
                 "/api/invoices",
                 files={"file": ("clean.pdf", fh, "application/pdf")},
             )
@@ -66,23 +60,23 @@ class TestUploadInvoice:
         assert body["current_extraction"]["predicted_triage_state"] == "confident"
         assert "Vega Logistics" in str(body["current_extraction"]["extracted_fields"])
 
-    def test_upload_rejects_non_pdf(self, client: TestClient) -> None:
-        res = client.post(
+    def test_upload_rejects_non_pdf(self, api_client: TestClient) -> None:
+        res = api_client.post(
             "/api/invoices",
             files={"file": ("oops.txt", b"hello", "text/plain")},
         )
         assert res.status_code == 415
 
-    def test_list_returns_uploaded(self, client: TestClient) -> None:
+    def test_list_returns_uploaded(self, api_client: TestClient) -> None:
         with (
             patch_make_llm_client(header=_fake_llm_result()),
             CLEAN_PDF.open("rb") as fh,
         ):
-            client.post(
+            api_client.post(
                 "/api/invoices",
                 files={"file": ("clean2.pdf", fh, "application/pdf")},
             )
-        res = client.get("/api/invoices")
+        res = api_client.get("/api/invoices")
         assert res.status_code == 200
         body = res.json()
         assert len(body) >= 1

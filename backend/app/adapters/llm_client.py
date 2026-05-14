@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import re
 from dataclasses import dataclass
 from typing import Any, ClassVar, Protocol
 
@@ -289,6 +290,11 @@ class AnthropicLLMClient:
 # ---------- Stub implementation (offline / demo) -----------------------------
 
 
+_SEED_VENDOR_RE = re.compile(r"\[seed-vendor:([^\]]+)\]")
+_SEED_TOTAL_RE = re.compile(r"\[seed-total:([\d.]+)\]")
+_SEED_NUMBER_RE = re.compile(r"\[seed-number:([^\]]+)\]")
+
+
 class StubLLMClient:
     """Deterministic offline LLM stub.
 
@@ -303,6 +309,11 @@ class StubLLMClient:
       "bramble"   → near-duplicate-friendly fixture
       "[stub:fail]" or "encrypted" → extraction_failed=True
       default     → Vega Logistics, ~$1180, math reconciles on tier-2+
+
+    Seed markers (used by scripts/seed_demo.py to populate the demo inbox):
+      [seed-vendor:Name] → force vendor_name
+      [seed-total:N]     → force total to N (subtotal/tax derived 85/15)
+      [seed-number:X]    → force invoice_number to X
     """
 
     # Scenarios keyed by the substring that appears in the invoice text (or
@@ -349,6 +360,7 @@ class StubLLMClient:
         scenario = self._pick_scenario(invoice_text)
         seed = self._seed_from(invoice_text)
         fields = self._build_fields(scenario, model=model, seed=seed)
+        _apply_seed_overrides(fields, invoice_text, model=model)
         confidence = {k: 0.95 for k in fields}
         log.info(
             "llm.extract_header.stub",
@@ -378,6 +390,8 @@ class StubLLMClient:
         scenario = self._SCENARIOS["default"]  # vision path: always default scenario
         seed = self._seed_from(seed_text)
         flat = self._build_fields(scenario, model=model, seed=seed)
+        # Seed markers don't apply to the vision path — PNGs don't carry text.
+        # Seed-mode invoices use the digital path so the markers above suffice.
         # Vision returns per-field {value, bbox, page, confidence} shapes.
         bboxes = {
             "vendor_name": [0.08, 0.06, 0.55, 0.10],
@@ -459,6 +473,31 @@ class StubLLMClient:
             "total": total,
             "currency": scenario["currency"],
         }
+
+
+def _apply_seed_overrides(fields: dict[str, Any], invoice_text: str, *, model: str) -> None:
+    """Apply seed-script markers found in invoice_text in-place.
+
+    Used by scripts/seed_demo.py to deterministically vary vendor/total per
+    seeded PDF so vendor history can build with std > 0 (needed for anomaly
+    detection). Markers in production invoice text are harmless — the regex
+    won't match real OCR output.
+    """
+    v = _SEED_VENDOR_RE.search(invoice_text)
+    if v:
+        fields["vendor_name"] = v.group(1).strip()
+    n = _SEED_NUMBER_RE.search(invoice_text)
+    if n:
+        fields["invoice_number"] = n.group(1).strip()
+    t = _SEED_TOTAL_RE.search(invoice_text)
+    if t:
+        base = float(t.group(1))
+        # Tier-1 keeps the cascade-triggering $1 disagreement.
+        is_tier_1 = "haiku" in model.lower()
+        fields["total"] = base + 1.0 if is_tier_1 else base
+        # Split 85/15 so subtotal+tax reconciles to the tier-2 base value.
+        fields["subtotal"] = round(base * 0.85, 2)
+        fields["tax"] = round(base - base * 0.85, 2)
 
 
 def _stub_usage() -> dict[str, int]:

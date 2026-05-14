@@ -27,7 +27,15 @@ class TestStubExtractHeader:
         assert isinstance(result, ExtractionResult)
         assert result.extraction_failed is False
         # All seven header fields are present
-        for f in ("vendor_name", "invoice_number", "invoice_date", "subtotal", "tax", "total", "currency"):
+        for f in (
+            "vendor_name",
+            "invoice_number",
+            "invoice_date",
+            "subtotal",
+            "tax",
+            "total",
+            "currency",
+        ):
             assert f in result.fields
 
     def test_haiku_total_disagrees_with_sonnet_by_one_dollar(self) -> None:
@@ -108,12 +116,8 @@ class TestStubExtractHeaderVision:
 
     def test_vision_invoice_number_varies_by_png_bytes(self) -> None:
         stub = StubLLMClient()
-        a = stub.extract_header_vision(
-            page_pngs=[b"\x89PNG\r\n\x1a\nA"], model="claude-sonnet-4-6"
-        )
-        b = stub.extract_header_vision(
-            page_pngs=[b"\x89PNG\r\n\x1a\nB"], model="claude-sonnet-4-6"
-        )
+        a = stub.extract_header_vision(page_pngs=[b"\x89PNG\r\n\x1a\nA"], model="claude-sonnet-4-6")
+        b = stub.extract_header_vision(page_pngs=[b"\x89PNG\r\n\x1a\nB"], model="claude-sonnet-4-6")
         assert a.fields["invoice_number"]["value"] != b.fields["invoice_number"]["value"]
 
 
@@ -127,7 +131,9 @@ class TestFactory:
         assert isinstance(client, StubLLMClient)
 
     def test_anthropic_provider_routes_to_anthropic_impl(self) -> None:
-        settings = Settings(_env_file=None, SIFT_LLM_PROVIDER="anthropic", ANTHROPIC_API_KEY="sk-test")  # type: ignore[call-arg]
+        settings = Settings(
+            _env_file=None, SIFT_LLM_PROVIDER="anthropic", ANTHROPIC_API_KEY="sk-test"
+        )  # type: ignore[call-arg]
         client = make_llm_client(settings)
         assert isinstance(client, AnthropicLLMClient)
 

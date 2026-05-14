@@ -4,7 +4,9 @@ Each slot has a documented role in the 60-second demo narrative. See the
 slot table in PLAN.md. Pre-populates field_corrections + runs
 vendor_memory_service.consolidate(...) so beat 3 has real history.
 
-Stub for Day 5 — filled in as services/vendor_memory_service is implemented.
+The Day-2.5 minimal version lives inside the backend container at
+`backend/scripts/seed_demo.py` and is invoked via `make seed-demo`.
+Day 5 expands it to the full 25-slot table.
 """
 
 from __future__ import annotations
@@ -12,7 +14,8 @@ from __future__ import annotations
 
 def main() -> None:
     raise NotImplementedError(
-        "seed_demo.py is a Day-5 deliverable; the 25-slot table lives in PLAN.md."
+        "The runnable seed lives at backend/scripts/seed_demo.py. "
+        "Run `make seed-demo`."
     )
 
 
