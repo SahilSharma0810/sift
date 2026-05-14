@@ -110,6 +110,22 @@ export function ReviewScreen() {
     return out
   }, [invoice, overrides])
 
+  // NOTE: all hooks MUST be called before any conditional `return` —
+  // moving a hook below the early returns triggers React's
+  // "Rendered more hooks than during the previous render" error
+  // because the hook fires after invoice loads but didn't fire when
+  // isLoading was true.
+  const bboxes = useMemo(
+    () =>
+      Object.entries(fields)
+        .filter(([_, f]) => Array.isArray(f?.bbox))
+        .map(([name, f]) => ({
+          name,
+          bbox: f!.bbox as [number, number, number, number],
+        })),
+    [fields]
+  )
+
   if (isLoading) {
     return <div style={{ padding: 24, color: 'var(--ink-60)' }}>Loading invoice…</div>
   }
@@ -172,16 +188,7 @@ export function ReviewScreen() {
   }
 
   const pdfSrc = `/api/invoices/${invoice.id}/file`
-  const bboxes = useMemo(
-    () =>
-      Object.entries(fields)
-        .filter(([_, f]) => Array.isArray(f?.bbox))
-        .map(([name, f]) => ({
-          name,
-          bbox: f!.bbox as [number, number, number, number],
-        })),
-    [fields]
-  )
+  // bboxes computed above (must precede early-return for hooks order)
 
   const vendorName = String(fields.vendor_name?.value ?? 'Invoice')
   const invoiceNumber = String(fields.invoice_number?.value ?? 'no invoice #')
