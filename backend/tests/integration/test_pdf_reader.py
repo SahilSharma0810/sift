@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from app.adapters.pdf_reader import has_text, read_digital
+from app.adapters.pdf_reader import has_text, read_digital, resolve_bboxes
 
 FIXTURES = Path(__file__).parents[1] / "fixtures"
 CLEAN_PDF = FIXTURES / "digital_invoice_clean.pdf"
@@ -38,6 +38,42 @@ class TestPdfReader:
         assert box.bbox[0] < box.bbox[2]  # x0 < x1
         assert box.bbox[1] < box.bbox[3]  # y0 < y1
         assert box.page == 0
+
+
+@pytest.mark.skipif(not CLEAN_PDF.exists(), reason="run generate_clean.py first")
+class TestResolveBboxes:
+    def test_finds_vendor_name(self) -> None:
+        result = read_digital(CLEAN_PDF)
+        bboxes = resolve_bboxes(
+            words=result.words,
+            page_count=result.page_count,
+            extracted={"vendor_name": "Vega Logistics"},
+        )
+        assert "vendor_name" in bboxes
+        x0, y0, x1, y1 = bboxes["vendor_name"]
+        # Normalized 0-1
+        assert 0.0 <= x0 < x1 <= 1.0
+        assert 0.0 <= y0 < y1 <= 1.0
+
+    def test_returns_empty_for_unmatched_value(self) -> None:
+        result = read_digital(CLEAN_PDF)
+        bboxes = resolve_bboxes(
+            words=result.words,
+            page_count=result.page_count,
+            extracted={"vendor_name": "Not In Document"},
+        )
+        assert "vendor_name" not in bboxes
+
+    def test_handles_multi_word_value(self) -> None:
+        result = read_digital(CLEAN_PDF)
+        bboxes = resolve_bboxes(
+            words=result.words,
+            page_count=result.page_count,
+            extracted={"vendor_name": "Vega Logistics", "invoice_number": "INV-2026-0042"},
+        )
+        # Both fields should resolve
+        assert "vendor_name" in bboxes
+        assert "invoice_number" in bboxes
 
 
 def test_has_text_on_image_only(tmp_path: Path) -> None:
