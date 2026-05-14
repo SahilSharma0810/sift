@@ -90,6 +90,17 @@ export type TriageReason =
   | UnseenVendorReason
   | ExtractionFailedReason
 
+// ---------- LineItem (Day 3) ----------
+export interface LineItem {
+  description: string
+  quantity: number | null
+  unit_price: number | null
+  line_total: number
+  bbox: [number, number, number, number] | null
+  page: number
+  confidence: number
+}
+
 // ---------- Vendor memory ----------
 export interface VendorMemoryRule {
   field: string
@@ -130,6 +141,7 @@ export interface ExtractionOut {
   confidence_per_field: Record<string, number>
   predicted_triage_state: TriageState
   predicted_triage_reasons: TriageReason[]
+  line_items: LineItem[]
   is_current: boolean
   created_at: string
 }
