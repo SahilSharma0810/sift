@@ -113,4 +113,5 @@ forbidden_modules = ["app.adapters", "app.db"]
 allow_indirect_imports = "true"
 ignore_imports = [
     "app.api.invoices -> app.db.session",
+    "app.api.search -> app.db.session",
 ]

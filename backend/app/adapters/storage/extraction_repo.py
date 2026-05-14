@@ -16,6 +16,37 @@ from sqlalchemy.orm import Session
 from app.db.models import Extraction
 
 
+def _build_raw_text(
+    extracted_fields: dict[str, Any],
+    line_items: list[dict[str, Any]] | None,
+    tax_breakdown: list[dict[str, Any]] | None,
+) -> str:
+    """Concatenate every extracted value into a single FTS-searchable string.
+
+    Postgres maintains the tsvector + GIN index automatically from this
+    column (see alembic 8c3c0a978b23). Day-4 NL queries route through
+    `raw_text fts_matches "..."` clauses on this column.
+    """
+    chunks: list[str] = []
+    for field_data in (extracted_fields or {}).values():
+        if isinstance(field_data, dict):
+            v = field_data.get("value")
+            if v is not None:
+                chunks.append(str(v))
+    for item in line_items or []:
+        if isinstance(item, dict):
+            d = item.get("description")
+            if d:
+                chunks.append(str(d))
+    for row in tax_breakdown or []:
+        if isinstance(row, dict):
+            j = row.get("jurisdiction")
+            if j:
+                chunks.append(str(j))
+    # Single space as separator — tsvector tokenization handles the rest.
+    return " ".join(chunks)
+
+
 def create_extraction(
     session: Session,
     *,
@@ -33,6 +64,8 @@ def create_extraction(
 
     Demotes any previously-current extraction for the same invoice in the
     same flush — preserves the partial-unique constraint without races.
+    Also populates `raw_text` for FTS — Postgres maintains the tsvector
+    column + GIN index automatically.
     """
     # Demote previous current (if any).
     session.execute(
@@ -52,6 +85,7 @@ def create_extraction(
         cascade_trace=cascade_trace,
         line_items=line_items or [],
         tax_breakdown=tax_breakdown or [],
+        raw_text=_build_raw_text(extracted_fields, line_items, tax_breakdown),
         is_current=True,
     )
     session.add(ext)

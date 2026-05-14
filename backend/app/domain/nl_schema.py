@@ -77,7 +77,21 @@ class FilterClause(BaseModel):
 
     field: QueryField
     op: QueryOp
-    value: str | float | int | bool | date | list[str] | tuple[date, date]
+    # Permissive value type — the per-field op compatibility check is the
+    # contract gate, not the value type itself. Day-4 supports scalar
+    # comparisons + `in`-with-list + `between`-with-two-element list for
+    # numbers and dates.
+    value: (
+        str
+        | float
+        | int
+        | bool
+        | date
+        | list[str]
+        | list[float]
+        | list[int]
+        | tuple[date, date]
+    )
 
     @model_validator(mode="after")
     def _check_op_compat(self) -> FilterClause:

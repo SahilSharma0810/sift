@@ -17,6 +17,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     String,
+    Text,
     func,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
@@ -110,6 +111,13 @@ class Extraction(Base):
     # Day 4 — per-jurisdiction tax breakdown. Same gate as line_items:
     # sum-check is logged but does NOT alter triage state.
     tax_breakdown: Mapped[list] = mapped_column(JSONB, default=list, nullable=False)
+
+    # Day 4 — concatenated text of every extracted field value + line-item
+    # description + tax jurisdiction. Populated by extraction_repo.create_extraction.
+    # A Postgres GENERATED ALWAYS column `raw_text_tsv` (defined in the
+    # migration, not mapped here) carries the tsvector + GIN index used by
+    # the `raw_text fts_matches` filter clause in StructuredQuery.
+    raw_text: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     is_current: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(

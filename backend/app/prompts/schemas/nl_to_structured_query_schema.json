@@ -1,0 +1,70 @@
+{
+  "name": "translate_to_structured_query",
+  "description": "Translate a natural-language invoice search question into a strict StructuredQuery.",
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "filters": {
+        "type": "array",
+        "description": "Implicit-AND list of filter clauses. No OR, no NOT, no nested groups.",
+        "items": {
+          "type": "object",
+          "properties": {
+            "field": {
+              "type": "string",
+              "enum": [
+                "vendor_name",
+                "invoice_date",
+                "total",
+                "subtotal",
+                "tax_total",
+                "currency",
+                "triage_state",
+                "review_status",
+                "has_anomaly",
+                "is_duplicate",
+                "raw_text"
+              ]
+            },
+            "op": {
+              "type": "string",
+              "enum": [
+                "eq",
+                "neq",
+                "gt",
+                "gte",
+                "lt",
+                "lte",
+                "in",
+                "between",
+                "contains",
+                "fts_matches"
+              ]
+            },
+            "value": {
+              "description": "Scalar / list / [start, end] tuple. Validator enforces per-field type compatibility downstream."
+            }
+          },
+          "required": ["field", "op", "value"]
+        }
+      },
+      "sort": {
+        "type": ["array", "null"],
+        "description": "Optional [field, direction] — only sortable fields are allowed.",
+        "minItems": 2,
+        "maxItems": 2
+      },
+      "limit": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 500,
+        "default": 50
+      },
+      "untranslated_intent": {
+        "type": ["string", "null"],
+        "description": "Verbatim leftover phrasing the LLM couldn't translate. Surfaces as an amber notice in the UI. Never silently drop intent."
+      }
+    },
+    "required": ["filters"]
+  }
+}

@@ -75,9 +75,10 @@ def create_app() -> FastAPI:
         """Surface non-secret runtime config so the UI can show a stub-mode pill."""
         return {"version": __version__, "llm_provider": settings.llm_provider}
 
-    from app.api import invoices
+    from app.api import invoices, search
 
     app.include_router(invoices.router, prefix="/api/invoices", tags=["invoices"])
+    app.include_router(search.router, prefix="/api/search", tags=["search"])
 
     # SPA serving — in prod the Vite-built bundle lives at /app/frontend/dist
     # (see Dockerfile). In dev, Vite serves the SPA itself on :5173.

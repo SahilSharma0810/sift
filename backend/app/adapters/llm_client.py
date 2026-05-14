@@ -78,6 +78,24 @@ class LineItemsResult:
 
 
 @dataclass(frozen=True, slots=True)
+class StructuredQueryResult:
+    """Output of extract_structured_query — raw payload matching the
+    StructuredQuery schema (filters/sort/limit/untranslated_intent).
+
+    Service-layer code validates the payload against the Pydantic
+    StructuredQuery model (FIELD_OP_COMPATIBILITY enforced there) before
+    handing it to the search builder. Malformed LLM output is rejected
+    via ValueError, never silently passed through to SQL.
+    """
+
+    payload: dict[str, Any]
+    model: str
+    prompt_hash: str
+    schema_hash: str
+    usage: dict[str, int]
+
+
+@dataclass(frozen=True, slots=True)
 class TaxBreakdownResult:
     """Output of extract_tax_breakdown — list of raw per-jurisdiction rows.
 
@@ -126,6 +144,14 @@ class LLMClient(Protocol):
         model: str,
         prompt_name: str = "extraction_tax_breakdown_v1",
     ) -> TaxBreakdownResult: ...
+
+    def extract_structured_query(
+        self,
+        *,
+        natural_language: str,
+        model: str,
+        prompt_name: str = "nl_to_structured_query_v1",
+    ) -> StructuredQueryResult: ...
 
 
 # ---------- Anthropic implementation -----------------------------------------
@@ -396,6 +422,83 @@ class AnthropicLLMClient:
 
         return TaxBreakdownResult(
             rows=rows,
+            model=response.model,
+            prompt_hash=prompt.body_hash,
+            schema_hash=prompt.schema_hash,
+            usage=usage,
+        )
+
+    @_retry_decorator
+    def extract_structured_query(
+        self,
+        *,
+        natural_language: str,
+        model: str,
+        prompt_name: str = "nl_to_structured_query_v1",
+    ) -> StructuredQueryResult:
+        """Translate NL to a StructuredQuery payload via tool-use.
+
+        Returns the raw tool input dict. The translator service validates it
+        against the Pydantic StructuredQuery model (FIELD_OP_COMPATIBILITY,
+        sortable-field set, value-type compatibility) before any SQL builder
+        sees it — malformed LLM output is rejected here per ADR-0004.
+        """
+        prompt: LoadedPrompt = load(prompt_name)
+        system = [
+            {
+                "type": "text",
+                "text": prompt.body,
+                "cache_control": {"type": "ephemeral"},
+            }
+        ]
+        tool = {
+            "name": prompt.schema["name"],
+            "description": prompt.schema["description"],
+            "input_schema": prompt.schema["input_schema"],
+        }
+
+        log.info(
+            "llm.translate_nl.start",
+            model=model,
+            prompt_hash=prompt.body_hash,
+            input_chars=len(natural_language),
+        )
+
+        response = self._client.messages.create(
+            model=model,
+            max_tokens=_HEADER_MAX_TOKENS,
+            system=system,
+            tools=[tool],
+            tool_choice={"type": "tool", "name": tool["name"]},
+            messages=[{"role": "user", "content": natural_language}],
+        )
+
+        tool_input: dict[str, Any] | None = None
+        for block in response.content:
+            if getattr(block, "type", None) == "tool_use" and block.name == tool["name"]:
+                tool_input = dict(block.input)
+                break
+
+        if tool_input is None:
+            raise RuntimeError(f"LLM did not emit the {tool['name']} tool call")
+
+        usage_obj = getattr(response, "usage", None)
+        usage = {
+            "input_tokens": getattr(usage_obj, "input_tokens", 0),
+            "output_tokens": getattr(usage_obj, "output_tokens", 0),
+            "cache_creation_input_tokens": getattr(usage_obj, "cache_creation_input_tokens", 0),
+            "cache_read_input_tokens": getattr(usage_obj, "cache_read_input_tokens", 0),
+        }
+
+        log.info(
+            "llm.translate_nl.done",
+            model=model,
+            n_filters=len(tool_input.get("filters") or []),
+            usage=usage,
+        )
+
+        return StructuredQueryResult(
+            payload=tool_input,
             model=response.model,
             prompt_hash=prompt.body_hash,
             schema_hash=prompt.schema_hash,
@@ -728,6 +831,35 @@ class StubLLMClient:
             usage=_stub_usage(),
         )
 
+    def extract_structured_query(
+        self,
+        *,
+        natural_language: str,
+        model: str,
+        prompt_name: str = "nl_to_structured_query_v1",
+    ) -> StructuredQueryResult:
+        """Deterministic NL translation for the demo path.
+
+        Regex-keyed translation hits every demo phrasing without burning
+        tokens. The downstream service still validates the payload against
+        the Pydantic StructuredQuery model — same code path as the real
+        Anthropic provider — so behaviour matches.
+        """
+        payload = _stub_translate_nl(natural_language)
+        log.info(
+            "llm.translate_nl.stub",
+            model=model,
+            n_filters=len(payload.get("filters", []) or []),
+            untranslated=bool(payload.get("untranslated_intent")),
+        )
+        return StructuredQueryResult(
+            payload=payload,
+            model=model,
+            prompt_hash="stub-nl-translate-v1",
+            schema_hash="stub-nl-translate-v1",
+            usage=_stub_usage(),
+        )
+
     # ---- helpers ----
 
     @staticmethod
@@ -804,6 +936,125 @@ def _apply_seed_overrides(fields: dict[str, Any], invoice_text: str, *, model: s
         # Split 85/15 so subtotal+tax reconciles to the tier-2 base value.
         fields["subtotal"] = round(base * 0.85, 2)
         fields["tax"] = round(base - base * 0.85, 2)
+
+
+_NL_AMOUNT_RE = re.compile(
+    r"(?:over|above|greater than|more than|>=|>)\s*\$?\s*([\d,]+(?:\.\d+)?)",
+    re.IGNORECASE,
+)
+_NL_UNDER_RE = re.compile(
+    r"(?:under|below|less than|<=|<)\s*\$?\s*([\d,]+(?:\.\d+)?)",
+    re.IGNORECASE,
+)
+_NL_VENDOR_RE = re.compile(
+    r"\bfrom\s+(?:vendor\s+)?([A-Z][\w&.'\- ]{2,30})",
+    re.IGNORECASE,
+)
+
+
+def _stub_translate_nl(natural_language: str) -> dict[str, Any]:
+    """Deterministic NL → StructuredQuery payload, used by the stub provider.
+
+    Intentionally narrow: it covers the demo phrasings we control with seed
+    data, plus a couple of obvious fallbacks. Anything it can't translate
+    flows to `untranslated_intent` so the UI can show the amber notice.
+    """
+    text = natural_language.strip()
+    lowered = text.lower()
+    filters: list[dict[str, Any]] = []
+    handled_spans: list[tuple[int, int]] = []
+
+    def _mark(match: re.Match[str]) -> None:
+        handled_spans.append((match.start(), match.end()))
+
+    # Triage / review-status synonyms
+    if "duplicate" in lowered or "likely dup" in lowered:
+        filters.append({"field": "triage_state", "op": "eq", "value": "likely_duplicate"})
+        for kw in ("duplicate", "likely dup"):
+            idx = lowered.find(kw)
+            if idx >= 0:
+                handled_spans.append((idx, idx + len(kw)))
+    if "anomal" in lowered or "flagged" in lowered:
+        filters.append({"field": "has_anomaly", "op": "eq", "value": True})
+        for kw in ("anomal", "flagged"):
+            idx = lowered.find(kw)
+            if idx >= 0:
+                handled_spans.append((idx, idx + len(kw)))
+    if "needs review" in lowered or "pending review" in lowered or "to review" in lowered:
+        filters.append({"field": "triage_state", "op": "eq", "value": "needs_review"})
+        for kw in ("needs review", "pending review", "to review"):
+            idx = lowered.find(kw)
+            if idx >= 0:
+                handled_spans.append((idx, idx + len(kw)))
+    if "confirmed" in lowered:
+        filters.append({"field": "review_status", "op": "eq", "value": "confirmed"})
+        idx = lowered.find("confirmed")
+        handled_spans.append((idx, idx + len("confirmed")))
+    if "unprocessable" in lowered or "encrypted" in lowered or "failed to extract" in lowered:
+        filters.append({"field": "review_status", "op": "eq", "value": "unprocessable"})
+        for kw in ("unprocessable", "encrypted", "failed to extract"):
+            idx = lowered.find(kw)
+            if idx >= 0:
+                handled_spans.append((idx, idx + len(kw)))
+
+    # Amount thresholds
+    over = _NL_AMOUNT_RE.search(text)
+    if over:
+        amount = float(over.group(1).replace(",", ""))
+        filters.append({"field": "total", "op": "gt", "value": amount})
+        _mark(over)
+    under = _NL_UNDER_RE.search(text)
+    if under:
+        amount = float(under.group(1).replace(",", ""))
+        filters.append({"field": "total", "op": "lt", "value": amount})
+        _mark(under)
+
+    # Vendor name
+    vendor = _NL_VENDOR_RE.search(text)
+    if vendor:
+        name = vendor.group(1).strip().rstrip(".,;:")
+        if name.lower() not in {
+            "needs review",
+            "the last",
+            "this month",
+            "this week",
+        }:
+            filters.append({"field": "vendor_name", "op": "eq", "value": name})
+            _mark(vendor)
+
+    # Build the untranslated_intent from spans not handled
+    handled_spans.sort()
+    untranslated_chunks: list[str] = []
+    cursor = 0
+    for start, end in handled_spans:
+        if start > cursor:
+            chunk = text[cursor:start].strip()
+            if chunk:
+                untranslated_chunks.append(chunk)
+        cursor = max(cursor, end)
+    if cursor < len(text):
+        chunk = text[cursor:].strip()
+        if chunk:
+            untranslated_chunks.append(chunk)
+
+    # Filter out trivial stop words so we don't surface noise as "untranslated".
+    cleaned = " ".join(untranslated_chunks).strip()
+    if cleaned.lower() in {
+        "",
+        "invoices",
+        "show me",
+        "show all",
+        "find",
+        "find invoices",
+        "show",
+    }:
+        cleaned = ""
+
+    return {
+        "filters": filters,
+        "limit": 50,
+        "untranslated_intent": cleaned or None,
+    }
 
 
 def _stub_usage() -> dict[str, int]:
