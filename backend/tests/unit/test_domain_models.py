@@ -71,6 +71,12 @@ class TestTriageReasons:
         )
         assert r.match_method == "perceptual_hash"
 
+    def test_duplicate_of_both_method(self) -> None:
+        r = DuplicateOfReason(
+            invoice_id=uuid.uuid4(), similarity=1.0, match_method="both",
+        )
+        assert r.match_method == "both"
+
     def test_extraction_failed(self) -> None:
         r = ExtractionFailedReason(stage="cascade_exhausted", detail="x")
         assert r.stage == "cascade_exhausted"

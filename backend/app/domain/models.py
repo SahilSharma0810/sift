@@ -72,7 +72,7 @@ class DuplicateOfReason(_BaseReason):
     type: Literal["duplicate_of"] = "duplicate_of"
     invoice_id: UUID
     similarity: float
-    match_method: Literal["perceptual_hash", "content_fingerprint"]
+    match_method: Literal["perceptual_hash", "content_fingerprint", "both"]
 
 
 class LowConfidenceReason(_BaseReason):

@@ -55,7 +55,7 @@ export interface DuplicateOfReason {
   type: 'duplicate_of'
   invoice_id: string
   similarity: number
-  match_method: 'perceptual_hash' | 'content_fingerprint'
+  match_method: 'perceptual_hash' | 'content_fingerprint' | 'both'
 }
 
 export interface LowConfidenceReason {
