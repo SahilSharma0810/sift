@@ -77,6 +77,21 @@ class LineItemsResult:
     usage: dict[str, int]
 
 
+@dataclass(frozen=True, slots=True)
+class TaxBreakdownResult:
+    """Output of extract_tax_breakdown — list of raw per-jurisdiction rows.
+
+    Each dict matches the schema in prompts/schemas/extraction_tax_breakdown_schema.json:
+    {jurisdiction, rate?, amount, confidence?}.
+    """
+
+    rows: list[dict[str, Any]]
+    model: str
+    prompt_hash: str
+    schema_hash: str
+    usage: dict[str, int]
+
+
 class LLMClient(Protocol):
     """Structural interface for LLM adapters. Services depend on this Protocol."""
 
@@ -103,6 +118,14 @@ class LLMClient(Protocol):
         model: str,
         prompt_name: str = "extraction_line_items_v1",
     ) -> LineItemsResult: ...
+
+    def extract_tax_breakdown(
+        self,
+        *,
+        invoice_text: str,
+        model: str,
+        prompt_name: str = "extraction_tax_breakdown_v1",
+    ) -> TaxBreakdownResult: ...
 
 
 # ---------- Anthropic implementation -----------------------------------------
@@ -302,6 +325,84 @@ class AnthropicLLMClient:
         )
 
     @_retry_decorator
+    def extract_tax_breakdown(
+        self,
+        *,
+        invoice_text: str,
+        model: str,
+        prompt_name: str = "extraction_tax_breakdown_v1",
+    ) -> TaxBreakdownResult:
+        """Extract per-jurisdiction tax rows via tool-use. Day-4.
+
+        Same prompt-cache + tenacity-retry shape as extract_header /
+        extract_line_items. Service-layer wraps the raw dicts into
+        domain.TaxBreakdownLine before persisting.
+        """
+        prompt: LoadedPrompt = load(prompt_name)
+        system = [
+            {
+                "type": "text",
+                "text": prompt.body,
+                "cache_control": {"type": "ephemeral"},
+            }
+        ]
+        tool = {
+            "name": prompt.schema["name"],
+            "description": prompt.schema["description"],
+            "input_schema": prompt.schema["input_schema"],
+        }
+
+        log.info(
+            "llm.extract_tax_breakdown.start",
+            model=model,
+            prompt_hash=prompt.body_hash,
+            input_chars=len(invoice_text),
+        )
+
+        response = self._client.messages.create(
+            model=model,
+            max_tokens=_HEADER_MAX_TOKENS,
+            system=system,
+            tools=[tool],
+            tool_choice={"type": "tool", "name": tool["name"]},
+            messages=[{"role": "user", "content": invoice_text}],
+        )
+
+        tool_input: dict[str, Any] | None = None
+        for block in response.content:
+            if getattr(block, "type", None) == "tool_use" and block.name == tool["name"]:
+                tool_input = dict(block.input)
+                break
+
+        if tool_input is None:
+            raise RuntimeError(f"LLM did not emit the {tool['name']} tool call")
+
+        rows = list(tool_input.get("rows") or [])
+        usage_obj = getattr(response, "usage", None)
+        usage = {
+            "input_tokens": getattr(usage_obj, "input_tokens", 0),
+            "output_tokens": getattr(usage_obj, "output_tokens", 0),
+            "cache_creation_input_tokens": getattr(usage_obj, "cache_creation_input_tokens", 0),
+            "cache_read_input_tokens": getattr(usage_obj, "cache_read_input_tokens", 0),
+        }
+
+        log.info(
+            "llm.extract_tax_breakdown.done",
+            model=model,
+            prompt_hash=prompt.body_hash,
+            n_rows=len(rows),
+            usage=usage,
+        )
+
+        return TaxBreakdownResult(
+            rows=rows,
+            model=response.model,
+            prompt_hash=prompt.body_hash,
+            schema_hash=prompt.schema_hash,
+            usage=usage,
+        )
+
+    @_retry_decorator
     def extract_header_vision(
         self,
         *,
@@ -432,6 +533,11 @@ class StubLLMClient:
                 {"description": "Annual Platform License — Enterprise tier", "quantity": 1, "unit_price": 24_000.00, "line_total": 24_000.00},
                 {"description": "Premium Support Add-on (24x7)", "quantity": 1, "unit_price": 4_900.00, "line_total": 4_900.00},
             ],
+            "tax_breakdown": [
+                {"jurisdiction": "California State Sales Tax", "rate": 7.25, "amount": 2_095.25},
+                {"jurisdiction": "San Francisco County Tax", "rate": 1.0, "amount": 289.00},
+                {"jurisdiction": "Local City Surcharge", "rate": 9.95, "amount": 2_778.25},
+            ],
         },
         "bramble": {
             "vendor_name": "Bramble Catering",
@@ -448,6 +554,9 @@ class StubLLMClient:
                 {"description": "Sparkling Water (1L)", "quantity": 12, "unit_price": 4.50, "line_total": 54.00},
                 {"description": "Service & Setup Fee", "quantity": None, "unit_price": None, "line_total": 35.77},
             ],
+            "tax_breakdown": [
+                {"jurisdiction": "GST", "rate": 18.0, "amount": 114.41},
+            ],
         },
         "default": {
             "vendor_name": "Vega Logistics",
@@ -461,6 +570,10 @@ class StubLLMClient:
                 {"description": "Last-Mile Delivery — Aurora freight", "quantity": 12, "unit_price": 65.00, "line_total": 780.00},
                 {"description": "Pallet Handling & Sorting", "quantity": 4, "unit_price": 35.00, "line_total": 140.00},
                 {"description": "Fuel Surcharge", "quantity": None, "unit_price": None, "line_total": 80.00},
+            ],
+            "tax_breakdown": [
+                {"jurisdiction": "Federal Excise", "rate": 12.0, "amount": 120.00},
+                {"jurisdiction": "State Highway Surcharge", "rate": 6.0, "amount": 60.00},
             ],
         },
     }
@@ -575,6 +688,43 @@ class StubLLMClient:
             model=model,
             prompt_hash="stub-line-items-v1",
             schema_hash="stub-line-items-v1",
+            usage=_stub_usage(),
+        )
+
+    def extract_tax_breakdown(
+        self,
+        *,
+        invoice_text: str,
+        model: str,
+        prompt_name: str = "extraction_tax_breakdown_v1",
+    ) -> TaxBreakdownResult:
+        """Return canned per-jurisdiction tax rows for the matched scenario.
+
+        Failure-mode keyword returns an empty list. Header-extraction owns
+        the document-level failure surface.
+        """
+        if self._is_failure_trigger(invoice_text):
+            return TaxBreakdownResult(
+                rows=[],
+                model=model,
+                prompt_hash="stub-tax-breakdown-v1",
+                schema_hash="stub-tax-breakdown-v1",
+                usage=_stub_usage(),
+            )
+        scenario = self._pick_scenario(invoice_text)
+        rows_template = scenario.get("tax_breakdown", [])
+        rows = [{**row, "confidence": 0.94, "page": 0} for row in rows_template]
+        log.info(
+            "llm.extract_tax_breakdown.stub",
+            model=model,
+            scenario=scenario["vendor_name"],
+            n_rows=len(rows),
+        )
+        return TaxBreakdownResult(
+            rows=rows,
+            model=model,
+            prompt_hash="stub-tax-breakdown-v1",
+            schema_hash="stub-tax-breakdown-v1",
             usage=_stub_usage(),
         )
 

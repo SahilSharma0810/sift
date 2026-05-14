@@ -30,6 +30,30 @@ def math_reconciles(subtotal: float, tax: float, total: float) -> bool:
     return abs((s + t) - tt) <= AMOUNT_TOLERANCE
 
 
+def tax_breakdown_sum_check(
+    rows: list[dict] | tuple[dict, ...], header_tax: float | None
+) -> tuple[bool, Decimal]:
+    """Sum of per-jurisdiction `amount` values vs. the header `tax` field.
+
+    Same shape as line_items_sum_check: returns (matches, delta). Used by
+    the Day-4 service to log a warning when extracted breakdown rows
+    don't reconcile against the extracted header tax. Does NOT change
+    triage state in Day 4 — tax breakdown is quality-gated.
+    """
+    if not rows or header_tax is None:
+        return (True, Decimal("0"))
+    try:
+        total: Decimal = Decimal("0")
+        for row in rows:
+            raw = row.get("amount", 0) or 0
+            total += Decimal(str(raw))
+    except (TypeError, ValueError, ArithmeticError):
+        return (False, Decimal("0"))
+    head = Decimal(str(header_tax))
+    delta = total - head
+    return (abs(delta) <= AMOUNT_TOLERANCE, delta)
+
+
 def line_items_sum_check(
     line_items: list[dict] | tuple[dict, ...], subtotal: float | None
 ) -> tuple[bool, Decimal]:

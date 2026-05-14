@@ -107,6 +107,10 @@ class Extraction(Base):
     # but does NOT alter triage state per Day-3 plan decision.
     line_items: Mapped[list] = mapped_column(JSONB, default=list, nullable=False)
 
+    # Day 4 — per-jurisdiction tax breakdown. Same gate as line_items:
+    # sum-check is logged but does NOT alter triage state.
+    tax_breakdown: Mapped[list] = mapped_column(JSONB, default=list, nullable=False)
+
     is_current: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False

@@ -59,6 +59,7 @@ from app.domain.validators import (
     compute_structural_scores,
     line_items_sum_check,
     math_reconciles,
+    tax_breakdown_sum_check,
 )
 from app.services.vendor_memory_service import compute_history_scores
 
@@ -149,6 +150,45 @@ def _extract_line_items_if_digital(
             subtotal=sub_float,
         )
     return items
+
+
+def _extract_tax_breakdown_if_digital(
+    *,
+    llm: LLMClient,
+    use_vision: bool,
+    invoice_text: str | None,
+    final_model: str,
+    header_tax: Any,
+) -> list[dict[str, Any]]:
+    """Run tax-breakdown extraction on the digital path; vision returns empty.
+
+    Same gating semantics as _extract_line_items_if_digital — Day 4 logs
+    sum mismatches but never alters triage state. Vision path returns []
+    for now; tax-breakdown vision is Day 5+ stretch.
+    """
+    if use_vision or invoice_text is None:
+        return []
+    try:
+        result = llm.extract_tax_breakdown(invoice_text=invoice_text, model=final_model)
+    except Exception as exc:
+        log.warning("extraction.tax_breakdown.failed", error=str(exc), model=final_model)
+        return []
+
+    rows = result.rows
+    try:
+        tax_float = float(header_tax) if header_tax is not None else None
+    except (TypeError, ValueError):
+        tax_float = None
+
+    matches, delta = tax_breakdown_sum_check(rows, tax_float)
+    if not matches:
+        log.info(
+            "extraction.tax_breakdown.sum_mismatch",
+            delta=str(delta),
+            n_rows=len(rows),
+            header_tax=tax_float,
+        )
+    return rows
 
 
 def _build_extracted_fields_shape(
@@ -542,15 +582,24 @@ def extract_from_pdf(
         anomalies=anomalies,
     )
 
-    # Line items — Day 3. Quality-gated: sum-check logged but does NOT alter
-    # triage. Vision path returns [] for now (vision line-item extraction
-    # is a Day 4+ stretch). Use the cascade-final model tier.
+    # Line items + tax breakdown — Days 3 / 4. Both quality-gated: sum
+    # mismatches are logged but do NOT alter triage. Vision path returns []
+    # for both. Cascade-final model tier is used so the most-capable model
+    # the cascade reached drives both extractions.
+    final_model_tier = cascade_trace_tiers[-1]["model"]
     line_items_raw = _extract_line_items_if_digital(
         llm=llm,
         use_vision=use_vision,
         invoice_text=invoice_text,
-        final_model=cascade_trace_tiers[-1]["model"],
+        final_model=final_model_tier,
         subtotal=final_fields.get("subtotal"),
+    )
+    tax_breakdown_raw = _extract_tax_breakdown_if_digital(
+        llm=llm,
+        use_vision=use_vision,
+        invoice_text=invoice_text,
+        final_model=final_model_tier,
+        header_tax=final_fields.get("tax"),
     )
 
     extraction = extraction_repo.create_extraction(
@@ -563,6 +612,7 @@ def extract_from_pdf(
         predicted_triage_reasons=reasons,
         cascade_trace={"tiers": cascade_trace_tiers},
         line_items=line_items_raw,
+        tax_breakdown=tax_breakdown_raw,
     )
     session.commit()
     log.info(
@@ -654,6 +704,7 @@ def _orm_extraction_to_dto(extraction: Extraction) -> ExtractionOut:
             "predicted_triage_state": extraction.predicted_triage_state,
             "predicted_triage_reasons": extraction.predicted_triage_reasons,
             "line_items": extraction.line_items or [],
+            "tax_breakdown": extraction.tax_breakdown or [],
             "is_current": extraction.is_current,
             "created_at": extraction.created_at,
         }

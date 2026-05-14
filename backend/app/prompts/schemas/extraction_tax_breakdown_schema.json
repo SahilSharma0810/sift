@@ -1,0 +1,38 @@
+{
+  "name": "extract_invoice_tax_breakdown",
+  "description": "Extract per-jurisdiction tax rows from a single vendor invoice.",
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "rows": {
+        "type": "array",
+        "description": "One entry per visible per-jurisdiction tax row. Empty if the invoice has only a header-level tax line.",
+        "items": {
+          "type": "object",
+          "properties": {
+            "jurisdiction": {
+              "type": "string",
+              "description": "Label as written on the invoice (e.g. 'CA State Sales Tax', 'VAT 20%')."
+            },
+            "rate": {
+              "type": ["number", "null"],
+              "description": "Tax rate as a percentage when explicitly stated. Null when only the amount is shown."
+            },
+            "amount": {
+              "type": "number",
+              "description": "Amount for this jurisdiction. Required."
+            },
+            "confidence": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1,
+              "description": "Self-reported per-row certainty. LOGGED, NEVER TRUSTED for triage."
+            }
+          },
+          "required": ["jurisdiction", "amount"]
+        }
+      }
+    },
+    "required": ["rows"]
+  }
+}

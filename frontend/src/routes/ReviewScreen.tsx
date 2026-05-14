@@ -14,6 +14,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { Btn } from '@/components/primitives/Btn'
 import { FieldRow } from '@/components/primitives/FieldRow'
 import { LineItemsTable } from '@/components/primitives/LineItemsTable'
+import { TaxBreakdownTable } from '@/components/primitives/TaxBreakdownTable'
 import { Icons } from '@/components/primitives/Icons'
 import { PdfViewer } from '@/components/primitives/PdfViewer'
 import { ReasonCard, type ReasonAction } from '@/components/primitives/ReasonCard'
@@ -344,6 +345,12 @@ export function ReviewScreen() {
         <div className="review-side-section">
           <div className="review-side-section-title">Line items</div>
           <LineItemsTable items={invoice.current_extraction?.line_items ?? []} />
+        </div>
+
+        {/* Tax breakdown (Day 4) */}
+        <div className="review-side-section">
+          <div className="review-side-section-title">Tax breakdown</div>
+          <TaxBreakdownTable rows={invoice.current_extraction?.tax_breakdown ?? []} />
         </div>
 
         {/* Cascade trace */}

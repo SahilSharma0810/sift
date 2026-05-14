@@ -62,15 +62,16 @@ def make_llm_mock(
     header_seq: list[Any] | None = None,
     vision_seq: list[Any] | None = None,
     line_items: Any = None,
+    tax_breakdown: Any = None,
 ) -> MagicMock:
     """Build a MagicMock satisfying the LLMClient Protocol.
 
     `header` / `vision` set a single return_value. `header_seq` / `vision_seq`
     set a side_effect list for tests that exercise the cascade and need
-    sequential responses across tiers. `line_items` sets the return_value
-    for `extract_line_items`; if omitted, a default empty LineItemsResult
-    is wired in so existing tests keep working without specifying line-item
-    behavior explicitly.
+    sequential responses across tiers. `line_items` and `tax_breakdown` set
+    the return_value for their respective methods; if omitted, defaults
+    with empty results are wired in so existing tests keep passing without
+    specifying behavior for the Day-3/4 methods explicitly.
     """
     mock = MagicMock()
     if header is not None:
@@ -81,9 +82,10 @@ def make_llm_mock(
         mock.extract_header_vision.return_value = vision
     if vision_seq is not None:
         mock.extract_header_vision.side_effect = vision_seq
-    if line_items is None:
-        from app.adapters.llm_client import LineItemsResult
 
+    from app.adapters.llm_client import LineItemsResult, TaxBreakdownResult
+
+    if line_items is None:
         line_items = LineItemsResult(
             items=[],
             model="stub",
@@ -97,6 +99,20 @@ def make_llm_mock(
             },
         )
     mock.extract_line_items.return_value = line_items
+    if tax_breakdown is None:
+        tax_breakdown = TaxBreakdownResult(
+            rows=[],
+            model="stub",
+            prompt_hash="stub",
+            schema_hash="stub",
+            usage={
+                "input_tokens": 0,
+                "output_tokens": 0,
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 0,
+            },
+        )
+    mock.extract_tax_breakdown.return_value = tax_breakdown
     return mock
 
 
@@ -108,6 +124,7 @@ def patch_make_llm_client(
     header_seq: list[Any] | None = None,
     vision_seq: list[Any] | None = None,
     line_items: Any = None,
+    tax_breakdown: Any = None,
 ) -> Generator[MagicMock, None, None]:
     """Patch `make_llm_client` to return a configured mock.
 
@@ -119,6 +136,7 @@ def patch_make_llm_client(
         header_seq=header_seq,
         vision_seq=vision_seq,
         line_items=line_items,
+        tax_breakdown=tax_breakdown,
     )
     with patch("app.services.extraction_service.make_llm_client", return_value=mock):
         yield mock

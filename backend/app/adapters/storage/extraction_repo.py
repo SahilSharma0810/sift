@@ -27,6 +27,7 @@ def create_extraction(
     predicted_triage_reasons: list[dict[str, Any]],
     cascade_trace: dict[str, Any],
     line_items: list[dict[str, Any]] | None = None,
+    tax_breakdown: list[dict[str, Any]] | None = None,
 ) -> Extraction:
     """Create a new extraction and mark it `is_current=True`.
 
@@ -50,6 +51,7 @@ def create_extraction(
         predicted_triage_reasons=predicted_triage_reasons,
         cascade_trace=cascade_trace,
         line_items=line_items or [],
+        tax_breakdown=tax_breakdown or [],
         is_current=True,
     )
     session.add(ext)

@@ -101,6 +101,16 @@ export interface LineItem {
   confidence: number
 }
 
+// ---------- TaxBreakdownLine (Day 4) ----------
+export interface TaxBreakdownLine {
+  jurisdiction: string
+  rate: number | null
+  amount: number
+  bbox: [number, number, number, number] | null
+  page: number
+  confidence: number
+}
+
 // ---------- Vendor memory ----------
 export interface VendorMemoryRule {
   field: string
@@ -142,6 +152,7 @@ export interface ExtractionOut {
   predicted_triage_state: TriageState
   predicted_triage_reasons: TriageReason[]
   line_items: LineItem[]
+  tax_breakdown: TaxBreakdownLine[]
   is_current: boolean
   created_at: string
 }

@@ -47,6 +47,25 @@ class ExtractedField(BaseModel):
     source: ExtractionSource
 
 
+# ---------- TaxBreakdownLine — Day 4 ----------
+class TaxBreakdownLine(BaseModel):
+    """One row of the per-jurisdiction tax breakdown table.
+
+    Day-4 quality-gated extraction surface, mirrors the line-items gate.
+    Math check (sum of `amount` vs header `tax`) is logged but does NOT
+    alter triage state — see PLAN.md Day-4 gate.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    jurisdiction: str
+    rate: float | None = None  # nullable: some invoices show only the amount
+    amount: float
+    bbox: tuple[float, float, float, float] | None = None
+    page: int = 0
+    confidence: float = Field(ge=0.0, le=1.0, default=0.0)
+
+
 # ---------- LineItem — Day 3 ----------
 class LineItem(BaseModel):
     """A single invoice line item (one row of the line-items table).
@@ -191,6 +210,7 @@ class ExtractionOut(BaseModel):
     predicted_triage_state: TriageState
     predicted_triage_reasons: list[TriageReason]
     line_items: list[LineItem] = Field(default_factory=list)
+    tax_breakdown: list[TaxBreakdownLine] = Field(default_factory=list)
     is_current: bool
     created_at: datetime
 
