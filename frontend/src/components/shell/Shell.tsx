@@ -4,13 +4,14 @@ import { Link, Outlet, useLocation, useNavigate, useParams } from 'react-router-
 import { Icons } from '@/components/primitives/Icons'
 import { Kbd } from '@/components/primitives/Kbd'
 import { SearchPalette } from '@/components/search-palette/SearchPalette'
-import { useInboxQuery } from '@/state/invoices'
+import { useAppMetaQuery, useInboxQuery } from '@/state/invoices'
 
 export function Shell() {
   const location = useLocation()
   const params = useParams()
   const [paletteOpen, setPaletteOpen] = useState(false)
   const { data: invoices = [] } = useInboxQuery()
+  const { data: meta } = useAppMetaQuery()
   const navigate = useNavigate()
 
   // ⌘K opens palette · Esc closes
@@ -144,6 +145,37 @@ export function Shell() {
             <Kbd>⌘</Kbd>
             <Kbd>K</Kbd>
           </div>
+
+          {meta?.llm_provider === 'stub' && (
+            <div
+              title="Running with the offline StubLLMClient — no Anthropic API calls. Set SIFT_LLM_PROVIDER=anthropic to use the real cascade."
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '4px 10px',
+                fontSize: 11,
+                fontFamily: 'var(--font-mono)',
+                textTransform: 'uppercase',
+                letterSpacing: '0.06em',
+                color: 'var(--ink-80)',
+                background: '#fff6db',
+                border: '1px solid #e6c75a',
+                cursor: 'help',
+              }}
+            >
+              <span
+                style={{
+                  width: 6,
+                  height: 6,
+                  borderRadius: '50%',
+                  background: '#c89400',
+                  display: 'inline-block',
+                }}
+              />
+              Stub mode
+            </div>
+          )}
         </div>
 
         <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>

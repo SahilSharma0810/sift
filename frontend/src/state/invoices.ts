@@ -4,6 +4,19 @@ import type { InvoiceOut, VendorOut } from '@/types/generated/domain'
 
 import { api } from './api'
 
+export type AppMeta = {
+  version: string
+  llm_provider: 'stub' | 'anthropic'
+}
+
+export function useAppMetaQuery() {
+  return useQuery({
+    queryKey: ['meta'] as const,
+    queryFn: () => api<AppMeta>('/api/meta'),
+    staleTime: Infinity, // doesn't change at runtime
+  })
+}
+
 const KEYS = {
   inbox: ['invoices'] as const,
   invoice: (id: string) => ['invoices', id] as const,

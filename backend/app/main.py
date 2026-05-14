@@ -70,6 +70,11 @@ def create_app() -> FastAPI:
         """Liveness probe — used by Fly for deploy verification."""
         return {"status": "ok", "version": __version__}
 
+    @app.get("/api/meta")
+    def meta() -> dict[str, str]:
+        """Surface non-secret runtime config so the UI can show a stub-mode pill."""
+        return {"version": __version__, "llm_provider": settings.llm_provider}
+
     from app.api import invoices
 
     app.include_router(invoices.router, prefix="/api/invoices", tags=["invoices"])

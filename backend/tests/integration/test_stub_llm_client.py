@@ -102,7 +102,7 @@ class TestStubExtractHeaderVision:
         assert "page" in v
         assert "confidence" in v
         assert len(v["bbox"]) == 4
-        # All bbox values normalized 0–1
+        # All bbox values normalized 0-1
         for coord in v["bbox"]:
             assert 0.0 <= coord <= 1.0
 
