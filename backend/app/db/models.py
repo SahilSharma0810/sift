@@ -67,6 +67,9 @@ class Invoice(Base):
     # review_status: pending | confirmed | dismissed_duplicate | unprocessable
     review_status: Mapped[str] = mapped_column(String(32), default="pending", nullable=False)
 
+    # List of invoice IDs (as strings) that this invoice was dismissed against.
+    duplicate_dismissals: Mapped[list] = mapped_column(JSONB, default=list, nullable=False)
+
     __table_args__ = (
         Index("ix_invoices_file_hash", "file_hash"),
         Index("ix_invoices_perceptual_hash", "perceptual_hash"),

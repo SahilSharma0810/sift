@@ -170,3 +170,44 @@ class TestExtractionRepo:
         db_session.refresh(second)
         assert first.is_current is True
         assert second.is_current is False
+
+
+from app.adapters.storage.invoice_repo import (  # noqa: E402
+    find_phash_candidates,
+    record_duplicate_dismissal,
+    set_perceptual_hash,
+    update_review_status,
+)
+
+
+class TestInvoiceRepoExtensions:
+    def _new_invoice(self, db_session, vendor_name: str, file_hash: str):
+        from app.adapters.storage.invoice_repo import create_invoice
+        from app.adapters.storage.vendor_repo import upsert_by_normalized_name
+
+        v = upsert_by_normalized_name(db_session, name=vendor_name)
+        return create_invoice(
+            db_session, file_path=f"/x-{file_hash}", file_hash=file_hash, vendor_id=v.id
+        )
+
+    def test_phash_candidates_skip_null(self, db_session) -> None:
+        a = self._new_invoice(db_session, "Vendor A D27", "phash-test-a")
+        b = self._new_invoice(db_session, "Vendor B D27", "phash-test-b")
+        set_perceptual_hash(db_session, invoice_id=a.id, perceptual_hash="ffffffffffffffff")
+        cands = find_phash_candidates(db_session)
+        ids = {c.id for c in cands}
+        assert a.id in ids
+        assert b.id not in ids
+
+    def test_update_review_status(self, db_session) -> None:
+        inv = self._new_invoice(db_session, "Status Vendor D27", "status-d27-1")
+        out = update_review_status(db_session, invoice_id=inv.id, review_status="confirmed")
+        assert out.review_status == "confirmed"
+
+    def test_record_duplicate_dismissal_is_idempotent(self, db_session) -> None:
+        a = self._new_invoice(db_session, "Dismiss A D27", "dismiss-d27-a")
+        b = self._new_invoice(db_session, "Dismiss B D27", "dismiss-d27-b")
+        record_duplicate_dismissal(db_session, invoice_id=a.id, dismissed_against_id=b.id)
+        record_duplicate_dismissal(db_session, invoice_id=a.id, dismissed_against_id=b.id)
+        db_session.refresh(a)
+        assert a.duplicate_dismissals == [str(b.id)]
