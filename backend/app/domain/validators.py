@@ -99,6 +99,16 @@ DATE_FORMATS = (
     "%d.%m.%Y",
     "%B %d, %Y",
     "%d %B %Y",
+    # 2-digit-year variants commonly seen on US invoices
+    "%m/%d/%y",
+    "%d/%m/%y",
+    "%m-%d-%y",
+    "%d-%m-%y",
+    # Abbreviated month name (Jan, Feb, ...)
+    "%b %d, %Y",
+    "%d %b %Y",
+    "%d-%b-%Y",
+    "%d-%b-%y",
 )
 
 
@@ -179,6 +189,13 @@ NEUTRAL_SCORE = 0.9
 MATH_FAIL_FLOOR = 0.2
 MISSING_OR_INVALID = 0.0
 HIGH_SCORE = 1.0
+# Present-but-structurally-unrecognized floor. Used when a field has a
+# value but our format validator doesn't recognize it (e.g. a date in
+# a format outside DATE_FORMATS, or a currency string that isn't an
+# ISO code). Drops composite below CASCADE_THRESHOLD so triage flags
+# low_confidence, but stays non-zero so the inbox confidence badge
+# doesn't display the misleading "Confident 0%".
+PRESENT_BUT_INVALID = 0.3
 
 AMOUNT_FIELDS = ("subtotal", "tax", "total")
 
@@ -222,23 +239,26 @@ def compute_structural_scores(fields: dict[str, object]) -> dict[str, float]:
         else:
             scores[field] = MATH_FAIL_FLOOR
 
-    # Date — format-validate.
+    # Date — format-validate. Present-but-unrecognized formats get
+    # PRESENT_BUT_INVALID (0.3), not 0.0, so the inbox badge doesn't
+    # display 0% on otherwise-valid extractions just because the date
+    # string used a format outside our DATE_FORMATS tuple.
     if "invoice_date" in missing:
         scores["invoice_date"] = MISSING_OR_INVALID
+    elif is_valid_date(str(fields.get("invoice_date"))):
+        scores["invoice_date"] = HIGH_SCORE
     else:
-        scores["invoice_date"] = (
-            HIGH_SCORE if is_valid_date(str(fields.get("invoice_date"))) else MISSING_OR_INVALID
-        )
+        scores["invoice_date"] = PRESENT_BUT_INVALID
 
-    # Currency — code-validate.
+    # Currency — code-validate. Same PRESENT_BUT_INVALID semantics: an
+    # unrecognized but present currency string (e.g. a non-ISO symbol)
+    # isn't the same as absent.
     if "currency" in missing:
         scores["currency"] = MISSING_OR_INVALID
+    elif is_valid_currency_code(str(fields.get("currency"))):
+        scores["currency"] = HIGH_SCORE
     else:
-        scores["currency"] = (
-            HIGH_SCORE
-            if is_valid_currency_code(str(fields.get("currency")))
-            else MISSING_OR_INVALID
-        )
+        scores["currency"] = PRESENT_BUT_INVALID
 
     # Fields without a structural rule (vendor_name, invoice_number) get the
     # neutral 0.9 ceiling per ADR-0003 unless missing.

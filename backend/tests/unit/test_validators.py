@@ -165,7 +165,11 @@ class TestComputeStructuralScores:
         scores = compute_structural_scores(fields)
         assert scores["currency"] == 0.0
 
-    def test_bad_date_floors_to_zero(self) -> None:
+    def test_bad_date_floors_to_present_but_invalid(self) -> None:
+        """Present-but-unparseable date scores PRESENT_BUT_INVALID (0.3), not
+        MISSING_OR_INVALID (0.0). Drops composite below CASCADE_THRESHOLD so
+        triage flags low_confidence, but stays non-zero so the inbox badge
+        doesn't display "Confident 0%" on otherwise-good extractions."""
         fields = {
             "vendor_name": "Vega Logistics",
             "invoice_number": "INV-001",
@@ -176,7 +180,7 @@ class TestComputeStructuralScores:
             "currency": "USD",
         }
         scores = compute_structural_scores(fields)
-        assert scores["invoice_date"] == 0.0
+        assert 0.0 < scores["invoice_date"] < 0.7  # below cascade threshold
 
     def test_neutral_ceiling_for_unstructurable_fields(self) -> None:
         # vendor_name has no structural rule that can validate it without
