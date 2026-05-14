@@ -145,13 +145,16 @@ class TestSearchByTriage:
 
 class TestSearchFTS:
     def test_fts_matches_vendor_name(self, api_client: TestClient) -> None:
-        _upload(api_client, "fts-1", "QA SearchVendor Vega Logistics", 1180.0)
-        _upload(api_client, "fts-2", "QA SearchVendor Halcyon Software", 34062.50)
+        # Use a unique test-only vendor token that won't collide with any
+        # demo-seed data sitting in the dev DB (SAVEPOINT isolation prevents
+        # the test from polluting forward, not backward).
+        _upload(api_client, "fts-1", "QA SearchVendor VegaToken", 1180.0)
+        _upload(api_client, "fts-2", "QA SearchVendor HalcyonToken", 34062.50)
 
         res = api_client.post(
             "/api/search",
             json={
-                "filters": [{"field": "raw_text", "op": "fts_matches", "value": "halcyon"}],
+                "filters": [{"field": "raw_text", "op": "fts_matches", "value": "halcyontoken"}],
                 "limit": 50,
             },
         )
@@ -160,7 +163,7 @@ class TestSearchFTS:
         assert len(body) == 1
         assert (
             body[0]["current_extraction"]["extracted_fields"]["vendor_name"]["value"]
-            == "QA SearchVendor Halcyon Software"
+            == "QA SearchVendor HalcyonToken"
         )
 
     def test_fts_contains_substring(self, api_client: TestClient) -> None:
