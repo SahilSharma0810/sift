@@ -48,4 +48,25 @@ Every scenario returns a `total` that's off by $1 on tier-1 (Haiku) vs tier-2 (S
 
 ---
 
+## What gets extracted
+
+| Field group        | Surface              | Source / status |
+|---|---|---|
+| Header fields      | vendor_name, invoice_number, invoice_date, subtotal, tax, total, currency | Shipped Day 1 / 2 |
+| Bounding boxes     | per-field rect on the PDF for hover-highlight | Shipped Day 2 (digital + vision) |
+| Cascade trace      | every tier the request hit, with token usage   | Shipped Day 2 |
+| Anomaly + duplicate flags | flagged in the review pane with the matching reason card | Shipped Day 2 |
+| **Line items**     | description / quantity / unit price / line total per row | Shipped Day 3 — quality-gated |
+| Tax breakdown      | per-jurisdiction tax rows | Day 4 (gated) |
+
+### Day-3 line items — what's in vs deliberately out
+
+**In:** `extractions.line_items` JSONB column · separate LLM method (`extract_line_items`) at the cascade-final tier · stub returns scenario-appropriate line items (Vega freight x3 / Halcyon software x2 / Bramble catering x5) · read-only table mounted in `ReviewScreen` below the header fields panel · `line_items_sum_check` validator runs after extraction.
+
+**Deliberately out for Day 3:** inline editing of line items · per-line bbox-on-hover · vision-path line items (the vision branch returns `[]` for line items in Day 3) · line-item-level cascade · `line_items_dont_sum` as a triage reason (sum mismatch is logged but does NOT change `predicted_triage_state` — Day-3 line items are quality-gated and false-positive math reasons would pollute the inbox).
+
+**Eval gate (Day 5):** when running with `SIFT_LLM_PROVIDER=anthropic`, the line-items section will be benchmarked against a DocILE subset. If the per-line F1 falls below the threshold documented in `EVAL.md`, the section gets cut from the demo seed with a written failure analysis — that's the PLAN.md "honest cut" path rather than half-shipping unreliable extraction.
+
+---
+
 This README is still a placeholder for the rest of the project narrative. The real README ships on Day 5 with the 60-second demo story, architecture diagram, eval numbers, and live URL.
