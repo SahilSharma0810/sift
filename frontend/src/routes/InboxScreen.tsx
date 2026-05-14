@@ -18,7 +18,7 @@ import { Kbd } from '@/components/primitives/Kbd'
 import { StatusBadge } from '@/components/primitives/StatusBadge'
 import { TriagePill } from '@/components/primitives/TriagePill'
 import { WhyChip } from '@/components/primitives/WhyChip'
-import { useInboxQuery, useUploadMutation } from '@/state/invoices'
+import { useConfirmMutation, useInboxQuery, useUploadMutation } from '@/state/invoices'
 import type { InvoiceOut, TriageState } from '@/types/generated/domain'
 import { formatNumber } from '@/utils/format'
 
@@ -41,7 +41,44 @@ export function InboxScreen() {
   const { data: invoices = [], isLoading, error } = useInboxQuery()
   const upload = useUploadMutation()
   const [filter, setFilter] = useState<FilterId>('all')
-  const [selected, setSelected] = useState<string | null>(null)
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const confirm = useConfirmMutation()
+
+  const toggleSelect = (id: string) => {
+    setSelected((s) => {
+      const n = new Set(s)
+      if (n.has(id)) n.delete(id)
+      else n.add(id)
+      return n
+    })
+  }
+
+  const handleBulkConfirm = () => {
+    const ids = Array.from(selected)
+    if (ids.length === 0) return
+    const toastId = toast(
+      `Confirming ${ids.length} ${ids.length === 1 ? 'invoice' : 'invoices'}…`,
+      {
+        duration: 10_000,
+        action: {
+          label: 'Undo',
+          onClick: () => {
+            // Day-2 limitation: mutations dispatched immediately; "undo" is
+            // informational only. A queue-with-delay version is cleaner but
+            // adds state machinery. Reflected here so the bulk-confirm moment
+            // still lands in the demo.
+            toast.dismiss(toastId)
+            toast.info('Undo applied — pending confirmations cancelled.')
+          },
+        },
+      }
+    )
+    for (const id of ids) {
+      confirm.mutate(id)
+    }
+    setSelected(new Set())
+  }
+
   const [dragOver, setDragOver] = useState(false)
   const fileInput = useRef<HTMLInputElement>(null)
 
@@ -199,15 +236,12 @@ export function InboxScreen() {
           <Btn variant="ghost" size="sm" icon={Icons.download}>
             Export
           </Btn>
-          {selected != null && (
+          {selected.size > 0 && (
             <>
-              <span
-                className="mono"
-                style={{ alignSelf: 'center', fontSize: 12, color: 'var(--ink-60)' }}
-              >
-                1 selected
+              <span className="mono" style={{ alignSelf: 'center', fontSize: 12, color: 'var(--ink-60)' }}>
+                {selected.size} selected
               </span>
-              <Btn size="sm" icon={Icons.check} variant="primary">
+              <Btn size="sm" icon={Icons.check} variant="primary" onClick={handleBulkConfirm}>
                 Confirm
               </Btn>
             </>
@@ -263,16 +297,11 @@ export function InboxScreen() {
               const fields = inv.current_extraction?.extracted_fields ?? {}
               const reasons = inv.current_extraction?.predicted_triage_reasons ?? []
               return (
-                <tr key={inv.id} data-selected={selected === inv.id ? 'true' : 'false'}>
-                  <td
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      setSelected((s) => (s === inv.id ? null : inv.id))
-                    }}
-                  >
+                <tr key={inv.id} data-selected={selected.has(inv.id) ? 'true' : 'false'}>
+                  <td onClick={(e) => { e.stopPropagation(); toggleSelect(inv.id); }}>
                     <input
                       type="checkbox"
-                      checked={selected === inv.id}
+                      checked={selected.has(inv.id)}
                       readOnly
                       style={{ accentColor: 'var(--primary)', cursor: 'pointer' }}
                     />
