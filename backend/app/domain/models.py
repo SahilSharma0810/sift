@@ -18,13 +18,16 @@ from pydantic import BaseModel, ConfigDict, Field
 # ---------- Triage states + review statuses ----------
 TriageState = Literal["confident", "needs_review", "likely_duplicate"]
 ReviewStatus = Literal["pending", "confirmed", "dismissed_duplicate", "unprocessable"]
-ExtractionSource = Literal[
-    "pymupdf+haiku",
-    "claude-vision",
-    "memory-applied",
-    "manual-correction",
-    "manual-entry",
-]
+# Open-ended string so the service can emit `pymupdf+<full-model-id>` without
+# requiring a Literal update on every model rename. The frontend SourceBadge
+# component tokenizes by model keyword (haiku / sonnet / opus / memory /
+# manual). Known prefixes for documentation:
+#   "pymupdf+<model>"     digital text extraction
+#   "claude-vision"       vision tool-use
+#   "memory-applied"      auto-filled from vendor memory rule
+#   "manual-correction"   clerk edited an extracted value
+#   "manual-entry"        clerk filled an unextracted/failed field
+ExtractionSource = str
 
 
 # ---------- ExtractedField — locked shape from PLAN.md ----------
