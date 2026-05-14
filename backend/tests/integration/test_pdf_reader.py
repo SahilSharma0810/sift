@@ -11,7 +11,13 @@ from pathlib import Path
 
 import pytest
 
-from app.adapters.pdf_reader import has_text, read_digital, resolve_bboxes
+from app.adapters.pdf_reader import (
+    compute_perceptual_hash,
+    has_text,
+    read_digital,
+    render_page_pngs,
+    resolve_bboxes,
+)
 
 FIXTURES = Path(__file__).parents[1] / "fixtures"
 CLEAN_PDF = FIXTURES / "digital_invoice_clean.pdf"
@@ -86,3 +92,24 @@ def test_has_text_on_image_only(tmp_path: Path) -> None:
     doc.save(str(out))
     doc.close()
     assert has_text(out) is False
+
+
+@pytest.mark.skipif(not CLEAN_PDF.exists(), reason="run generate_clean.py first")
+class TestPerceptualHash:
+    def test_returns_16_hex_chars(self) -> None:
+        h = compute_perceptual_hash(CLEAN_PDF)
+        assert isinstance(h, str)
+        assert len(h) == 16
+        int(h, 16)  # parses as hex
+
+    def test_same_pdf_same_hash(self) -> None:
+        assert compute_perceptual_hash(CLEAN_PDF) == compute_perceptual_hash(CLEAN_PDF)
+
+
+@pytest.mark.skipif(not CLEAN_PDF.exists(), reason="run generate_clean.py first")
+class TestRenderPagePngs:
+    def test_renders_at_least_one_page(self, tmp_path) -> None:
+        pages = render_page_pngs(CLEAN_PDF, scale=1.2)
+        assert len(pages) >= 1
+        # Each entry is raw PNG bytes
+        assert pages[0][:8] == b"\x89PNG\r\n\x1a\n"

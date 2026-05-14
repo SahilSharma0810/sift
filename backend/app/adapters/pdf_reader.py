@@ -6,10 +6,13 @@ PyMuPDF (`fitz`) extracts text and per-word bounding boxes. The vision path
 
 from __future__ import annotations
 
+import io
 from dataclasses import dataclass
 from pathlib import Path
 
 import fitz  # PyMuPDF
+import imagehash
+from pdf2image import convert_from_path
 
 
 @dataclass(frozen=True, slots=True)
@@ -141,3 +144,29 @@ def _find_token_run(
 
 def _normalize_token(s: str) -> str:
     return s.strip().rstrip(".,:;").lower()
+
+
+def compute_perceptual_hash(pdf_path: Path) -> str:
+    """64-bit phash of the first page rendered to a small image.
+
+    Used for visual-duplicate detection. Returns a 16-char hex string.
+    """
+    images = convert_from_path(str(pdf_path), first_page=1, last_page=1, dpi=72)
+    if not images:
+        raise ValueError(f"no pages rendered from {pdf_path}")
+    return str(imagehash.phash(images[0]))
+
+
+def render_page_pngs(pdf_path: Path, *, scale: float = 1.2) -> list[bytes]:
+    """Render each page to a PNG byte string. Used by the vision LLM path.
+
+    `scale` controls the rasterization quality. Default 1.2 balances OCR
+    accuracy against token cost (Day-2 risk-surface note).
+    """
+    images = convert_from_path(str(pdf_path), dpi=int(72 * scale))
+    out: list[bytes] = []
+    for img in images:
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        out.append(buf.getvalue())
+    return out
