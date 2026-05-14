@@ -67,14 +67,19 @@ export function Shell() {
               {counts.needs_review + counts.confident + counts.likely_duplicate}
             </span>
           </Link>
-          <div className="nav-item" onClick={() => setPaletteOpen(true)}>
+          <Link
+            to="/search"
+            className="nav-item"
+            data-active={location.pathname === '/search'}
+            style={{ textDecoration: 'none' }}
+          >
             <Icons.search />
             <span>Search</span>
             <span style={{ marginLeft: 'auto', display: 'flex', gap: 2 }}>
               <Kbd>⌘</Kbd>
               <Kbd>K</Kbd>
             </span>
-          </div>
+          </Link>
           <div className="nav-item">
             <Icons.bell />
             <span>Anomalies</span>

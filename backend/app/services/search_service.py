@@ -26,12 +26,10 @@ StructuredQuery semantics onto the columns:
 from __future__ import annotations
 
 from datetime import date, datetime
-from typing import Any, Callable
-from uuid import UUID
+from typing import Any
 
 import structlog
-from sqlalchemy import and_, cast, func, or_, select, text
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy import and_, cast, func, select, text
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy.sql.expression import ColumnElement
 
@@ -51,16 +49,8 @@ def _ef_value(field_name: str):
     return Extraction.extracted_fields[field_name]["value"].astext
 
 
-def _ef_numeric(field_name: str):
-    """Same path, cast to numeric. Used for amount comparisons."""
-    return cast(_ef_value(field_name), JSONB).cast(type_=None)  # cast handled inline below
-
-
 def _build_numeric_clause(field_json_key: str, op: str, value: Any) -> ColumnElement[bool]:
-    col = func.cast(_ef_value(field_json_key), func.cast.type)  # placeholder, replaced below
-    # SQLAlchemy func.cast above is awkward — use text() with NUMERIC cast on the JSONB path.
-    raw = func.nullif(_ef_value(field_json_key), "").cast(type_=None)
-    # Switch to a direct cast expression:
+    """Cast the JSONB text value to NUMERIC for amount comparisons."""
     from sqlalchemy import Numeric
 
     casted = cast(_ef_value(field_json_key), Numeric)
@@ -108,7 +98,6 @@ def _build_date_clause(json_key: str, op: str, value: Any) -> ColumnElement[bool
     to a Postgres date at query time. Invoices whose date string doesn't
     parse silently fall out of date-filtered queries — acceptable for now,
     flagged in EVAL.md if it becomes an issue."""
-    from sqlalchemy import Date
 
     col_text = _ef_value(json_key)
     casted = func.to_date(col_text, "YYYY-MM-DD")

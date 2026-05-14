@@ -34,11 +34,18 @@ def _llm_result(vendor: str, number: str, total: float, currency: str = "USD") -
         model="claude-haiku-4-5",
         prompt_hash="h",
         schema_hash="h",
-        usage={"input_tokens": 100, "output_tokens": 20, "cache_creation_input_tokens": 0, "cache_read_input_tokens": 0},
+        usage={
+            "input_tokens": 100,
+            "output_tokens": 20,
+            "cache_creation_input_tokens": 0,
+            "cache_read_input_tokens": 0,
+        },
     )
 
 
-def _upload(client: TestClient, marker: str, vendor: str, total: float, currency: str = "USD") -> str:
+def _upload(
+    client: TestClient, marker: str, vendor: str, total: float, currency: str = "USD"
+) -> str:
     body = CLEAN_PDF.read_bytes() + f"\n%{marker}\n".encode()
     with patch_make_llm_client(header=_llm_result(vendor, f"INV-{marker}", total, currency)):
         res = client.post(
@@ -57,14 +64,19 @@ class TestSearchByVendor:
         res = api_client.post(
             "/api/search",
             json={
-                "filters": [{"field": "vendor_name", "op": "eq", "value": "QA SearchVendor Vega Logistics"}],
+                "filters": [
+                    {"field": "vendor_name", "op": "eq", "value": "QA SearchVendor Vega Logistics"}
+                ],
                 "limit": 50,
             },
         )
         assert res.status_code == 200
         body = res.json()
         assert len(body) == 1
-        assert body[0]["current_extraction"]["extracted_fields"]["vendor_name"]["value"] == "QA SearchVendor Vega Logistics"
+        assert (
+            body[0]["current_extraction"]["extracted_fields"]["vendor_name"]["value"]
+            == "QA SearchVendor Vega Logistics"
+        )
 
 
 class TestSearchByTotal:
@@ -108,9 +120,7 @@ class TestSearchByTotal:
         )
         body = res.json()
         assert len(body) == 1
-        assert (
-            float(body[0]["current_extraction"]["extracted_fields"]["total"]["value"]) == 5000.0
-        )
+        assert float(body[0]["current_extraction"]["extracted_fields"]["total"]["value"]) == 5000.0
 
 
 class TestSearchByTriage:
@@ -122,9 +132,7 @@ class TestSearchByTriage:
         res = api_client.post(
             "/api/search",
             json={
-                "filters": [
-                    {"field": "triage_state", "op": "eq", "value": "likely_duplicate"}
-                ],
+                "filters": [{"field": "triage_state", "op": "eq", "value": "likely_duplicate"}],
                 "limit": 50,
             },
         )
@@ -143,16 +151,17 @@ class TestSearchFTS:
         res = api_client.post(
             "/api/search",
             json={
-                "filters": [
-                    {"field": "raw_text", "op": "fts_matches", "value": "halcyon"}
-                ],
+                "filters": [{"field": "raw_text", "op": "fts_matches", "value": "halcyon"}],
                 "limit": 50,
             },
         )
         assert res.status_code == 200
         body = res.json()
         assert len(body) == 1
-        assert body[0]["current_extraction"]["extracted_fields"]["vendor_name"]["value"] == "QA SearchVendor Halcyon Software"
+        assert (
+            body[0]["current_extraction"]["extracted_fields"]["vendor_name"]["value"]
+            == "QA SearchVendor Halcyon Software"
+        )
 
     def test_fts_contains_substring(self, api_client: TestClient) -> None:
         """`contains` falls back to ILIKE for substring matching."""
@@ -168,7 +177,10 @@ class TestSearchFTS:
         )
         body = res.json()
         assert len(body) == 1
-        assert body[0]["current_extraction"]["extracted_fields"]["vendor_name"]["value"] == "Acme Catering"
+        assert (
+            body[0]["current_extraction"]["extracted_fields"]["vendor_name"]["value"]
+            == "Acme Catering"
+        )
 
 
 class TestSearchMalformedQuery:
@@ -194,6 +206,49 @@ class TestSearchMalformedQuery:
             },
         )
         assert res.status_code == 422
+
+
+class TestSearchExport:
+    def test_csv_export_includes_audit_header_and_rows(self, api_client: TestClient) -> None:
+        _upload(api_client, "exp-csv-1", "QA Export Vega", 1180.0)
+
+        res = api_client.post(
+            "/api/search/export?format=csv",
+            json={
+                "filters": [{"field": "vendor_name", "op": "eq", "value": "QA Export Vega"}],
+                "limit": 50,
+            },
+        )
+        assert res.status_code == 200
+        text = res.text
+        # Audit comment lines for round-trip provenance
+        assert text.startswith("# Sift export")
+        assert "# Query:" in text
+        # CSV header row
+        assert "invoice_id,vendor_name" in text
+        # The single matching row
+        assert "QA Export Vega" in text
+        # Filename attachment
+        assert res.headers["content-disposition"].startswith("attachment;")
+        assert res.headers["content-type"].startswith("text/csv")
+
+    def test_json_export_wraps_with_metadata(self, api_client: TestClient) -> None:
+        _upload(api_client, "exp-json-1", "QA Export JsonVendor", 250.0)
+
+        res = api_client.post(
+            "/api/search/export?format=json",
+            json={
+                "filters": [{"field": "vendor_name", "op": "eq", "value": "QA Export JsonVendor"}],
+                "limit": 50,
+            },
+        )
+        assert res.status_code == 200
+        import json as _json
+
+        body = _json.loads(res.text)
+        assert body["row_count"] == len(body["rows"]) == 1
+        assert body["query"]["filters"][0]["field"] == "vendor_name"
+        assert body["rows"][0]["vendor_name"] == "QA Export JsonVendor"
 
 
 class TestSearchEmptyQuery:

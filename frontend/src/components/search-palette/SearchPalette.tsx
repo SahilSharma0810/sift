@@ -1,136 +1,44 @@
 /**
  * SearchPalette — opens on ⌘K. NL → typed chips → results.
- * Chips ARE the state (ADR-0004). Untranslated intent surfaces above results.
  *
- * Day-1: client-side translation map mirrors the design; client-side filter
- * against useInboxQuery data. Day-4 will replace `translate()` with a real
- * /api/nl-query call and the chip filter with a server-side StructuredQuery.
+ * Day-4: both translation and result filtering go through the backend
+ * (/api/search/translate + /api/search). This keeps a single source of
+ * truth — the palette can't disagree with the full /search page on what
+ * translates or what matches.
+ *
+ * "Chips ARE the state" (ADR-0004). Untranslated intent surfaces above
+ * results — never silently dropped. Result rows navigate to /invoice/:id;
+ * the "Open in full search" footer link deep-links the same chip set
+ * into /search?q=... for further refinement.
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 
 import { Chip } from '@/components/primitives/Chip'
 import { Icons } from '@/components/primitives/Icons'
 import { Kbd } from '@/components/primitives/Kbd'
 import { TriagePill } from '@/components/primitives/TriagePill'
-import { useInboxQuery } from '@/state/invoices'
-import type { InvoiceOut, TriageState } from '@/types/generated/domain'
+import {
+  type FilterClause,
+  type StructuredQuery,
+  useSearchQuery,
+  useTranslateMutation,
+} from '@/state/invoices'
+import type { TriageState } from '@/types/generated/domain'
 import { formatNumber } from '@/utils/format'
 
-type ChipValue = string | number | boolean | Array<string | number>
-type FilterChip = { field: string; op: string; value: ChipValue }
-type Translation = { chips: FilterChip[]; untranslated: string | null }
-
-const TRANSLATIONS: Array<{
-  test: (s: string) => boolean
-  chips: FilterChip[]
-  untranslated: string | null
-}> = [
-  {
-    test: (s) =>
-      /vega/i.test(s) && /3\s*month/i.test(s) && /(\$|usd)?\s*5\s*k/i.test(s),
-    chips: [
-      { field: 'vendor_name', op: 'eq', value: 'Vega Logistics' },
-      { field: 'invoice_date', op: 'between', value: ['2026-02-13', '2026-05-13'] },
-      { field: 'total', op: 'gte', value: 5000 },
-    ],
-    untranslated: null,
-  },
-  {
-    test: (s) => /duplicate/i.test(s) && /(this month|may)/i.test(s),
-    chips: [
-      { field: 'is_duplicate', op: 'eq', value: 'true' },
-      { field: 'invoice_date', op: 'between', value: ['2026-05-01', '2026-05-31'] },
-    ],
-    untranslated: null,
-  },
-  {
-    test: (s) => /needs review/i.test(s) && /acme/i.test(s),
-    chips: [
-      { field: 'triage_state', op: 'eq', value: 'needs_review' },
-      { field: 'vendor_name', op: 'contains', value: 'Acme' },
-    ],
-    untranslated: null,
-  },
-  {
-    test: (s) => /high(est)?\s*spend|biggest invoices?|largest/i.test(s),
-    chips: [{ field: 'total', op: 'gte', value: 10000 }],
-    untranslated: 'sort by total descending — top N',
-  },
-  {
-    test: (s) => /math.*(fail|wrong|off)/i.test(s),
-    chips: [{ field: 'triage_state', op: 'eq', value: 'needs_review' }],
-    untranslated: 'filter to math-reconciliation reason only',
-  },
-]
-
 const SUGGESTED = [
-  'Vega invoices last 3 months over $5k',
-  'duplicates this month',
-  'needs review from Acme',
-  'biggest invoices this quarter',
-  'show extractions where math failed',
+  'duplicates from Vega',
+  'invoices over $5000',
+  'anomalies this month',
+  'encrypted invoices',
+  'confirmed from Halcyon Software',
 ]
 
-function translate(q: string): Translation {
-  for (const t of TRANSLATIONS) {
-    if (t.test(q)) return { chips: t.chips, untranslated: t.untranslated }
-  }
-  return { chips: [], untranslated: null }
-}
-
-function getFieldValue(inv: InvoiceOut, name: string): unknown {
-  const fields = inv.current_extraction?.extracted_fields ?? {}
-  switch (name) {
-    case 'vendor_name':
-      return fields.vendor_name?.value
-    case 'invoice_date':
-      return fields.invoice_date?.value
-    case 'total':
-      return fields.total?.value
-    case 'currency':
-      return fields.currency?.value
-    case 'triage_state':
-      return inv.current_extraction?.predicted_triage_state
-    case 'is_duplicate':
-      return inv.current_extraction?.predicted_triage_state === 'likely_duplicate'
-        ? 'true'
-        : 'false'
-    default:
-      return null
-  }
-}
-
-function chipMatches(inv: InvoiceOut, c: FilterChip): boolean {
-  const v = getFieldValue(inv, c.field)
-  if (v == null) return false
-  switch (c.op) {
-    case 'eq':
-      return String(v) === String(c.value)
-    case 'neq':
-      return String(v) !== String(c.value)
-    case 'gt':
-      return Number(v) > Number(c.value)
-    case 'gte':
-      return Number(v) >= Number(c.value)
-    case 'lt':
-      return Number(v) < Number(c.value)
-    case 'lte':
-      return Number(v) <= Number(c.value)
-    case 'contains':
-      return String(v).toLowerCase().includes(String(c.value).toLowerCase())
-    case 'between': {
-      if (!Array.isArray(c.value) || c.value.length !== 2) return true
-      const [a, b] = c.value
-      return String(v) >= String(a) && String(v) <= String(b)
-    }
-    default:
-      return true
-  }
-}
-
-function filterByChips(invoices: InvoiceOut[], chips: FilterChip[]): InvoiceOut[] {
-  if (chips.length === 0) return invoices
-  return invoices.filter((inv) => chips.every((c) => chipMatches(inv, c)))
+const EMPTY_TRANSLATION: StructuredQuery = {
+  filters: [],
+  limit: 50,
+  untranslated_intent: null,
 }
 
 export function SearchPalette({
@@ -140,33 +48,66 @@ export function SearchPalette({
   onClose: () => void
   onOpen: (id: string) => void
 }) {
-  const { data: invoices = [] } = useInboxQuery()
-  const [q, setQ] = useState('Vega invoices last 3 months over $5k')
-  const [chips, setChips] = useState<FilterChip[]>([])
-  const [untranslated, setUntranslated] = useState<string | null>(null)
+  const [q, setQ] = useState('')
+  const [debounced, setDebounced] = useState('')
   const inputRef = useRef<HTMLInputElement>(null)
+  const navigate = useNavigate()
 
   useEffect(() => {
     inputRef.current?.focus()
     inputRef.current?.select()
   }, [])
 
+  // Debounce typing so we don't translate on every keystroke.
   useEffect(() => {
-    if (q.trim() === '') {
-      setChips([])
-      setUntranslated(null)
-      return
-    }
-    const id = setTimeout(() => {
-      const t = translate(q)
-      setChips(t.chips)
-      setUntranslated(t.untranslated)
-    }, 220)
+    const id = setTimeout(() => setDebounced(q.trim()), 240)
     return () => clearTimeout(id)
   }, [q])
 
-  const results = useMemo(() => filterByChips(invoices, chips), [invoices, chips])
-  const hasQuery = q.trim() !== ''
+  const translate = useTranslateMutation()
+  const [translation, setTranslation] = useState<StructuredQuery>(EMPTY_TRANSLATION)
+  const [removedChips, setRemovedChips] = useState<Set<number>>(new Set())
+
+  useEffect(() => {
+    if (debounced === '') {
+      setTranslation(EMPTY_TRANSLATION)
+      setRemovedChips(new Set())
+      return
+    }
+    let cancelled = false
+    translate
+      .mutateAsync(debounced)
+      .then((result) => {
+        if (cancelled) return
+        setTranslation(result)
+        setRemovedChips(new Set())
+      })
+      .catch(() => {
+        if (cancelled) return
+        setTranslation({ ...EMPTY_TRANSLATION, untranslated_intent: debounced })
+      })
+    return () => {
+      cancelled = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debounced])
+
+  const effectiveQuery = useMemo<StructuredQuery>(() => {
+    const filters = translation.filters.filter((_, i) => !removedChips.has(i))
+    return { ...translation, filters }
+  }, [translation, removedChips])
+
+  // Don't hit /api/search until we have at least one chip — palette doesn't
+  // need to show "everything" on empty input (the inbox screen does that).
+  const shouldSearch = effectiveQuery.filters.length > 0
+  const { data: results = [], isFetching } = useSearchQuery(
+    shouldSearch ? effectiveQuery : { filters: [], limit: 0, untranslated_intent: null },
+  )
+
+  const handleDeepLink = () => {
+    onClose()
+    navigate(`/search?q=${encodeURIComponent(JSON.stringify(effectiveQuery))}`)
+  }
 
   return (
     <div className="scrim" onClick={onClose}>
@@ -180,34 +121,38 @@ export function SearchPalette({
             placeholder="Search invoices, or ask in plain English…"
             onKeyDown={(e) => {
               if (e.key === 'Escape') onClose()
+              if (e.key === 'Enter' && results.length === 1) {
+                onOpen(results[0].id)
+              }
             }}
           />
+          {translate.isPending && (
+            <span style={{ fontSize: 10.5, color: 'var(--ink-48)' }}>translating…</span>
+          )}
           <Kbd>esc</Kbd>
         </div>
 
-        {hasQuery && chips.length > 0 && (
+        {effectiveQuery.filters.length > 0 && (
           <div className="palette-chips">
-            {chips.map((c, i) => (
-              <Chip
-                key={i}
-                field={c.field}
-                op={c.op}
-                value={c.value}
-                onRemove={() => setChips((cs) => cs.filter((_, j) => j !== i))}
-              />
-            ))}
-            <span className="chip chip-add">
-              <Icons.plus />
-              <span>Add filter</span>
-            </span>
+            {translation.filters.map((c: FilterClause, i: number) =>
+              removedChips.has(i) ? null : (
+                <Chip
+                  key={i}
+                  field={c.field}
+                  op={c.op}
+                  value={c.value as never}
+                  onRemove={() => setRemovedChips((s) => new Set(s).add(i))}
+                />
+              ),
+            )}
           </div>
         )}
 
-        {untranslated && (
+        {translation.untranslated_intent && (
           <div className="palette-untranslated">
             <Icons.warn />
             <div>
-              <b>Partially translated.</b> Couldn't express this in structured query:{' '}
+              <b>Partially translated.</b> Couldn't express this in a structured filter:{' '}
               <span
                 className="mono-snip"
                 style={{
@@ -216,14 +161,14 @@ export function SearchPalette({
                   fontFamily: 'var(--font-mono)',
                 }}
               >
-                "{untranslated}"
+                "{translation.untranslated_intent}"
               </span>{' '}
               — results below ignore that constraint.
             </div>
           </div>
         )}
 
-        {!hasQuery ? (
+        {debounced === '' ? (
           <div className="palette-section">
             <div className="palette-section-head">Try</div>
             {SUGGESTED.map((s, i) => (
@@ -234,7 +179,7 @@ export function SearchPalette({
               </div>
             ))}
           </div>
-        ) : chips.length === 0 ? (
+        ) : !shouldSearch ? (
           <div
             style={{
               padding: '28px 18px',
@@ -243,11 +188,13 @@ export function SearchPalette({
               textAlign: 'center',
             }}
           >
-            No translation yet — try one of the suggestions above, or rephrase.
+            No structured translation found — try one of the suggestions above, or rephrase.
           </div>
         ) : (
           <div className="palette-section" style={{ maxHeight: 360, overflowY: 'auto' }}>
-            <div className="palette-section-head">Results</div>
+            <div className="palette-section-head">
+              Results {isFetching && <span className="muted">(loading…)</span>}
+            </div>
             {results.length === 0 ? (
               <div className="palette-row" style={{ color: 'var(--ink-48)' }}>
                 No invoices match this query.
@@ -308,15 +255,19 @@ export function SearchPalette({
           }}
         >
           <span>
-            <Kbd>↑</Kbd>
-            <Kbd>↓</Kbd> navigate
-          </span>
-          <span>
             <Kbd>↵</Kbd> open
           </span>
           <span>
-            <Kbd>tab</Kbd> edit chip
+            <Kbd>esc</Kbd> close
           </span>
+          {shouldSearch && (
+            <span
+              onClick={handleDeepLink}
+              style={{ cursor: 'pointer', textDecoration: 'underline' }}
+            >
+              Open in full search →
+            </span>
+          )}
           <span style={{ marginLeft: 'auto' }}>
             {results.length} match{results.length === 1 ? '' : 'es'}
           </span>

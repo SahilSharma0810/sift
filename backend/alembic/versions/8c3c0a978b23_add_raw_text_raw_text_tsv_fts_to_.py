@@ -45,9 +45,7 @@ def upgrade() -> None:
         """
     )
 
-    op.execute(
-        "CREATE INDEX ix_extractions_raw_text_tsv ON extractions USING gin (raw_text_tsv);"
-    )
+    op.execute("CREATE INDEX ix_extractions_raw_text_tsv ON extractions USING gin (raw_text_tsv);")
 
 
 def downgrade() -> None:

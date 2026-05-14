@@ -36,8 +36,20 @@ def _fake_response(items: list[dict], model: str = "claude-haiku-4-5") -> MagicM
 class TestAnthropicExtractLineItems:
     def test_happy_path_returns_items(self) -> None:
         canned = [
-            {"description": "Last-mile delivery", "quantity": 12, "unit_price": 65.0, "line_total": 780.0, "confidence": 0.95},
-            {"description": "Pallet handling", "quantity": 4, "unit_price": 35.0, "line_total": 140.0, "confidence": 0.93},
+            {
+                "description": "Last-mile delivery",
+                "quantity": 12,
+                "unit_price": 65.0,
+                "line_total": 780.0,
+                "confidence": 0.95,
+            },
+            {
+                "description": "Pallet handling",
+                "quantity": 4,
+                "unit_price": 35.0,
+                "line_total": 140.0,
+                "confidence": 0.93,
+            },
         ]
         client_mock = MagicMock()
         client_mock.messages.create.return_value = _fake_response(canned)
@@ -76,7 +88,10 @@ class TestAnthropicExtractLineItems:
         text_block.type = "text"
         bad_response.content = [text_block]
         bad_response.usage = MagicMock(
-            input_tokens=10, output_tokens=5, cache_creation_input_tokens=0, cache_read_input_tokens=0
+            input_tokens=10,
+            output_tokens=5,
+            cache_creation_input_tokens=0,
+            cache_read_input_tokens=0,
         )
         bad_response.model = "claude-haiku-4-5"
         client_mock = MagicMock()

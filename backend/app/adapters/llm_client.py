@@ -633,8 +633,18 @@ class StubLLMClient:
             "total_tier2": 34_062.50,
             "currency": "USD",
             "line_items": [
-                {"description": "Annual Platform License — Enterprise tier", "quantity": 1, "unit_price": 24_000.00, "line_total": 24_000.00},
-                {"description": "Premium Support Add-on (24x7)", "quantity": 1, "unit_price": 4_900.00, "line_total": 4_900.00},
+                {
+                    "description": "Annual Platform License — Enterprise tier",
+                    "quantity": 1,
+                    "unit_price": 24_000.00,
+                    "line_total": 24_000.00,
+                },
+                {
+                    "description": "Premium Support Add-on (24x7)",
+                    "quantity": 1,
+                    "unit_price": 4_900.00,
+                    "line_total": 4_900.00,
+                },
             ],
             "tax_breakdown": [
                 {"jurisdiction": "California State Sales Tax", "rate": 7.25, "amount": 2_095.25},
@@ -651,11 +661,36 @@ class StubLLMClient:
             "total_tier2": 750.00,
             "currency": "USD",
             "line_items": [
-                {"description": "House Salad (small bowl)", "quantity": 20, "unit_price": 8.50, "line_total": 170.00},
-                {"description": "Roast Vegetable Platter", "quantity": 8, "unit_price": 24.50, "line_total": 196.00},
-                {"description": "Sourdough Sandwiches (assorted)", "quantity": 18, "unit_price": 9.99, "line_total": 179.82},
-                {"description": "Sparkling Water (1L)", "quantity": 12, "unit_price": 4.50, "line_total": 54.00},
-                {"description": "Service & Setup Fee", "quantity": None, "unit_price": None, "line_total": 35.77},
+                {
+                    "description": "House Salad (small bowl)",
+                    "quantity": 20,
+                    "unit_price": 8.50,
+                    "line_total": 170.00,
+                },
+                {
+                    "description": "Roast Vegetable Platter",
+                    "quantity": 8,
+                    "unit_price": 24.50,
+                    "line_total": 196.00,
+                },
+                {
+                    "description": "Sourdough Sandwiches (assorted)",
+                    "quantity": 18,
+                    "unit_price": 9.99,
+                    "line_total": 179.82,
+                },
+                {
+                    "description": "Sparkling Water (1L)",
+                    "quantity": 12,
+                    "unit_price": 4.50,
+                    "line_total": 54.00,
+                },
+                {
+                    "description": "Service & Setup Fee",
+                    "quantity": None,
+                    "unit_price": None,
+                    "line_total": 35.77,
+                },
             ],
             "tax_breakdown": [
                 {"jurisdiction": "GST", "rate": 18.0, "amount": 114.41},
@@ -670,9 +705,24 @@ class StubLLMClient:
             "total_tier2": 1_180.00,
             "currency": "USD",
             "line_items": [
-                {"description": "Last-Mile Delivery — Aurora freight", "quantity": 12, "unit_price": 65.00, "line_total": 780.00},
-                {"description": "Pallet Handling & Sorting", "quantity": 4, "unit_price": 35.00, "line_total": 140.00},
-                {"description": "Fuel Surcharge", "quantity": None, "unit_price": None, "line_total": 80.00},
+                {
+                    "description": "Last-Mile Delivery — Aurora freight",
+                    "quantity": 12,
+                    "unit_price": 65.00,
+                    "line_total": 780.00,
+                },
+                {
+                    "description": "Pallet Handling & Sorting",
+                    "quantity": 4,
+                    "unit_price": 35.00,
+                    "line_total": 140.00,
+                },
+                {
+                    "description": "Fuel Surcharge",
+                    "quantity": None,
+                    "unit_price": None,
+                    "line_total": 80.00,
+                },
             ],
             "tax_breakdown": [
                 {"jurisdiction": "Federal Excise", "rate": 12.0, "amount": 120.00},
@@ -777,9 +827,7 @@ class StubLLMClient:
             )
         scenario = self._pick_scenario(invoice_text)
         items_template = scenario.get("line_items", [])
-        items = [
-            {**item, "confidence": 0.92, "page": 0} for item in items_template
-        ]
+        items = [{**item, "confidence": 0.92, "page": 0} for item in items_template]
         log.info(
             "llm.extract_line_items.stub",
             model=model,
@@ -967,35 +1015,39 @@ def _stub_translate_nl(natural_language: str) -> dict[str, Any]:
     def _mark(match: re.Match[str]) -> None:
         handled_spans.append((match.start(), match.end()))
 
+    def _mark_words(*patterns: str) -> bool:
+        """Find any of `patterns` as full words (regex \\b boundaries). Returns
+        True if at least one matched. Marks the matched span so it doesn't
+        leak into untranslated_intent. Each pattern is treated as a literal
+        substring, but consecutive word characters around the match are also
+        consumed (so 'anomal' eats 'anomalies' / 'anomaly')."""
+        hit = False
+        for kw in patterns:
+            for m in re.finditer(rf"\b\w*{re.escape(kw)}\w*\b", lowered):
+                handled_spans.append((m.start(), m.end()))
+                hit = True
+        return hit
+
     # Triage / review-status synonyms
-    if "duplicate" in lowered or "likely dup" in lowered:
+    if _mark_words("duplicate"):
         filters.append({"field": "triage_state", "op": "eq", "value": "likely_duplicate"})
-        for kw in ("duplicate", "likely dup"):
-            idx = lowered.find(kw)
-            if idx >= 0:
-                handled_spans.append((idx, idx + len(kw)))
-    if "anomal" in lowered or "flagged" in lowered:
+    if _mark_words("anomal", "flagged"):
         filters.append({"field": "has_anomaly", "op": "eq", "value": True})
-        for kw in ("anomal", "flagged"):
-            idx = lowered.find(kw)
-            if idx >= 0:
-                handled_spans.append((idx, idx + len(kw)))
-    if "needs review" in lowered or "pending review" in lowered or "to review" in lowered:
-        filters.append({"field": "triage_state", "op": "eq", "value": "needs_review"})
-        for kw in ("needs review", "pending review", "to review"):
-            idx = lowered.find(kw)
-            if idx >= 0:
-                handled_spans.append((idx, idx + len(kw)))
-    if "confirmed" in lowered:
+    # Multi-word phrases are matched verbatim
+    for phrase in ("needs review", "pending review", "to review"):
+        idx = lowered.find(phrase)
+        if idx >= 0:
+            filters.append({"field": "triage_state", "op": "eq", "value": "needs_review"})
+            handled_spans.append((idx, idx + len(phrase)))
+            break
+    if _mark_words("confirmed"):
         filters.append({"field": "review_status", "op": "eq", "value": "confirmed"})
-        idx = lowered.find("confirmed")
-        handled_spans.append((idx, idx + len("confirmed")))
-    if "unprocessable" in lowered or "encrypted" in lowered or "failed to extract" in lowered:
+    if _mark_words("unprocessable", "encrypted"):
         filters.append({"field": "review_status", "op": "eq", "value": "unprocessable"})
-        for kw in ("unprocessable", "encrypted", "failed to extract"):
-            idx = lowered.find(kw)
-            if idx >= 0:
-                handled_spans.append((idx, idx + len(kw)))
+    elif "failed to extract" in lowered:
+        filters.append({"field": "review_status", "op": "eq", "value": "unprocessable"})
+        idx = lowered.find("failed to extract")
+        handled_spans.append((idx, idx + len("failed to extract")))
 
     # Amount thresholds
     over = _NL_AMOUNT_RE.search(text)
@@ -1037,18 +1089,26 @@ def _stub_translate_nl(natural_language: str) -> dict[str, Any]:
         if chunk:
             untranslated_chunks.append(chunk)
 
-    # Filter out trivial stop words so we don't surface noise as "untranslated".
+    # Filter out trivial stop tokens so we don't surface noise as "untranslated".
     cleaned = " ".join(untranslated_chunks).strip()
-    if cleaned.lower() in {
-        "",
-        "invoices",
-        "show me",
-        "show all",
-        "find",
-        "find invoices",
+    _NOISE_WORDS = {
         "show",
-    }:
-        cleaned = ""
+        "me",
+        "all",
+        "find",
+        "invoices",
+        "invoice",
+        "from",
+        "the",
+        "any",
+        "give",
+        "list",
+        "of",
+        "with",
+        "where",
+    }
+    tokens = [t for t in re.split(r"\s+|[,.]", cleaned) if t and t.lower() not in _NOISE_WORDS]
+    cleaned = " ".join(tokens).strip()
 
     return {
         "filters": filters,

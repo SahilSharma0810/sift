@@ -4,6 +4,52 @@ import type { InvoiceOut, VendorOut } from '@/types/generated/domain'
 
 import { api } from './api'
 
+// ---------- Search / NL→SQL ----------
+
+export interface FilterClause {
+  field: string
+  op: string
+  value: string | number | boolean | (string | number)[] | null
+}
+
+export interface StructuredQuery {
+  filters: FilterClause[]
+  sort?: [string, 'asc' | 'desc'] | null
+  limit?: number
+  untranslated_intent?: string | null
+}
+
+export const EMPTY_QUERY: StructuredQuery = {
+  filters: [],
+  limit: 50,
+  untranslated_intent: null,
+}
+
+export function useTranslateMutation() {
+  return useMutation({
+    mutationFn: (query: string) =>
+      api<StructuredQuery>('/api/search/translate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query }),
+      }),
+  })
+}
+
+export function useSearchQuery(query: StructuredQuery) {
+  // The cache key includes the serialized query so each distinct
+  // chip-set has its own entry — change a chip, re-render, refetch.
+  return useQuery({
+    queryKey: ['search', JSON.stringify(query)] as const,
+    queryFn: () =>
+      api<InvoiceOut[]>('/api/search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(query),
+      }),
+  })
+}
+
 export type AppMeta = {
   version: string
   llm_provider: 'stub' | 'anthropic'

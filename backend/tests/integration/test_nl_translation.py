@@ -21,7 +21,6 @@ from app.domain.nl_schema import StructuredQuery
 from app.main import app
 from app.services.nl_translation_service import TranslationError, translate
 
-
 # --- Service-layer tests using the real StubLLMClient ---
 
 
@@ -35,8 +34,7 @@ class TestStubTranslator:
     def test_duplicates_phrase(self) -> None:
         result = translate(natural_language="show me likely duplicates")
         assert any(
-            f.field == "triage_state" and f.value == "likely_duplicate"
-            for f in result.filters
+            f.field == "triage_state" and f.value == "likely_duplicate" for f in result.filters
         )
 
     def test_anomalies_phrase(self) -> None:
@@ -73,8 +71,7 @@ class TestStubTranslator:
     def test_unprocessable_phrase(self) -> None:
         result = translate(natural_language="encrypted invoices")
         assert any(
-            f.field == "review_status" and f.value == "unprocessable"
-            for f in result.filters
+            f.field == "review_status" and f.value == "unprocessable" for f in result.filters
         )
 
 
@@ -101,7 +98,12 @@ class TestTranslationErrorPath:
             model="claude-sonnet-4-6",
             prompt_hash="x",
             schema_hash="x",
-            usage={"input_tokens": 0, "output_tokens": 0, "cache_creation_input_tokens": 0, "cache_read_input_tokens": 0},
+            usage={
+                "input_tokens": 0,
+                "output_tokens": 0,
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 0,
+            },
         )
 
         with pytest.raises(TranslationError) as ei:
@@ -121,7 +123,12 @@ class TestTranslationErrorPath:
             model="claude-sonnet-4-6",
             prompt_hash="x",
             schema_hash="x",
-            usage={"input_tokens": 0, "output_tokens": 0, "cache_creation_input_tokens": 0, "cache_read_input_tokens": 0},
+            usage={
+                "input_tokens": 0,
+                "output_tokens": 0,
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 0,
+            },
         )
         with pytest.raises(TranslationError):
             translate(natural_language="anything", llm=bad_llm)
@@ -163,11 +170,14 @@ class TestTranslateEndpoint:
             model="claude-sonnet-4-6",
             prompt_hash="x",
             schema_hash="x",
-            usage={"input_tokens": 0, "output_tokens": 0, "cache_creation_input_tokens": 0, "cache_read_input_tokens": 0},
+            usage={
+                "input_tokens": 0,
+                "output_tokens": 0,
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 0,
+            },
         )
-        with patch(
-            "app.services.nl_translation_service.make_llm_client", return_value=bad_llm
-        ):
+        with patch("app.services.nl_translation_service.make_llm_client", return_value=bad_llm):
             res = client.post("/api/search/translate", json={"query": "anything"})
         assert res.status_code == 422
         detail = res.json()["detail"]

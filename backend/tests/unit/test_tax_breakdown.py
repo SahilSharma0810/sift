@@ -56,16 +56,12 @@ class TestTaxBreakdownSumCheck:
         assert delta == Decimal("0")
 
     def test_none_header_tax_is_vacuously_true(self) -> None:
-        ok, delta = tax_breakdown_sum_check(
-            [{"amount": 50.0}, {"amount": 130.0}], header_tax=None
-        )
+        ok, delta = tax_breakdown_sum_check([{"amount": 50.0}, {"amount": 130.0}], header_tax=None)
         assert ok is True
         assert delta == Decimal("0")
 
     def test_exact_match(self) -> None:
-        ok, delta = tax_breakdown_sum_check(
-            [{"amount": 90.0}, {"amount": 90.0}], header_tax=180.0
-        )
+        ok, delta = tax_breakdown_sum_check([{"amount": 90.0}, {"amount": 90.0}], header_tax=180.0)
         assert ok is True
         assert delta == Decimal("0")
 
@@ -77,14 +73,10 @@ class TestTaxBreakdownSumCheck:
         assert abs(delta) <= AMOUNT_TOLERANCE
 
     def test_mismatch_returns_false_with_delta(self) -> None:
-        ok, delta = tax_breakdown_sum_check(
-            [{"amount": 90.0}, {"amount": 50.0}], header_tax=180.0
-        )
+        ok, delta = tax_breakdown_sum_check([{"amount": 90.0}, {"amount": 50.0}], header_tax=180.0)
         assert ok is False
         assert delta == Decimal("-40.0")
 
     def test_non_numeric_returns_false(self) -> None:
-        ok, _ = tax_breakdown_sum_check(
-            [{"amount": "not a number"}], header_tax=10.0
-        )
+        ok, _ = tax_breakdown_sum_check([{"amount": "not a number"}], header_tax=10.0)
         assert ok is False

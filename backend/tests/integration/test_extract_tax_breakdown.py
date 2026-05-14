@@ -25,7 +25,10 @@ def _fake_response(rows: list[dict], model: str = "claude-haiku-4-5") -> MagicMo
     block.input = {"rows": rows}
     response.content = [block]
     response.usage = MagicMock(
-        input_tokens=300, output_tokens=80, cache_creation_input_tokens=250, cache_read_input_tokens=0
+        input_tokens=300,
+        output_tokens=80,
+        cache_creation_input_tokens=250,
+        cache_read_input_tokens=0,
     )
     response.model = model
     return response
@@ -75,7 +78,10 @@ class TestAnthropicExtractTaxBreakdown:
         text_block.type = "text"
         response.content = [text_block]
         response.usage = MagicMock(
-            input_tokens=10, output_tokens=5, cache_creation_input_tokens=0, cache_read_input_tokens=0
+            input_tokens=10,
+            output_tokens=5,
+            cache_creation_input_tokens=0,
+            cache_read_input_tokens=0,
         )
         response.model = "claude-haiku-4-5"
         client_mock = MagicMock()

@@ -92,14 +92,10 @@ class TestLineItemsSumCheck:
         assert delta == Decimal("-100.0")
 
     def test_missing_line_total_treats_as_zero(self) -> None:
-        ok, delta = line_items_sum_check(
-            [{"description": "no total"}], subtotal=0.0
-        )
+        ok, delta = line_items_sum_check([{"description": "no total"}], subtotal=0.0)
         assert ok is True
         assert delta == Decimal("0")
 
     def test_non_numeric_line_total_returns_false(self) -> None:
-        ok, _ = line_items_sum_check(
-            [{"line_total": "not a number"}], subtotal=10.0
-        )
+        ok, _ = line_items_sum_check([{"line_total": "not a number"}], subtotal=10.0)
         assert ok is False
