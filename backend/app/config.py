@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -30,6 +31,9 @@ class Settings(BaseSettings):
     )
 
     # --- LLM ---
+    # Default `stub` so a fresh checkout works with no API key (interview review).
+    # Set to `anthropic` (plus ANTHROPIC_API_KEY) for real model calls.
+    llm_provider: Literal["stub", "anthropic"] = Field(default="stub", alias="SIFT_LLM_PROVIDER")
     anthropic_api_key: str = Field(default="", alias="ANTHROPIC_API_KEY")
     model_tier_1: str = Field(default="claude-haiku-4-5", alias="SIFT_MODEL_TIER_1")
     model_tier_2: str = Field(default="claude-sonnet-4-6", alias="SIFT_MODEL_TIER_2")

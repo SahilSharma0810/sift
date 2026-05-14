@@ -15,7 +15,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from app.adapters.llm_client import ExtractionResult, LLMClient
+from app.adapters.llm_client import AnthropicLLMClient, ExtractionResult
 
 
 @pytest.fixture
@@ -66,7 +66,7 @@ class TestLLMClientExtractHeader:
         client_mock.messages.create.return_value = _make_messages_mock(fake_tool_response)
 
         with patch("app.adapters.llm_client.Anthropic", return_value=client_mock):
-            client = LLMClient(api_key="test")
+            client = AnthropicLLMClient(api_key="test")
             result = client.extract_header(invoice_text="any text", model="claude-haiku-4-5")
 
         assert isinstance(result, ExtractionResult)
@@ -81,7 +81,7 @@ class TestLLMClientExtractHeader:
         client_mock.messages.create.return_value = _make_messages_mock(fake_tool_response)
 
         with patch("app.adapters.llm_client.Anthropic", return_value=client_mock):
-            client = LLMClient(api_key="test")
+            client = AnthropicLLMClient(api_key="test")
             client.extract_header(invoice_text="text", model="claude-haiku-4-5")
 
         kwargs = client_mock.messages.create.call_args.kwargs
@@ -100,7 +100,7 @@ class TestLLMClientExtractHeader:
         ]
 
         with patch("app.adapters.llm_client.Anthropic", return_value=client_mock):
-            client = LLMClient(api_key="test")
+            client = AnthropicLLMClient(api_key="test")
             result = client.extract_header(invoice_text="text", model="claude-haiku-4-5")
 
         assert result.fields["vendor_name"] == "Vega Logistics"
@@ -117,7 +117,7 @@ class TestLLMClientExtractHeader:
         )
 
         with patch("app.adapters.llm_client.Anthropic", return_value=client_mock):
-            client = LLMClient(api_key="test")
+            client = AnthropicLLMClient(api_key="test")
             with pytest.raises(APIStatusError):
                 client.extract_header(invoice_text="text", model="claude-haiku-4-5")
 
@@ -136,7 +136,7 @@ class TestLLMClientExtractHeader:
         ]
 
         with patch("app.adapters.llm_client.Anthropic", return_value=client_mock):
-            client = LLMClient(api_key="test")
+            client = AnthropicLLMClient(api_key="test")
             with pytest.raises(APITimeoutError):
                 client.extract_header(invoice_text="text", model="claude-haiku-4-5")
 
@@ -160,7 +160,7 @@ class TestLLMClientExtractHeader:
         client_mock.messages.create.return_value = response
 
         with patch("app.adapters.llm_client.Anthropic", return_value=client_mock):
-            client = LLMClient(api_key="test")
+            client = AnthropicLLMClient(api_key="test")
             with pytest.raises(RuntimeError, match="tool call"):
                 client.extract_header(invoice_text="text", model="claude-haiku-4-5")
 
@@ -222,7 +222,7 @@ class TestLLMClientExtractHeaderVision:
         client_mock = MagicMock()
         client_mock.messages.create.return_value = _fake_vision_response()
         with patch("app.adapters.llm_client.Anthropic", return_value=client_mock):
-            client = LLMClient(api_key="test")
+            client = AnthropicLLMClient(api_key="test")
             png = b"\x89PNG\r\n\x1a\nfakebytes"
             result = client.extract_header_vision(page_pngs=[png], model="claude-sonnet-4-6")
         assert result.fields["vendor_name"]["value"] == "Vega Logistics"
@@ -233,7 +233,7 @@ class TestLLMClientExtractHeaderVision:
         client_mock = MagicMock()
         client_mock.messages.create.return_value = _fake_vision_response()
         with patch("app.adapters.llm_client.Anthropic", return_value=client_mock):
-            client = LLMClient(api_key="test")
+            client = AnthropicLLMClient(api_key="test")
             png = b"\x89PNG\r\n\x1a\nfake"
             client.extract_header_vision(page_pngs=[png], model="claude-sonnet-4-6")
         kwargs = client_mock.messages.create.call_args.kwargs

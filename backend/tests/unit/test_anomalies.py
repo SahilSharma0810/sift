@@ -37,10 +37,13 @@ class TestDetectAnomalies:
     def test_zero_std_skips_check(self) -> None:
         # std == 0 → skip the check (degenerate vendor history with no variance).
         # total_seen=10 ensures only the std-check is responsible for the skip.
-        assert detect_anomalies(
-            fields={"total": 14231.0},
-            stats={"total_seen": 10, "avg_total": 1180.0, "std_total": 0.0},
-        ) == []
+        assert (
+            detect_anomalies(
+                fields={"total": 14231.0},
+                stats={"total_seen": 10, "avg_total": 1180.0, "std_total": 0.0},
+            )
+            == []
+        )
 
     def test_low_count_skips_check(self) -> None:
         # Need at least 3 priors before Z-score is meaningful
@@ -62,21 +65,30 @@ class TestDetectAnomalies:
 
     def test_missing_field_skips(self) -> None:
         # fields dict missing the key entirely → no anomaly emitted.
-        assert detect_anomalies(
-            fields={},
-            stats={"total_seen": 10, "avg_total": 1180.0, "std_total": 50.0},
-        ) == []
+        assert (
+            detect_anomalies(
+                fields={},
+                stats={"total_seen": 10, "avg_total": 1180.0, "std_total": 50.0},
+            )
+            == []
+        )
 
     def test_none_value_skips(self) -> None:
         # Explicit None on the field → no anomaly (handled by `if value is None`).
-        assert detect_anomalies(
-            fields={"total": None},
-            stats={"total_seen": 10, "avg_total": 1180.0, "std_total": 50.0},
-        ) == []
+        assert (
+            detect_anomalies(
+                fields={"total": None},
+                stats={"total_seen": 10, "avg_total": 1180.0, "std_total": 50.0},
+            )
+            == []
+        )
 
     def test_non_numeric_value_skips(self) -> None:
         # Garbled LLM output ("N/A") → caught by TypeError/ValueError in float().
-        assert detect_anomalies(
-            fields={"total": "N/A"},
-            stats={"total_seen": 10, "avg_total": 1180.0, "std_total": 50.0},
-        ) == []
+        assert (
+            detect_anomalies(
+                fields={"total": "N/A"},
+                stats={"total_seen": 10, "avg_total": 1180.0, "std_total": 50.0},
+            )
+            == []
+        )

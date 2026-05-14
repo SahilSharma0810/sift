@@ -7,13 +7,13 @@ patched at the import site in services/extraction_service.
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 from fastapi.testclient import TestClient
 
 from app.adapters.llm_client import ExtractionResult
 from app.main import app
+from tests.conftest import patch_make_llm_client
 
 FIXTURES = Path(__file__).parents[1] / "fixtures"
 CLEAN_PDF = FIXTURES / "digital_invoice_clean.pdf"
@@ -52,10 +52,10 @@ def client() -> TestClient:
 
 class TestUploadInvoice:
     def test_upload_returns_invoice_with_extraction(self, client: TestClient) -> None:
-        with patch(
-            "app.services.extraction_service.LLMClient.extract_header",
-            return_value=_fake_llm_result(),
-        ), CLEAN_PDF.open("rb") as fh:
+        with (
+            patch_make_llm_client(header=_fake_llm_result()),
+            CLEAN_PDF.open("rb") as fh,
+        ):
             res = client.post(
                 "/api/invoices",
                 files={"file": ("clean.pdf", fh, "application/pdf")},
@@ -74,10 +74,10 @@ class TestUploadInvoice:
         assert res.status_code == 415
 
     def test_list_returns_uploaded(self, client: TestClient) -> None:
-        with patch(
-            "app.services.extraction_service.LLMClient.extract_header",
-            return_value=_fake_llm_result(),
-        ), CLEAN_PDF.open("rb") as fh:
+        with (
+            patch_make_llm_client(header=_fake_llm_result()),
+            CLEAN_PDF.open("rb") as fh,
+        ):
             client.post(
                 "/api/invoices",
                 files={"file": ("clean2.pdf", fh, "application/pdf")},

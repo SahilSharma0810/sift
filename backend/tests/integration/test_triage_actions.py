@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 from fastapi.testclient import TestClient
 
 from app.adapters.llm_client import ExtractionResult
 from app.main import app
+from tests.conftest import patch_make_llm_client
 
 FIXTURES = Path(__file__).parents[1] / "fixtures"
 CLEAN_PDF = FIXTURES / "digital_invoice_clean.pdf"
@@ -49,10 +49,7 @@ def client() -> TestClient:
 def _upload(client: TestClient, unique: str) -> str:
     """Upload a unique-bytes copy of CLEAN_PDF and return the new invoice_id."""
     body = CLEAN_PDF.read_bytes() + f"\n%{unique}\n".encode()
-    with patch(
-        "app.services.extraction_service.LLMClient.extract_header",
-        return_value=_fake_llm(),
-    ):
+    with patch_make_llm_client(header=_fake_llm()):
         res = client.post(
             "/api/invoices",
             files={"file": (f"{unique}.pdf", body, "application/pdf")},
@@ -83,10 +80,7 @@ class TestTriageActions:
 
     def test_retry_creates_new_extraction(self, client: TestClient) -> None:
         invoice_id = _upload(client, "retry-1")
-        with patch(
-            "app.services.extraction_service.LLMClient.extract_header",
-            return_value=_fake_llm(),
-        ):
+        with patch_make_llm_client(header=_fake_llm()):
             res = client.post(f"/api/invoices/{invoice_id}/retry")
         assert res.status_code == 200
         body = res.json()

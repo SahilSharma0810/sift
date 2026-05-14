@@ -33,7 +33,7 @@ from uuid import UUID
 import structlog
 from sqlalchemy.orm import Session
 
-from app.adapters.llm_client import ExtractionResult, LLMClient
+from app.adapters.llm_client import ExtractionResult, LLMClient, make_llm_client
 from app.adapters.pdf_reader import (
     DigitalRead,
     compute_perceptual_hash,
@@ -324,7 +324,7 @@ def extract_from_pdf(
 
     # Path branch
     use_vision = not has_text(pdf_path)
-    llm = LLMClient(api_key=settings.anthropic_api_key)
+    llm: LLMClient = make_llm_client(settings)
 
     invoice_text: str | None = None
     page_pngs: list[bytes] | None = None

@@ -73,7 +73,9 @@ class TestTriageReasons:
 
     def test_duplicate_of_both_method(self) -> None:
         r = DuplicateOfReason(
-            invoice_id=uuid.uuid4(), similarity=1.0, match_method="both",
+            invoice_id=uuid.uuid4(),
+            similarity=1.0,
+            match_method="both",
         )
         assert r.match_method == "both"
 

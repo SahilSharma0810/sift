@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import patch
 
 from sqlalchemy.orm import Session
 
 from app.adapters.llm_client import ExtractionResult
 from app.services.extraction_service import extract_from_pdf
+from tests.conftest import patch_make_llm_client
 
 FIXTURES = Path(__file__).parents[1] / "fixtures"
 CLEAN_PDF = FIXTURES / "digital_invoice_clean.pdf"
@@ -48,10 +48,7 @@ class TestExtractFromPdf:
         test_pdf = tmp_path / "test.pdf"
         test_pdf.write_bytes(CLEAN_PDF.read_bytes())
 
-        with patch(
-            "app.services.extraction_service.LLMClient.extract_header",
-            return_value=_fake_llm_result(),
-        ):
+        with patch_make_llm_client(header=_fake_llm_result()):
             result = extract_from_pdf(db_session, pdf_path=test_pdf)
 
         # Returns the invoice + current extraction
@@ -67,10 +64,7 @@ class TestExtractFromPdf:
         test_pdf = tmp_path / "dup.pdf"
         test_pdf.write_bytes(CLEAN_PDF.read_bytes())
 
-        with patch(
-            "app.services.extraction_service.LLMClient.extract_header",
-            return_value=_fake_llm_result(),
-        ):
+        with patch_make_llm_client(header=_fake_llm_result()):
             r1 = extract_from_pdf(db_session, pdf_path=test_pdf)
             r2 = extract_from_pdf(db_session, pdf_path=test_pdf)
         # Same file → same invoice (file_hash dedup).
@@ -109,10 +103,7 @@ class TestExtractFromPdf:
             },
         )
 
-        with patch(
-            "app.services.extraction_service.LLMClient.extract_header",
-            return_value=failed_result,
-        ):
+        with patch_make_llm_client(header=failed_result):
             result = extract_from_pdf(db_session, pdf_path=test_pdf)
 
         assert result.extraction.predicted_triage_state == "needs_review"
@@ -130,8 +121,6 @@ SCAN_PDF = FIXTURES / "scan_invoice.pdf"
 
 class TestExtractFromPdfVisionPath:
     def test_vision_path_taken_for_scan(self, db_session: Session, tmp_path: Path) -> None:
-        from unittest.mock import patch
-
         from app.adapters.llm_client import ExtractionResult
 
         test_pdf = tmp_path / "scan.pdf"
@@ -195,10 +184,7 @@ class TestExtractFromPdfVisionPath:
                 "cache_read_input_tokens": 0,
             },
         )
-        with patch(
-            "app.services.extraction_service.LLMClient.extract_header_vision",
-            return_value=vision_result,
-        ):
+        with patch_make_llm_client(vision=vision_result):
             result = extract_from_pdf(db_session, pdf_path=test_pdf)
 
         assert result.extraction.model == "claude-sonnet-4-6"
@@ -214,8 +200,6 @@ class TestExtractFromPdfCascade:
     ) -> None:
         """When Haiku result hits the cascade trigger, Sonnet runs and
         agreement-score replaces the disputed field's confidence."""
-        from unittest.mock import patch
-
         from app.adapters.llm_client import ExtractionResult
 
         test_pdf = tmp_path / "cascade.pdf"
@@ -294,9 +278,8 @@ class TestExtractFromPdfCascade:
                 "cache_read_input_tokens": 0,
             },
         )
-        with patch(
-            "app.services.extraction_service.LLMClient.extract_header",
-            side_effect=[haiku_result, sonnet_result, opus_result],
+        with patch_make_llm_client(
+            header_seq=[haiku_result, sonnet_result, opus_result],
         ):
             result = extract_from_pdf(db_session, pdf_path=test_pdf)
 
@@ -313,8 +296,6 @@ class TestExtractFromPdfCascade:
     ) -> None:
         """Cascade triggers (low confidence on a non-REQUIRED field), but
         Sonnet agrees with Haiku on every REQUIRED field. Opus must NOT fire."""
-        from unittest.mock import patch
-
         from app.adapters.llm_client import ExtractionResult
 
         test_pdf = tmp_path / "cascade_2tier.pdf"
@@ -374,10 +355,7 @@ class TestExtractFromPdfCascade:
                 "cache_read_input_tokens": 0,
             },
         )
-        with patch(
-            "app.services.extraction_service.LLMClient.extract_header",
-            side_effect=[haiku_result, sonnet_result],
-        ):
+        with patch_make_llm_client(header_seq=[haiku_result, sonnet_result]):
             result = extract_from_pdf(db_session, pdf_path=test_pdf)
 
         # Cascade trace has exactly 2 tiers — Opus did not fire.
@@ -394,8 +372,6 @@ class TestExtractFromPdfDuplicate:
     def test_second_near_identical_upload_flags_duplicate(
         self, db_session: Session, tmp_path: Path
     ) -> None:
-        from unittest.mock import patch
-
         from app.adapters.llm_client import ExtractionResult
 
         # Use SCAN_PDF as the base: its rendered image (phash) is visually distinct
@@ -465,10 +441,7 @@ class TestExtractFromPdfDuplicate:
                 "cache_read_input_tokens": 0,
             },
         )
-        with patch(
-            "app.services.extraction_service.LLMClient.extract_header_vision",
-            return_value=vision_good,
-        ):
+        with patch_make_llm_client(vision=vision_good):
             r1 = extract_from_pdf(db_session, pdf_path=first)
             r2 = extract_from_pdf(db_session, pdf_path=second)
 
