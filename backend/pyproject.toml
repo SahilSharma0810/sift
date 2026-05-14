@@ -47,6 +47,7 @@ dev = [
     "pydantic-to-typescript>=2.0.0",      # generates frontend types from Pydantic
     "mypy>=1.13.0",
     "reportlab>=4.5.1",
+    "matplotlib>=3.9.0",                  # eval calibration PNG (Day-5)
 ]
 
 [build-system]

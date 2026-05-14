@@ -1,0 +1,842 @@
+[
+  {
+    "invoice_id": "43309cb2-48e4-4a66-bd4d-d7c00664674e",
+    "case": {
+      "label": "clean-ATL-1",
+      "body": "Atlas Freight\nInvoice ATL-EVAL-001\n[seed-vendor:Atlas Freight] [seed-number:ATL-EVAL-001]\n[seed-total:950.0]\n",
+      "expected_vendor": "Atlas Freight",
+      "expected_total": 950.0,
+      "expected_triage_state": "confident",
+      "expected_reason_types": [
+        "unseen_vendor"
+      ],
+      "confirm": true,
+      "unprocessable": false,
+      "marker_key": "clean-ATL-1"
+    }
+  },
+  {
+    "invoice_id": "2c88663d-6c76-466f-ac64-7ad54d19b396",
+    "case": {
+      "label": "clean-ATL-2",
+      "body": "Atlas Freight\nInvoice ATL-EVAL-002\n[seed-vendor:Atlas Freight] [seed-number:ATL-EVAL-002]\n[seed-total:1010.0]\n",
+      "expected_vendor": "Atlas Freight",
+      "expected_total": 1010.0,
+      "expected_triage_state": "confident",
+      "expected_reason_types": [],
+      "confirm": true,
+      "unprocessable": false,
+      "marker_key": "clean-ATL-2"
+    }
+  },
+  {
+    "invoice_id": "df9d1fd1-7346-472a-a09d-07d53f1c1749",
+    "case": {
+      "label": "clean-ATL-3",
+      "body": "Atlas Freight\nInvoice ATL-EVAL-003\n[seed-vendor:Atlas Freight] [seed-number:ATL-EVAL-003]\n[seed-total:985.0]\n",
+      "expected_vendor": "Atlas Freight",
+      "expected_total": 985.0,
+      "expected_triage_state": "confident",
+      "expected_reason_types": [],
+      "confirm": true,
+      "unprocessable": false,
+      "marker_key": "clean-ATL-3"
+    }
+  },
+  {
+    "invoice_id": "792ddc74-4bcf-4a6d-8091-c2a8f2786d6a",
+    "case": {
+      "label": "clean-BOU-1",
+      "body": "Boulder Bakery\nInvoice BOU-EVAL-001\n[seed-vendor:Boulder Bakery] [seed-number:BOU-EVAL-001]\n[seed-total:950.0]\n",
+      "expected_vendor": "Boulder Bakery",
+      "expected_total": 950.0,
+      "expected_triage_state": "confident",
+      "expected_reason_types": [
+        "unseen_vendor"
+      ],
+      "confirm": true,
+      "unprocessable": false,
+      "marker_key": "clean-BOU-1"
+    }
+  },
+  {
+    "invoice_id": "0f4b141e-cf40-40e3-903a-dd5707ccee08",
+    "case": {
+      "label": "clean-BOU-2",
+      "body": "Boulder Bakery\nInvoice BOU-EVAL-002\n[seed-vendor:Boulder Bakery] [seed-number:BOU-EVAL-002]\n[seed-total:1010.0]\n",
+      "expected_vendor": "Boulder Bakery",
+      "expected_total": 1010.0,
+      "expected_triage_state": "confident",
+      "expected_reason_types": [],
+      "confirm": true,
+      "unprocessable": false,
+      "marker_key": "clean-BOU-2"
+    }
+  },
+  {
+    "invoice_id": "125842cb-b59f-4f9c-a674-fcf7b7dd2650",
+    "case": {
+      "label": "clean-BOU-3",
+      "body": "Boulder Bakery\nInvoice BOU-EVAL-003\n[seed-vendor:Boulder Bakery] [seed-number:BOU-EVAL-003]\n[seed-total:985.0]\n",
+      "expected_vendor": "Boulder Bakery",
+      "expected_total": 985.0,
+      "expected_triage_state": "confident",
+      "expected_reason_types": [],
+      "confirm": true,
+      "unprocessable": false,
+      "marker_key": "clean-BOU-3"
+    }
+  },
+  {
+    "invoice_id": "6e61cdb3-07dc-4a24-bcc5-eb190e569db4",
+    "case": {
+      "label": "clean-CIT-1",
+      "body": "Citrine Audit\nInvoice CIT-EVAL-001\n[seed-vendor:Citrine Audit] [seed-number:CIT-EVAL-001]\n[seed-total:950.0]\n",
+      "expected_vendor": "Citrine Audit",
+      "expected_total": 950.0,
+      "expected_triage_state": "confident",
+      "expected_reason_types": [
+        "unseen_vendor"
+      ],
+      "confirm": true,
+      "unprocessable": false,
+      "marker_key": "clean-CIT-1"
+    }
+  },
+  {
+    "invoice_id": "987e488c-aeba-4921-b477-b3f8c0e8130e",
+    "case": {
+      "label": "clean-CIT-2",
+      "body": "Citrine Audit\nInvoice CIT-EVAL-002\n[seed-vendor:Citrine Audit] [seed-number:CIT-EVAL-002]\n[seed-total:1010.0]\n",
+      "expected_vendor": "Citrine Audit",
+      "expected_total": 1010.0,
+      "expected_triage_state": "confident",
+      "expected_reason_types": [],
+      "confirm": true,
+      "unprocessable": false,
+      "marker_key": "clean-CIT-2"
+    }
+  },
+  {
+    "invoice_id": "d78706a7-f7e3-4936-a650-667875028044",
+    "case": {
+      "label": "clean-CIT-3",
+      "body": "Citrine Audit\nInvoice CIT-EVAL-003\n[seed-vendor:Citrine Audit] [seed-number:CIT-EVAL-003]\n[seed-total:985.0]\n",
+      "expected_vendor": "Citrine Audit",
+      "expected_total": 985.0,
+      "expected_triage_state": "confident",
+      "expected_reason_types": [],
+      "confirm": true,
+      "unprocessable": false,
+      "marker_key": "clean-CIT-3"
+    }
+  },
+  {
+    "invoice_id": "3b57a2df-f8de-4285-91bd-e22f81377b00",
+    "case": {
+      "label": "clean-DUN-1",
+      "body": "Dunelm Press\nInvoice DUN-EVAL-001\n[seed-vendor:Dunelm Press] [seed-number:DUN-EVAL-001]\n[seed-total:950.0]\n",
+      "expected_vendor": "Dunelm Press",
+      "expected_total": 950.0,
+      "expected_triage_state": "confident",
+      "expected_reason_types": [
+        "unseen_vendor"
+      ],
+      "confirm": true,
+      "unprocessable": false,
+      "marker_key": "clean-DUN-1"
+    }
+  },
+  {
+    "invoice_id": "62967e69-bf90-444c-bb10-4c13bb7ce9f3",
+    "case": {
+      "label": "clean-DUN-2",
+      "body": "Dunelm Press\nInvoice DUN-EVAL-002\n[seed-vendor:Dunelm Press] [seed-number:DUN-EVAL-002]\n[seed-total:1010.0]\n",
+      "expected_vendor": "Dunelm Press",
+      "expected_total": 1010.0,
+      "expected_triage_state": "confident",
+      "expected_reason_types": [],
+      "confirm": true,
+      "unprocessable": false,
+      "marker_key": "clean-DUN-2"
+    }
+  },
+  {
+    "invoice_id": "39530209-4c59-45b4-9ad4-4cdd6645afc0",
+    "case": {
+      "label": "clean-DUN-3",
+      "body": "Dunelm Press\nInvoice DUN-EVAL-003\n[seed-vendor:Dunelm Press] [seed-number:DUN-EVAL-003]\n[seed-total:985.0]\n",
+      "expected_vendor": "Dunelm Press",
+      "expected_total": 985.0,
+      "expected_triage_state": "confident",
+      "expected_reason_types": [],
+      "confirm": true,
+      "unprocessable": false,
+      "marker_key": "clean-DUN-3"
+    }
+  },
+  {
+    "invoice_id": "0d674ceb-34fd-45ca-864f-ef8dbb6bc482",
+    "case": {
+      "label": "clean-EVE-1",
+      "body": "Evergreen Office\nInvoice EVE-EVAL-001\n[seed-vendor:Evergreen Office] [seed-number:EVE-EVAL-001]\n[seed-total:950.0]\n",
+      "expected_vendor": "Evergreen Office",
+      "expected_total": 950.0,
+      "expected_triage_state": "confident",
+      "expected_reason_types": [
+        "unseen_vendor"
+      ],
+      "confirm": true,
+      "unprocessable": false,
+      "marker_key": "clean-EVE-1"
+    }
+  },
+  {
+    "invoice_id": "bbaf95ed-1c9d-4c8a-8d67-f29a3888268b",
+    "case": {
+      "label": "clean-EVE-2",
+      "body": "Evergreen Office\nInvoice EVE-EVAL-002\n[seed-vendor:Evergreen Office] [seed-number:EVE-EVAL-002]\n[seed-total:1010.0]\n",
+      "expected_vendor": "Evergreen Office",
+      "expected_total": 1010.0,
+      "expected_triage_state": "confident",
+      "expected_reason_types": [],
+      "confirm": true,
+      "unprocessable": false,
+      "marker_key": "clean-EVE-2"
+    }
+  },
+  {
+    "invoice_id": "3c0f7cab-a717-422d-b793-2436bac1c88a",
+    "case": {
+      "label": "clean-EVE-3",
+      "body": "Evergreen Office\nInvoice EVE-EVAL-003\n[seed-vendor:Evergreen Office] [seed-number:EVE-EVAL-003]\n[seed-total:985.0]\n",
+      "expected_vendor": "Evergreen Office",
+      "expected_total": 985.0,
+      "expected_triage_state": "confident",
+      "expected_reason_types": [],
+      "confirm": true,
+      "unprocessable": false,
+      "marker_key": "clean-EVE-3"
+    }
+  },
+  {
+    "invoice_id": "a57bf584-64b1-4853-915e-843254f5002f",
+    "case": {
+      "label": "anom-FJO-h1",
+      "body": "Fjord Services\n[seed-vendor:Fjord Services] [seed-number:FJO-EVAL-001]\n[seed-total:1200.0]\n",
+      "expected_vendor": "Fjord Services",
+      "expected_total": 1200.0,
+      "expected_triage_state": "confident",
+      "expected_reason_types": [
+        "unseen_vendor"
+      ],
+      "confirm": true,
+      "unprocessable": false,
+      "marker_key": "anom-FJO-h1"
+    }
+  },
+  {
+    "invoice_id": "33be7c3d-fcc6-4202-bd65-b445ac81f33f",
+    "case": {
+      "label": "anom-FJO-h2",
+      "body": "Fjord Services\n[seed-vendor:Fjord Services] [seed-number:FJO-EVAL-002]\n[seed-total:1250.0]\n",
+      "expected_vendor": "Fjord Services",
+      "expected_total": 1250.0,
+      "expected_triage_state": "confident",
+      "expected_reason_types": [],
+      "confirm": true,
+      "unprocessable": false,
+      "marker_key": "anom-FJO-h2"
+    }
+  },
+  {
+    "invoice_id": "ec7bbc22-e751-417a-b3df-d4f532c14ee8",
+    "case": {
+      "label": "anom-FJO-h3",
+      "body": "Fjord Services\n[seed-vendor:Fjord Services] [seed-number:FJO-EVAL-003]\n[seed-total:1180.0]\n",
+      "expected_vendor": "Fjord Services",
+      "expected_total": 1180.0,
+      "expected_triage_state": "confident",
+      "expected_reason_types": [],
+      "confirm": true,
+      "unprocessable": false,
+      "marker_key": "anom-FJO-h3"
+    }
+  },
+  {
+    "invoice_id": "06b2faea-10a7-4516-9ed5-d77d83433b8d",
+    "case": {
+      "label": "anom-FJO-OUTLIER",
+      "body": "Fjord Services\n[seed-vendor:Fjord Services] [seed-number:FJO-EVAL-999]\n[seed-total:25000.0]\n",
+      "expected_vendor": "Fjord Services",
+      "expected_total": 25000.0,
+      "expected_triage_state": "needs_review",
+      "expected_reason_types": [
+        "anomaly"
+      ],
+      "confirm": false,
+      "unprocessable": false,
+      "marker_key": "anom-FJO-outlier"
+    }
+  },
+  {
+    "invoice_id": "c7fa572a-c2af-4daa-843d-6deb5006f10f",
+    "case": {
+      "label": "anom-GIL-h1",
+      "body": "Gilden Catering\n[seed-vendor:Gilden Catering] [seed-number:GIL-EVAL-001]\n[seed-total:1200.0]\n",
+      "expected_vendor": "Gilden Catering",
+      "expected_total": 1200.0,
+      "expected_triage_state": "confident",
+      "expected_reason_types": [
+        "unseen_vendor"
+      ],
+      "confirm": true,
+      "unprocessable": false,
+      "marker_key": "anom-GIL-h1"
+    }
+  },
+  {
+    "invoice_id": "93e1e6ae-fb20-485c-a104-57424b00e793",
+    "case": {
+      "label": "anom-GIL-h2",
+      "body": "Gilden Catering\n[seed-vendor:Gilden Catering] [seed-number:GIL-EVAL-002]\n[seed-total:1250.0]\n",
+      "expected_vendor": "Gilden Catering",
+      "expected_total": 1250.0,
+      "expected_triage_state": "confident",
+      "expected_reason_types": [],
+      "confirm": true,
+      "unprocessable": false,
+      "marker_key": "anom-GIL-h2"
+    }
+  },
+  {
+    "invoice_id": "38c18b61-8d27-4e06-9fa8-16193f41460c",
+    "case": {
+      "label": "anom-GIL-h3",
+      "body": "Gilden Catering\n[seed-vendor:Gilden Catering] [seed-number:GIL-EVAL-003]\n[seed-total:1180.0]\n",
+      "expected_vendor": "Gilden Catering",
+      "expected_total": 1180.0,
+      "expected_triage_state": "confident",
+      "expected_reason_types": [],
+      "confirm": true,
+      "unprocessable": false,
+      "marker_key": "anom-GIL-h3"
+    }
+  },
+  {
+    "invoice_id": "f738bbd4-a3fc-43bc-9c19-9204564bc762",
+    "case": {
+      "label": "anom-GIL-OUTLIER",
+      "body": "Gilden Catering\n[seed-vendor:Gilden Catering] [seed-number:GIL-EVAL-999]\n[seed-total:25000.0]\n",
+      "expected_vendor": "Gilden Catering",
+      "expected_total": 25000.0,
+      "expected_triage_state": "needs_review",
+      "expected_reason_types": [
+        "anomaly"
+      ],
+      "confirm": false,
+      "unprocessable": false,
+      "marker_key": "anom-GIL-outlier"
+    }
+  },
+  {
+    "invoice_id": "1e5589b8-2a37-41a1-ad75-4e2243e44a09",
+    "case": {
+      "label": "anom-HOL-h1",
+      "body": "Hollyfork Legal\n[seed-vendor:Hollyfork Legal] [seed-number:HOL-EVAL-001]\n[seed-total:1200.0]\n",
+      "expected_vendor": "Hollyfork Legal",
+      "expected_total": 1200.0,
+      "expected_triage_state": "confident",
+      "expected_reason_types": [
+        "unseen_vendor"
+      ],
+      "confirm": true,
+      "unprocessable": false,
+      "marker_key": "anom-HOL-h1"
+    }
+  },
+  {
+    "invoice_id": "49d99c8c-8b17-4b39-9894-6bfe3e02e947",
+    "case": {
+      "label": "anom-HOL-h2",
+      "body": "Hollyfork Legal\n[seed-vendor:Hollyfork Legal] [seed-number:HOL-EVAL-002]\n[seed-total:1250.0]\n",
+      "expected_vendor": "Hollyfork Legal",
+      "expected_total": 1250.0,
+      "expected_triage_state": "confident",
+      "expected_reason_types": [],
+      "confirm": true,
+      "unprocessable": false,
+      "marker_key": "anom-HOL-h2"
+    }
+  },
+  {
+    "invoice_id": "1bacad0f-e74b-4a54-a700-4ac4bae9814f",
+    "case": {
+      "label": "anom-HOL-h3",
+      "body": "Hollyfork Legal\n[seed-vendor:Hollyfork Legal] [seed-number:HOL-EVAL-003]\n[seed-total:1180.0]\n",
+      "expected_vendor": "Hollyfork Legal",
+      "expected_total": 1180.0,
+      "expected_triage_state": "confident",
+      "expected_reason_types": [],
+      "confirm": true,
+      "unprocessable": false,
+      "marker_key": "anom-HOL-h3"
+    }
+  },
+  {
+    "invoice_id": "fa0268ae-6c0f-4384-99e4-9b08d45a3aa9",
+    "case": {
+      "label": "anom-HOL-OUTLIER",
+      "body": "Hollyfork Legal\n[seed-vendor:Hollyfork Legal] [seed-number:HOL-EVAL-999]\n[seed-total:25000.0]\n",
+      "expected_vendor": "Hollyfork Legal",
+      "expected_total": 25000.0,
+      "expected_triage_state": "needs_review",
+      "expected_reason_types": [
+        "anomaly"
+      ],
+      "confirm": false,
+      "unprocessable": false,
+      "marker_key": "anom-HOL-outlier"
+    }
+  },
+  {
+    "invoice_id": "1e1de588-3d3a-411a-8f93-82dfb37fbfd3",
+    "case": {
+      "label": "anom-IND-h1",
+      "body": "Indigo Print\n[seed-vendor:Indigo Print] [seed-number:IND-EVAL-001]\n[seed-total:1200.0]\n",
+      "expected_vendor": "Indigo Print",
+      "expected_total": 1200.0,
+      "expected_triage_state": "confident",
+      "expected_reason_types": [
+        "unseen_vendor"
+      ],
+      "confirm": true,
+      "unprocessable": false,
+      "marker_key": "anom-IND-h1"
+    }
+  },
+  {
+    "invoice_id": "7aef7fe3-fd29-46ef-a433-e8ba961a2bdc",
+    "case": {
+      "label": "anom-IND-h2",
+      "body": "Indigo Print\n[seed-vendor:Indigo Print] [seed-number:IND-EVAL-002]\n[seed-total:1250.0]\n",
+      "expected_vendor": "Indigo Print",
+      "expected_total": 1250.0,
+      "expected_triage_state": "confident",
+      "expected_reason_types": [],
+      "confirm": true,
+      "unprocessable": false,
+      "marker_key": "anom-IND-h2"
+    }
+  },
+  {
+    "invoice_id": "609d1221-4071-4bf8-954e-3b92ab4a0797",
+    "case": {
+      "label": "anom-IND-h3",
+      "body": "Indigo Print\n[seed-vendor:Indigo Print] [seed-number:IND-EVAL-003]\n[seed-total:1180.0]\n",
+      "expected_vendor": "Indigo Print",
+      "expected_total": 1180.0,
+      "expected_triage_state": "confident",
+      "expected_reason_types": [],
+      "confirm": true,
+      "unprocessable": false,
+      "marker_key": "anom-IND-h3"
+    }
+  },
+  {
+    "invoice_id": "edf91d5f-8aa4-4615-a837-29619e3d55ba",
+    "case": {
+      "label": "anom-IND-OUTLIER",
+      "body": "Indigo Print\n[seed-vendor:Indigo Print] [seed-number:IND-EVAL-999]\n[seed-total:25000.0]\n",
+      "expected_vendor": "Indigo Print",
+      "expected_total": 25000.0,
+      "expected_triage_state": "needs_review",
+      "expected_reason_types": [
+        "anomaly"
+      ],
+      "confirm": false,
+      "unprocessable": false,
+      "marker_key": "anom-IND-outlier"
+    }
+  },
+  {
+    "invoice_id": "3f5048c4-a75a-445f-ab02-707037ebcc81",
+    "case": {
+      "label": "anom-JUN-h1",
+      "body": "Junebug Cloud\n[seed-vendor:Junebug Cloud] [seed-number:JUN-EVAL-001]\n[seed-total:1200.0]\n",
+      "expected_vendor": "Junebug Cloud",
+      "expected_total": 1200.0,
+      "expected_triage_state": "confident",
+      "expected_reason_types": [
+        "unseen_vendor"
+      ],
+      "confirm": true,
+      "unprocessable": false,
+      "marker_key": "anom-JUN-h1"
+    }
+  },
+  {
+    "invoice_id": "4d56f45c-264a-4f77-86d7-b33806521232",
+    "case": {
+      "label": "anom-JUN-h2",
+      "body": "Junebug Cloud\n[seed-vendor:Junebug Cloud] [seed-number:JUN-EVAL-002]\n[seed-total:1250.0]\n",
+      "expected_vendor": "Junebug Cloud",
+      "expected_total": 1250.0,
+      "expected_triage_state": "confident",
+      "expected_reason_types": [],
+      "confirm": true,
+      "unprocessable": false,
+      "marker_key": "anom-JUN-h2"
+    }
+  },
+  {
+    "invoice_id": "a20c9523-9d27-4b67-a1a8-d8942c3227fe",
+    "case": {
+      "label": "anom-JUN-h3",
+      "body": "Junebug Cloud\n[seed-vendor:Junebug Cloud] [seed-number:JUN-EVAL-003]\n[seed-total:1180.0]\n",
+      "expected_vendor": "Junebug Cloud",
+      "expected_total": 1180.0,
+      "expected_triage_state": "confident",
+      "expected_reason_types": [],
+      "confirm": true,
+      "unprocessable": false,
+      "marker_key": "anom-JUN-h3"
+    }
+  },
+  {
+    "invoice_id": "7e66998e-d9a7-4006-94bc-1560916e9693",
+    "case": {
+      "label": "anom-JUN-OUTLIER",
+      "body": "Junebug Cloud\n[seed-vendor:Junebug Cloud] [seed-number:JUN-EVAL-999]\n[seed-total:25000.0]\n",
+      "expected_vendor": "Junebug Cloud",
+      "expected_total": 25000.0,
+      "expected_triage_state": "needs_review",
+      "expected_reason_types": [
+        "anomaly"
+      ],
+      "confirm": false,
+      "unprocessable": false,
+      "marker_key": "anom-JUN-outlier"
+    }
+  },
+  {
+    "invoice_id": "fc3f2bbc-bd28-463c-800f-ff6e48510b41",
+    "case": {
+      "label": "math-fail-01",
+      "body": "Wonka Co. 1\n[seed-vendor:Wonka Co 1] [seed-number:WO-MATH-001]\n[seed-total:1010.0]\n",
+      "expected_vendor": "Wonka Co 1",
+      "expected_total": 1010.0,
+      "expected_triage_state": "confident",
+      "expected_reason_types": [
+        "unseen_vendor"
+      ],
+      "confirm": false,
+      "unprocessable": false,
+      "marker_key": "math-1"
+    }
+  },
+  {
+    "invoice_id": "31c35a42-abd9-452d-9a45-42ff460071f2",
+    "case": {
+      "label": "math-fail-02",
+      "body": "Wonka Co. 2\n[seed-vendor:Wonka Co 2] [seed-number:WO-MATH-002]\n[seed-total:1020.0]\n",
+      "expected_vendor": "Wonka Co 2",
+      "expected_total": 1020.0,
+      "expected_triage_state": "confident",
+      "expected_reason_types": [
+        "unseen_vendor"
+      ],
+      "confirm": false,
+      "unprocessable": false,
+      "marker_key": "math-2"
+    }
+  },
+  {
+    "invoice_id": "99fb03b4-018e-4631-a42d-bf12cadb3dba",
+    "case": {
+      "label": "math-fail-03",
+      "body": "Wonka Co. 3\n[seed-vendor:Wonka Co 3] [seed-number:WO-MATH-003]\n[seed-total:1030.0]\n",
+      "expected_vendor": "Wonka Co 3",
+      "expected_total": 1030.0,
+      "expected_triage_state": "confident",
+      "expected_reason_types": [
+        "unseen_vendor"
+      ],
+      "confirm": false,
+      "unprocessable": false,
+      "marker_key": "math-3"
+    }
+  },
+  {
+    "invoice_id": "a0bcd6ba-5dc1-443a-a207-8f2a3db17af3",
+    "case": {
+      "label": "math-fail-04",
+      "body": "Wonka Co. 4\n[seed-vendor:Wonka Co 4] [seed-number:WO-MATH-004]\n[seed-total:1040.0]\n",
+      "expected_vendor": "Wonka Co 4",
+      "expected_total": 1040.0,
+      "expected_triage_state": "confident",
+      "expected_reason_types": [
+        "unseen_vendor"
+      ],
+      "confirm": false,
+      "unprocessable": false,
+      "marker_key": "math-4"
+    }
+  },
+  {
+    "invoice_id": "8fa8842f-2e15-4224-be1f-574d57093abe",
+    "case": {
+      "label": "math-fail-05",
+      "body": "Wonka Co. 5\n[seed-vendor:Wonka Co 5] [seed-number:WO-MATH-005]\n[seed-total:1050.0]\n",
+      "expected_vendor": "Wonka Co 5",
+      "expected_total": 1050.0,
+      "expected_triage_state": "confident",
+      "expected_reason_types": [
+        "unseen_vendor"
+      ],
+      "confirm": false,
+      "unprocessable": false,
+      "marker_key": "math-5"
+    }
+  },
+  {
+    "invoice_id": "2f0046f4-133d-49f6-af40-0778003bc4b4",
+    "case": {
+      "label": "dup-01-orig",
+      "body": "Tyrell Corp #1\n[seed-vendor:Tyrell Corp 1] [seed-number:TY-DUP-001]\n[seed-total:880.0]\n",
+      "expected_vendor": "Tyrell Corp 1",
+      "expected_total": 880.0,
+      "expected_triage_state": "confident",
+      "expected_reason_types": [
+        "unseen_vendor"
+      ],
+      "confirm": false,
+      "unprocessable": false,
+      "marker_key": "dup-pair-1"
+    }
+  },
+  {
+    "invoice_id": "15cdad3f-b286-44c3-8f69-b1190291df90",
+    "case": {
+      "label": "dup-01-near",
+      "body": "Tyrell Corp #1 (reissue)\n[seed-vendor:Tyrell Corp 1] [seed-number:TY-DUP-001]\n[seed-total:880.0]\n% dup pair 1 second copy\n",
+      "expected_vendor": "Tyrell Corp 1",
+      "expected_total": 880.0,
+      "expected_triage_state": "likely_duplicate",
+      "expected_reason_types": [
+        "duplicate_of"
+      ],
+      "confirm": false,
+      "unprocessable": false,
+      "marker_key": "dup-pair-1"
+    }
+  },
+  {
+    "invoice_id": "1b20835b-36f9-4152-8b1f-924417ddbcbe",
+    "case": {
+      "label": "dup-02-orig",
+      "body": "Tyrell Corp #2\n[seed-vendor:Tyrell Corp 2] [seed-number:TY-DUP-002]\n[seed-total:880.0]\n",
+      "expected_vendor": "Tyrell Corp 2",
+      "expected_total": 880.0,
+      "expected_triage_state": "confident",
+      "expected_reason_types": [
+        "unseen_vendor"
+      ],
+      "confirm": false,
+      "unprocessable": false,
+      "marker_key": "dup-pair-2"
+    }
+  },
+  {
+    "invoice_id": "26b3b867-11aa-4434-bb56-1681f93fd427",
+    "case": {
+      "label": "dup-02-near",
+      "body": "Tyrell Corp #2 (reissue)\n[seed-vendor:Tyrell Corp 2] [seed-number:TY-DUP-002]\n[seed-total:880.0]\n% dup pair 2 second copy\n",
+      "expected_vendor": "Tyrell Corp 2",
+      "expected_total": 880.0,
+      "expected_triage_state": "likely_duplicate",
+      "expected_reason_types": [
+        "duplicate_of"
+      ],
+      "confirm": false,
+      "unprocessable": false,
+      "marker_key": "dup-pair-2"
+    }
+  },
+  {
+    "invoice_id": "17311673-d982-4490-9402-9f7bf4561afa",
+    "case": {
+      "label": "dup-03-orig",
+      "body": "Tyrell Corp #3\n[seed-vendor:Tyrell Corp 3] [seed-number:TY-DUP-003]\n[seed-total:880.0]\n",
+      "expected_vendor": "Tyrell Corp 3",
+      "expected_total": 880.0,
+      "expected_triage_state": "confident",
+      "expected_reason_types": [
+        "unseen_vendor"
+      ],
+      "confirm": false,
+      "unprocessable": false,
+      "marker_key": "dup-pair-3"
+    }
+  },
+  {
+    "invoice_id": "e565dde8-4f73-44c1-8d10-791269d927d2",
+    "case": {
+      "label": "dup-03-near",
+      "body": "Tyrell Corp #3 (reissue)\n[seed-vendor:Tyrell Corp 3] [seed-number:TY-DUP-003]\n[seed-total:880.0]\n% dup pair 3 second copy\n",
+      "expected_vendor": "Tyrell Corp 3",
+      "expected_total": 880.0,
+      "expected_triage_state": "likely_duplicate",
+      "expected_reason_types": [
+        "duplicate_of"
+      ],
+      "confirm": false,
+      "unprocessable": false,
+      "marker_key": "dup-pair-3"
+    }
+  },
+  {
+    "invoice_id": "d3d49739-aa60-4714-b119-21031b203c9a",
+    "case": {
+      "label": "dup-04-orig",
+      "body": "Tyrell Corp #4\n[seed-vendor:Tyrell Corp 4] [seed-number:TY-DUP-004]\n[seed-total:880.0]\n",
+      "expected_vendor": "Tyrell Corp 4",
+      "expected_total": 880.0,
+      "expected_triage_state": "confident",
+      "expected_reason_types": [
+        "unseen_vendor"
+      ],
+      "confirm": false,
+      "unprocessable": false,
+      "marker_key": "dup-pair-4"
+    }
+  },
+  {
+    "invoice_id": "dd6f49c2-4589-42a2-884f-a1afa47a14b4",
+    "case": {
+      "label": "dup-04-near",
+      "body": "Tyrell Corp #4 (reissue)\n[seed-vendor:Tyrell Corp 4] [seed-number:TY-DUP-004]\n[seed-total:880.0]\n% dup pair 4 second copy\n",
+      "expected_vendor": "Tyrell Corp 4",
+      "expected_total": 880.0,
+      "expected_triage_state": "likely_duplicate",
+      "expected_reason_types": [
+        "duplicate_of"
+      ],
+      "confirm": false,
+      "unprocessable": false,
+      "marker_key": "dup-pair-4"
+    }
+  },
+  {
+    "invoice_id": "2693e930-adb9-466f-ba6f-7e16a8615937",
+    "case": {
+      "label": "dup-05-orig",
+      "body": "Tyrell Corp #5\n[seed-vendor:Tyrell Corp 5] [seed-number:TY-DUP-005]\n[seed-total:880.0]\n",
+      "expected_vendor": "Tyrell Corp 5",
+      "expected_total": 880.0,
+      "expected_triage_state": "confident",
+      "expected_reason_types": [
+        "unseen_vendor"
+      ],
+      "confirm": false,
+      "unprocessable": false,
+      "marker_key": "dup-pair-5"
+    }
+  },
+  {
+    "invoice_id": "33eb8f62-e22a-4b47-8c0a-b38efd25e47c",
+    "case": {
+      "label": "dup-05-near",
+      "body": "Tyrell Corp #5 (reissue)\n[seed-vendor:Tyrell Corp 5] [seed-number:TY-DUP-005]\n[seed-total:880.0]\n% dup pair 5 second copy\n",
+      "expected_vendor": "Tyrell Corp 5",
+      "expected_total": 880.0,
+      "expected_triage_state": "likely_duplicate",
+      "expected_reason_types": [
+        "duplicate_of"
+      ],
+      "confirm": false,
+      "unprocessable": false,
+      "marker_key": "dup-pair-5"
+    }
+  },
+  {
+    "invoice_id": "25797d9e-4b6f-483e-b2ed-69dbc92d97de",
+    "case": {
+      "label": "unproc-01",
+      "body": "[stub:fail] Encrypted scan 1\n(synthetic unprocessable-extraction eval case)\n",
+      "expected_vendor": "Unknown",
+      "expected_total": 0.0,
+      "expected_triage_state": "needs_review",
+      "expected_reason_types": [
+        "extraction_failed"
+      ],
+      "confirm": false,
+      "unprocessable": true,
+      "marker_key": "unproc-1"
+    }
+  },
+  {
+    "invoice_id": "224b7f0d-5417-4616-867e-82dd75480a38",
+    "case": {
+      "label": "unproc-02",
+      "body": "[stub:fail] Encrypted scan 2\n(synthetic unprocessable-extraction eval case)\n",
+      "expected_vendor": "Unknown",
+      "expected_total": 0.0,
+      "expected_triage_state": "needs_review",
+      "expected_reason_types": [
+        "extraction_failed"
+      ],
+      "confirm": false,
+      "unprocessable": true,
+      "marker_key": "unproc-2"
+    }
+  },
+  {
+    "invoice_id": "d9321a6a-148b-435c-9e8a-1dd04eb9f71d",
+    "case": {
+      "label": "unproc-03",
+      "body": "[stub:fail] Encrypted scan 3\n(synthetic unprocessable-extraction eval case)\n",
+      "expected_vendor": "Unknown",
+      "expected_total": 0.0,
+      "expected_triage_state": "needs_review",
+      "expected_reason_types": [
+        "extraction_failed"
+      ],
+      "confirm": false,
+      "unprocessable": true,
+      "marker_key": "unproc-3"
+    }
+  },
+  {
+    "invoice_id": "61e06809-2ea7-4f7f-aa4d-698893bb3cad",
+    "case": {
+      "label": "unproc-04",
+      "body": "[stub:fail] Encrypted scan 4\n(synthetic unprocessable-extraction eval case)\n",
+      "expected_vendor": "Unknown",
+      "expected_total": 0.0,
+      "expected_triage_state": "needs_review",
+      "expected_reason_types": [
+        "extraction_failed"
+      ],
+      "confirm": false,
+      "unprocessable": true,
+      "marker_key": "unproc-4"
+    }
+  },
+  {
+    "invoice_id": "0e73d0cb-a756-4e7c-a80f-6b7d73e09be2",
+    "case": {
+      "label": "unproc-05",
+      "body": "[stub:fail] Encrypted scan 5\n(synthetic unprocessable-extraction eval case)\n",
+      "expected_vendor": "Unknown",
+      "expected_total": 0.0,
+      "expected_triage_state": "needs_review",
+      "expected_reason_types": [
+        "extraction_failed"
+      ],
+      "confirm": false,
+      "unprocessable": true,
+      "marker_key": "unproc-5"
+    }
+  }
+]

@@ -8,7 +8,8 @@
 .PHONY: help dev up down restart logs ps build migrate migration revision \
         test test-backend test-frontend lint format types-gen \
         sh-backend sh-frontend sh-db clean nuke \
-        reset-db seed-demo demo
+        reset-db seed-demo demo \
+        seed-eval eval-extraction eval-nl eval
 
 help: ## Show this help.
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | \
@@ -96,6 +97,19 @@ seed-demo: ## Populate the inbox with curated invoices that exercise every demo 
 
 demo: reset-db seed-demo ## One-shot: clean slate + curated demo state. Run before recording.
 	@echo "✓ Demo state ready.  Open http://localhost:5173"
+
+# ---------- eval ----------
+seed-eval: ## Populate the eval corpus (synthetic, 55 invoices with ground truth).
+	docker compose exec -T backend uv run python -m scripts.seed_eval
+
+eval-extraction: ## Score extraction + triage accuracy against ground truth.
+	docker compose exec -T backend uv run python -m scripts.eval_extraction
+
+eval-nl: ## Score NL→SQL translator on the curated query corpus.
+	docker compose exec -T backend uv run python -m scripts.eval_nl
+
+eval: reset-db seed-eval eval-extraction eval-nl ## Full eval pass — resets DB, seeds, scores, writes reports.
+	@echo "✓ Eval complete.  See backend/eval/extraction.md / nl.md / calibration.png"
 
 # ---------- cleanup ----------
 clean: ## Stop and remove containers (keep volumes).
