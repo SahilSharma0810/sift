@@ -79,8 +79,9 @@ def create_app() -> FastAPI:
         """Surface non-secret runtime config so the UI can show a stub-mode pill."""
         return {"version": __version__, "llm_provider": settings.llm_provider}
 
-    from app.api import invoices, search
+    from app.api import auth, invoices, search
 
+    app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
     app.include_router(invoices.router, prefix="/api/invoices", tags=["invoices"])
     app.include_router(search.router, prefix="/api/search", tags=["search"])
 
