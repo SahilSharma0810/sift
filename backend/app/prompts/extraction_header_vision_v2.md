@@ -6,14 +6,16 @@ You receive one or more rendered page images. Extract the header fields into the
 
 ### `vendor_name` — who is BILLING (issuing the invoice)
 
-The vendor is the legal entity that **issued the invoice and is owed payment**. It is the **opposite** of the buyer / customer / "bill-to" party.
+The vendor is the **legal entity that the AP clerk will pay**. The cheque is made out to this name. It is the **opposite** of the buyer / customer / "bill-to" party.
 
-- Look at the **letterhead** at the top of the page — the issuer's name and logo usually sit there.
+- The **most reliable signal is the `Remit To:` / `Pay To:` / `Make Cheque Payable To:` line** — that name IS the vendor. When this line exists, it wins over anything else on the page.
+- Otherwise, use the **legal entity name on the letterhead** — typically the full registered name with a corporate suffix (`Inc.`, `LLC`, `L.L.C.`, `Ltd`, `L.P.`, `Co.`, `GmbH`, `Pte. Ltd.`, `K.K.`).
 - Look for explicit labels: **`From:`**, **`Invoice From:`**, **`Bill From:`**, **`Remit To:`**, **`Issued By:`**, **`Vendor:`**, **`Supplier:`**.
 - The **`Bill To:` / `Customer:` / `Sold To:` / `Buyer:`** address is the *opposite* — never extract that as `vendor_name`.
-- If the invoice references multiple companies (e.g., a TV station billing an advertising agency, a manufacturer billing through a broker, a local subsidiary billing on parent letterhead), the vendor is the **specific entity that owns the letterhead and would receive the cheque via `Remit To` / `Pay To`** — not the agency, broker, advertising client, parent corporation, or named contact person in a buyer / sales-rep field.
-- Prefer the **most specific local issuer named on the letterhead** over a parent / network / holding name (e.g., a station's call letters over the network parent).
-- If the issuer truly *is* a sole proprietor or individual (the personal name appears on the letterhead / `Remit To` line), use the personal-name form as written. But an individual's name appearing in a `Buyer`, `Contact`, `Sales Rep`, or `Agency` field is **not** the vendor.
+- **Prefer the legal entity over a trade name, station call sign, brand, or nickname.** Broadcast call signs (`KGMB`, `WAGT-TV`, `WCKR-FM`), marketing slogans (`KMOZ 92.3 The Moose`), and network parent / aggregator names (`Skyview Networks`, `iHeartMedia`) are NOT the vendor when a more specific legal entity (e.g. `Community Broadcasting Service, LLC`, `Cumulus Broadcasting LLC`, `Sinclair Broadcast Group, Inc.`) appears anywhere on the page — that entity wins. Use the call sign only when no corporate entity is present anywhere on the document.
+- If the invoice references multiple companies (e.g., a TV station billing an advertising agency, a manufacturer billing through a broker, a local subsidiary billing on parent letterhead), the vendor is the **specific entity that owns the letterhead and would receive the cheque via `Remit To` / `Pay To`** — not the agency, broker, advertising client, or named contact person in a buyer / sales-rep field.
+- If the issuer truly *is* a sole proprietor or individual (the personal name appears on the letterhead / `Remit To` line and there is no corporate entity), use the personal-name form as written. But an individual's name appearing in a `Buyer`, `Contact`, `Sales Rep`, or `Agency` field is **not** the vendor.
+- Preserve the entity's own capitalization and punctuation as it appears — don't paraphrase or shorten.
 
 ### `invoice_date` — the date the invoice was ISSUED
 
@@ -34,7 +36,14 @@ Return the date string **exactly as shown** — do not reformat.
 - `subtotal` = pre-tax amount.
 - `tax` = total tax.
 
-**Sanity check:** `subtotal + tax ≈ total`. The total is almost always **larger** than the subtotal. If your candidates don't reconcile, you've picked one wrong.
+**How to pick `total` when multiple candidates appear:**
+1. Take the number explicitly labeled `Amount Due`, `Balance Due`, `Total Due`, `Pay This Amount`, or `Grand Total` — these labels mean *this is the cheque amount*.
+2. Reconcile against subtotal + tax. The candidate that satisfies `subtotal + tax ≈ candidate` (within rounding) is the `total`.
+3. Never pick a number from inside a line-item table row — `total` lives in the summary block beneath the table.
+4. A small fractional figure (`$.40`, `$0.50`) is almost never an invoice total; it's a tax line, a rounding adjustment, or a unit cost. Re-examine.
+5. `Previous Balance`, `Amount Paid`, `Credit Applied` are NOT the invoice total; they adjust the balance for prior activity.
+
+**Sanity check:** `subtotal + tax ≈ total`. The total is almost always **larger** than the subtotal. If your candidates don't reconcile, you've picked one wrong — re-pick using step 2.
 
 ### `currency` — 3-letter ISO
 

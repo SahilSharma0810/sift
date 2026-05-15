@@ -85,6 +85,20 @@ def _hash_file(path: Path) -> str:
             h.update(chunk)
     return h.hexdigest()
 
+def _digital_extraction_empty(result: ExtractionResult) -> bool:
+    """Digital-path Haiku came back with nothing usable — fall through to vision.
+
+    Triggers when the LLM either self-reports `extraction_failed` or returns
+    all required fields null/blank. Distinguishes "PDF had extractable text
+    but the text was so degraded that text-only extraction couldn't recover
+    anything" from "model genuinely thinks this isn't an invoice" — the
+    fall-through gives the latter a second chance via the rendered image.
+    """
+    if result.extraction_failed:
+        return True
+    flat = {k: _normalize_value(v) for k, v in result.fields.items()}
+    return all(flat.get(f) in (None, "") for f in REQUIRED_FIELDS)
+
 def _normalize_value(field_value: Any) -> Any:
     """Vision-path values come as {"value": ..., "bbox": ...}; text-path values are bare."""
     if isinstance(field_value, dict) and "value" in field_value:
@@ -339,6 +353,17 @@ def extract_from_pdf(
         invoice_text = digital.full_text
         initial_model = force_tier or settings.model_tier_1
         initial_result = llm.call(EXTRACT_HEADER, model=initial_model, text=invoice_text)
+
+        if force_tier is None and _digital_extraction_empty(initial_result):
+            log.info(
+                "extraction.digital_to_vision_fallback",
+                reason="extraction_failed" if initial_result.extraction_failed else "all_required_null",
+                digital_model=initial_result.model,
+            )
+            page_pngs = render_page_pngs(pdf_path, scale=1.2)
+            use_vision = True
+            initial_model = settings.model_tier_2
+            initial_result = llm.call(EXTRACT_HEADER_VISION, model=initial_model, page_pngs=page_pngs)
 
     initial_tier = _tier_for_model(initial_model, settings)
 
