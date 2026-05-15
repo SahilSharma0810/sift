@@ -76,6 +76,13 @@ export default {
           },
         },
         soc2: '#34c759',
+        'anomaly-amount-fg':       'oklch(0.45 0.13 25)',
+        'anomaly-amount-bg':       'oklch(0.96 0.04 25)',
+        'anomaly-amount-ring':     'oklch(0.88 0.07 25)',
+        'anomaly-frequency-fg':    'oklch(0.42 0.13 290)',
+        'anomaly-frequency-bg':    'oklch(0.96 0.04 290)',
+        'anomaly-frequency-ring':  'oklch(0.88 0.07 290)',
+        'anomaly-severity-high':   'oklch(0.55 0.18 25)',
       },
 
       fontFamily: {
