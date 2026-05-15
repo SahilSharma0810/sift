@@ -3,13 +3,18 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
-import pytest
 from sqlalchemy.orm import Session
 
 from app.adapters.storage.session_repo import (
     create as create_session,
+)
+from app.adapters.storage.session_repo import (
     delete as delete_session,
+)
+from app.adapters.storage.session_repo import (
     get_active as get_active_session,
+)
+from app.adapters.storage.session_repo import (
     touch_last_seen,
 )
 from app.adapters.storage.user_repo import (
@@ -17,7 +22,7 @@ from app.adapters.storage.user_repo import (
     update_last_login,
     upsert_demo_user,
 )
-from app.domain.auth import hash_password, verify_password
+from app.domain.auth import verify_password
 
 
 class TestUserRepo:
@@ -150,8 +155,8 @@ class TestSeedDemoUser:
     def test_seed_demo_user_is_idempotent_and_does_not_change_password(
         self, db_session: Session
     ) -> None:
-        from scripts.seed_demo import seed_demo_user
         from app.config import get_settings
+        from scripts.seed_demo import seed_demo_user
 
         settings = get_settings()
         u1 = seed_demo_user(db_session)

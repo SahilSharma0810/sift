@@ -3,7 +3,8 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from uuid import UUID
 
-from sqlalchemy import delete as sa_delete, select, update
+from sqlalchemy import delete as sa_delete
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from app.db.models import AuthSession

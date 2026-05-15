@@ -3,14 +3,11 @@ from __future__ import annotations
 import time
 from datetime import UTC, datetime, timedelta
 
-import pytest
 from sqlalchemy.orm import Session
 
-from app.adapters.storage.session_repo import get_active as get_active_session
 from app.adapters.storage.user_repo import upsert_demo_user
 from app.config import get_settings
 from app.services.auth_service import LoginOutcome, login
-
 
 SECRET = "test-secret-do-not-use-in-prod"
 SETTINGS = get_settings()
@@ -69,6 +66,7 @@ class TestLogin:
         )
         assert outcome is None
         from sqlalchemy import select
+
         from app.db.models import AuthSession
 
         rows = db_session.execute(
@@ -160,9 +158,10 @@ class TestResolveSession:
     def test_returns_none_and_deletes_row_when_session_expired(
         self, db_session: Session
     ) -> None:
-        from app.services.auth_service import resolve_session
         from sqlalchemy import update
+
         from app.db.models import AuthSession
+        from app.services.auth_service import resolve_session
 
         outcome = self._login(db_session)
         assert outcome is not None
@@ -179,9 +178,10 @@ class TestResolveSession:
         assert remaining == []
 
     def test_touches_last_seen_on_resolve(self, db_session: Session) -> None:
-        from app.services.auth_service import resolve_session
         from sqlalchemy import select
+
         from app.db.models import AuthSession
+        from app.services.auth_service import resolve_session
 
         outcome = self._login(db_session)
         assert outcome is not None

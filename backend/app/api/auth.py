@@ -8,7 +8,8 @@ from app.api.deps import SESSION_COOKIE_NAME, get_current_clerk
 from app.config import get_settings
 from app.db.session import get_session
 from app.domain.auth import ClerkOut, LoginIn
-from app.services.auth_service import login as login_service, logout as logout_service
+from app.services.auth_service import login as login_service
+from app.services.auth_service import logout as logout_service
 
 router = APIRouter()
 
