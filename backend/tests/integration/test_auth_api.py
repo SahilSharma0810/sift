@@ -4,7 +4,6 @@ from sqlalchemy.orm import Session
 
 from app.adapters.storage.user_repo import upsert_demo_user
 
-
 SESSION_COOKIE = "sift_session"
 
 
