@@ -35,6 +35,13 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    """Best-effort schema reversal — emergency only.
+
+    The reconstructed `file_path` uses the dev default `./uploads/` prefix
+    and will NOT match production paths (Render uses `/data/uploads/`).
+    Post-R2 rows have no on-disk file at all. Restore from backup rather
+    than relying on this for any data-critical rollback.
+    """
     op.add_column(
         "invoices",
         sa.Column("file_path", sa.String(length=512), nullable=True),
