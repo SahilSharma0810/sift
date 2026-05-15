@@ -19,15 +19,33 @@ The vendor is the **legal entity that the AP clerk will pay**. The cheque is mad
 
 ### `invoice_date` — the date the invoice was ISSUED
 
-Use the **issue date** of the document itself. **Not** delivery date, service date, due date, air date, per-line-item date, **billing-period start/end**, or **statement-period** date.
+Use the **issue date** of the document itself — the single calendar day the vendor cut this invoice. **Not** delivery date, service date, due date, air date, per-line-item date, **billing-period start/end**, or **statement-period** date.
 
-Look for labels: `Invoice Date`, `Date Issued`, `Date`, `Bill Date`. When multiple dates are visible, prefer the one in the **header block alongside the invoice number** — this is almost always the issue date. A bare month-year like `Feb-99` or a range like `Period: Jan 1 – Jan 31` in the body is a billing window, not the issue date. If a header date and a body date disagree, the header date wins.
+**How to pick when multiple dates appear:**
+1. Take the date next to an `Invoice Date`, `Date Issued`, `Date`, `Bill Date`, or `Issued` label.
+2. Otherwise, the date in the header block alongside `Invoice #` / `Invoice No.` is almost always the issue date.
+3. A date **range** (`11/1/2016 - 11/8/2016`) is a service or billing period — NOT the issue date.
+4. A **due date** (`Payable By`, `Due`, `Net 30`, `Pay By`) is when the buyer must pay; the invoice was issued earlier.
+5. A bare **month-year** (`Feb-99`, `October 2020`) is almost always a billing window, not an issue date.
+6. An **air date / shipping date / service date** describes when service was rendered, not when this paper was cut.
 
-Return the date string **exactly as shown** — do not reformat.
+Return the date string **exactly as shown** — do not reformat. If the source shows `7/26/99` keep `7/26/99`; if it shows `June 16, 1999` keep `June 16, 1999`.
 
 ### `invoice_number` — the issuer's identifier
 
-`Invoice #`, `Invoice No.`, `Doc #`. Do NOT use PO numbers or customer order numbers.
+The unique identifier the vendor stamped on this invoice. Look for labels: `Invoice #`, `Invoice No.`, `Invoice Number`, `Doc #`, `Document ID`.
+
+Take the value **exactly as printed** — do not strip prefixes/suffixes. `MG12-018801` stays `MG12-018801`; `0301 E90282` stays as-is.
+
+**Do NOT use:**
+- `PO #` / `Purchase Order` / `Customer Order #` — buyer's reference, not vendor's invoice id.
+- `Account #` / `Customer #` — buyer's identifier on the vendor's books.
+- `Tax ID` / `EIN` / `VAT #` / `GST #` — regulatory numbers.
+- `Statement #` / `Receipt #` / `Quote #` — sibling document types.
+- An unlabeled date (`MAY 2022`) — it's a date, not a number.
+- Any value from a line-item table cell.
+
+If no `Invoice #`-style label exists anywhere on the page, return `null` — do not invent one from an account number or PO.
 
 ### `subtotal`, `tax`, `total`
 
