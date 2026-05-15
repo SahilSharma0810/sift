@@ -15,6 +15,7 @@ from app.adapters.storage.invoice_repo import (
     list_invoices,
 )
 from app.adapters.storage.vendor_repo import (
+    display_name,
     normalize_name,
     upsert_by_normalized_name,
 )
@@ -42,6 +43,44 @@ class TestVendorRepo:
         v1 = upsert_by_normalized_name(db_session, name="Acme Repo Inc.")
         v2 = upsert_by_normalized_name(db_session, name="Acme Repo Inc")
         assert v1.id == v2.id
+
+
+class TestDisplayName:
+    def test_already_mixed_case_passes_through(self) -> None:
+        assert display_name("Management Science Associates, Inc.") == \
+            "Management Science Associates, Inc."
+
+    def test_screaming_caps_gets_title_cased(self) -> None:
+        assert display_name("MANAGEMENT SCIENCE ASSOCIATES, INC.") == \
+            "Management Science Associates, INC."
+
+    def test_short_acronyms_preserved(self) -> None:
+        # 3-letter all-caps short string isn't screaming caps (length guard).
+        assert display_name("IBM") == "IBM"
+
+    def test_legal_suffixes_stay_uppercase(self) -> None:
+        # INC, LLC, LTD are <=4 chars → preserved as acronyms.
+        assert display_name("ACME WIDGETS LLC") == "Acme Widgets LLC"
+        assert display_name("HALCYON SOFTWARE LTD.") == "Halcyon Software LTD."
+
+    def test_first_upsert_normalizes_display(self, db_session: Session) -> None:
+        v = upsert_by_normalized_name(
+            db_session, name="MANAGEMENT SCIENCE ASSOCIATES, INC."
+        )
+        assert v.name == "Management Science Associates, INC."
+        assert v.normalized_name == "management science associates inc"
+
+    def test_subsequent_upsert_keeps_first_display(
+        self, db_session: Session
+    ) -> None:
+        first = upsert_by_normalized_name(
+            db_session, name="MANAGEMENT SCIENCE DEMO LLC"
+        )
+        second = upsert_by_normalized_name(
+            db_session, name="Management Science Demo LLC"
+        )
+        assert first.id == second.id
+        assert second.name == "Management Science Demo LLC"
 
 class TestInvoiceRepo:
     def test_create_and_fetch(self, db_session: Session) -> None:
