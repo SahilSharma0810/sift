@@ -16,7 +16,7 @@ from contextlib import AbstractContextManager
 from pathlib import Path
 from typing import Protocol, runtime_checkable
 
-from fastapi import Response
+from starlette.responses import Response
 
 from app.config import Settings
 
@@ -33,10 +33,12 @@ def get_blob_store(settings: Settings) -> BlobStore:
     if settings.blob_store == "local":
         from app.adapters.storage.local_blob_store import LocalDiskBlobStore
         return LocalDiskBlobStore(upload_dir=settings.upload_dir)
-    from app.adapters.storage.r2_blob_store import R2BlobStore
-    return R2BlobStore(
-        account_id=settings.r2_account_id,
-        access_key_id=settings.r2_access_key_id,
-        secret_access_key=settings.r2_secret_access_key,
-        bucket=settings.r2_bucket,
-    )
+    if settings.blob_store == "r2":
+        from app.adapters.storage.r2_blob_store import R2BlobStore
+        return R2BlobStore(
+            account_id=settings.r2_account_id,
+            access_key_id=settings.r2_access_key_id,
+            secret_access_key=settings.r2_secret_access_key,
+            bucket=settings.r2_bucket,
+        )
+    raise ValueError(f"unknown blob_store: {settings.blob_store!r}")
