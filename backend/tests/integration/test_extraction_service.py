@@ -70,37 +70,40 @@ class TestExtractFromPdf:
     def test_llm_reported_failure_produces_extraction_failed_reason(
         self, db_session: Session, tmp_path: Path
     ) -> None:
-        """When the LLM sets extraction_failed=True, the service short-circuits
-        domain logic and writes a single extraction_failed reason per ADR-0006."""
+        """When BOTH the digital and the vision fallback report extraction_failed,
+        the service writes a single extraction_failed reason per ADR-0006.
+
+        The digital path is given a first chance; when it returns all-null /
+        extraction_failed, the service falls through to vision. A document
+        that is genuinely not an invoice (e.g. a resume) fails both paths,
+        which is the case under test here.
+        """
 
         test_pdf = tmp_path / "fail.pdf"
         test_pdf.write_bytes(CLEAN_PDF.read_bytes() + b"\x00")
 
-        failed_result = ExtractionResult(
-            fields={
-                "vendor_name": None,
-                "invoice_number": None,
-                "invoice_date": None,
-                "subtotal": None,
-                "tax": None,
-                "total": None,
-                "currency": None,
-            },
+        failed_digital = ExtractionResult(
+            fields={f: None for f in ("vendor_name", "invoice_number", "invoice_date", "subtotal", "tax", "total", "currency")},
             self_reported_confidence={},
             extraction_failed=True,
             extraction_failure_reason="document is a resume, not an invoice",
             model="claude-haiku-4-5",
             prompt_hash="h",
             schema_hash="h",
-            usage={
-                "input_tokens": 100,
-                "output_tokens": 5,
-                "cache_creation_input_tokens": 0,
-                "cache_read_input_tokens": 0,
-            },
+            usage={"input_tokens": 100, "output_tokens": 5, "cache_creation_input_tokens": 0, "cache_read_input_tokens": 0},
+        )
+        failed_vision = ExtractionResult(
+            fields={f: None for f in ("vendor_name", "invoice_number", "invoice_date", "subtotal", "tax", "total", "currency")},
+            self_reported_confidence={},
+            extraction_failed=True,
+            extraction_failure_reason="document is a resume, not an invoice",
+            model="claude-sonnet-4-6",
+            prompt_hash="vh",
+            schema_hash="vh",
+            usage={"input_tokens": 1500, "output_tokens": 5, "cache_creation_input_tokens": 0, "cache_read_input_tokens": 0},
         )
 
-        with patch_make_llm_client(header=failed_result):
+        with patch_make_llm_client(header=failed_digital, vision=failed_vision):
             result = extract_from_pdf(db_session, pdf_path=test_pdf)
 
         assert result.extraction.predicted_triage_state == "needs_review"
@@ -111,6 +114,59 @@ class TestExtractFromPdf:
         assert "resume" in reasons[0]["detail"]
 
         assert result.extraction.extracted_fields == {}
+
+    def test_empty_digital_extraction_falls_back_to_vision(
+        self, db_session: Session, tmp_path: Path
+    ) -> None:
+        """When digital-path Haiku returns all-null required fields without
+        explicitly self-reporting `extraction_failed`, the service still
+        recovers by re-running on the vision path. Models the case of a
+        PDF whose text layer is too degraded for text-only extraction but
+        whose rendered image is legible."""
+        from app.adapters.llm_client import ExtractionResult
+
+        test_pdf = tmp_path / "empty_digital.pdf"
+        test_pdf.write_bytes(CLEAN_PDF.read_bytes() + b"\n%empty-digital\n")
+
+        empty_digital = ExtractionResult(
+            fields={f: None for f in ("vendor_name", "invoice_number", "invoice_date", "subtotal", "tax", "total", "currency")},
+            self_reported_confidence={},
+            extraction_failed=False,
+            extraction_failure_reason=None,
+            model="claude-haiku-4-5",
+            prompt_hash="h",
+            schema_hash="h",
+            usage={"input_tokens": 80, "output_tokens": 5, "cache_creation_input_tokens": 0, "cache_read_input_tokens": 0},
+        )
+        recovered_vision = ExtractionResult(
+            fields={
+                "vendor_name": {"value": "Vega Logistics", "bbox": [0.1, 0.05, 0.5, 0.10], "page": 0, "confidence": 0.95},
+                "invoice_number": {"value": "INV-2026-0042", "bbox": [0.6, 0.10, 0.9, 0.13], "page": 0, "confidence": 0.96},
+                "invoice_date": {"value": "2026-05-13", "bbox": [0.6, 0.14, 0.9, 0.17], "page": 0, "confidence": 0.95},
+                "subtotal": {"value": 1000.0, "bbox": [0.7, 0.6, 0.9, 0.63], "page": 0, "confidence": 0.96},
+                "tax": {"value": 180.0, "bbox": [0.7, 0.64, 0.9, 0.67], "page": 0, "confidence": 0.96},
+                "total": {"value": 1180.0, "bbox": [0.7, 0.7, 0.9, 0.73], "page": 0, "confidence": 0.97},
+                "currency": {"value": "USD", "bbox": [0.62, 0.7, 0.68, 0.73], "page": 0, "confidence": 0.95},
+            },
+            self_reported_confidence={"total": 0.97},
+            extraction_failed=False,
+            extraction_failure_reason=None,
+            model="claude-sonnet-4-6",
+            prompt_hash="vh",
+            schema_hash="vh",
+            usage={"input_tokens": 1800, "output_tokens": 110, "cache_creation_input_tokens": 0, "cache_read_input_tokens": 0},
+        )
+
+        with patch_make_llm_client(header=empty_digital, vision=recovered_vision) as mock:
+            result = extract_from_pdf(db_session, pdf_path=test_pdf)
+
+        spec_names = [call.args[0].name for call in mock.call.call_args_list]
+        assert "header" in spec_names, "digital extraction should be attempted first"
+        assert "header_vision" in spec_names, "vision fallback should run after empty digital extraction"
+
+        assert result.extraction.extracted_fields["vendor_name"]["value"] == "Vega Logistics"
+        assert result.extraction.extracted_fields["total"]["value"] == 1180.0
+        assert result.extraction.model == "claude-sonnet-4-6"
 
 SCAN_PDF = FIXTURES / "scan_invoice.pdf"
 

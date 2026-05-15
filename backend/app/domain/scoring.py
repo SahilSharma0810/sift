@@ -20,6 +20,8 @@ DEFAULT_HISTORY_SCORE = 0.85
 
 CASCADE_THRESHOLD = 0.7
 
+UNSEEN_VENDOR_CONFIDENCE_FLOOR = 0.85
+
 def compute_composite_confidence(
     structural: dict[str, float],
     history: dict[str, float],
@@ -40,22 +42,34 @@ def should_trigger_cascade(
     math_passed: bool,
     is_unseen_vendor: bool,
 ) -> bool:
-    """Cascade fires when math fails OR unseen vendor OR min(confidence) < 0.7.
+    """Cascade trigger per ADR-0003 (amended).
 
-    Empty confidence dict is treated as total extraction failure (or upstream
-    bug) — failsafe to True so the triage layer never silently bypasses
-    review on missing signal.
+    Fires when ANY of:
+      - math reconciliation failed
+      - confidence dict is empty (extraction failure / upstream bug)
+      - min(confidence) < CASCADE_THRESHOLD (0.7)
+      - vendor is unseen AND min(confidence) < UNSEEN_VENDOR_CONFIDENCE_FLOOR (0.85)
 
-    Per ADR-0003. The disputed-field agreement-override logic lives in
-    services/extraction_service when the cascade actually runs.
+    Originally ADR-0003 treated `is_unseen_vendor` as an unconditional
+    trigger. In practice that fired the cascade on every first-touch
+    vendor regardless of how strongly the initial tier had pinned the
+    fields, which inflated cost without improving correctness when the
+    initial tier was already confident. The amended rule keeps the
+    unseen-vendor signal as a strong risk factor — it lowers the
+    threshold to 0.85 — but no longer forces escalation when the
+    initial tier is convinced.
+
+    Empty confidence is still a failsafe-to-True so triage can't be
+    silently bypassed on missing signal.
     """
     if not math_passed:
         return True
-    if is_unseen_vendor:
-        return True
     if not confidence:
         return True
-    return min(confidence.values()) < CASCADE_THRESHOLD
+    min_conf = min(confidence.values())
+    if is_unseen_vendor and min_conf < UNSEEN_VENDOR_CONFIDENCE_FLOOR:
+        return True
+    return min_conf < CASCADE_THRESHOLD
 
 NUMERIC_AGREEMENT_TOLERANCE = Decimal("0.01")
 

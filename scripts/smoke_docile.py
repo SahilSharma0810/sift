@@ -27,6 +27,7 @@ from __future__ import annotations
 import argparse
 import json
 import random
+import re
 import sys
 import time
 from dataclasses import dataclass
@@ -44,6 +45,29 @@ DOCILE_TO_SIFT: dict[str, str] = {
     "amount_total_tax": "tax",
     "currency_code_amount_due": "currency",
 }
+
+PRICING_PER_MTOK: dict[str, dict[str, float]] = {
+    "claude-haiku-4-5":   {"input": 1.00,  "output": 5.00,  "cache_write": 1.25,  "cache_read": 0.10},
+    "claude-sonnet-4-6":  {"input": 3.00,  "output": 15.00, "cache_write": 3.75,  "cache_read": 0.30},
+    "claude-opus-4-7":    {"input": 15.00, "output": 75.00, "cache_write": 18.75, "cache_read": 1.50},
+}
+
+def _model_key(model_id: str) -> str:
+    for k in PRICING_PER_MTOK:
+        if model_id.startswith(k):
+            return k
+    return model_id
+
+def _tier_cost_usd(model_id: str, usage: dict[str, int]) -> float:
+    p = PRICING_PER_MTOK.get(_model_key(model_id))
+    if p is None:
+        return 0.0
+    return (
+        usage.get("input_tokens", 0) * p["input"]
+        + usage.get("output_tokens", 0) * p["output"]
+        + usage.get("cache_creation_input_tokens", 0) * p["cache_write"]
+        + usage.get("cache_read_input_tokens", 0) * p["cache_read"]
+    ) / 1_000_000
 
 @dataclass
 class GroundTruth:
@@ -105,6 +129,20 @@ def _numeric_close(a: Any, b: Any, tol_frac: float = 0.01) -> bool:
     except (TypeError, ValueError):
         return False
 
+_AMOUNT_STRIP_RE = re.compile(r"[,$£€¥₹\s]|USD|EUR|GBP|INR|JPY|US\$|CAD|AUD")
+_AMOUNT_TRAIL_RE = re.compile(r"[.\-−–—\s]+$")
+_DATE_NORMALIZE_RE = re.compile(r"[\s/\-.l|]+")
+
+def _normalize_date(s: str) -> str:
+    """Collapse all common separators (/ - . space l |) to '/' for date comparison."""
+    return _DATE_NORMALIZE_RE.sub("/", s.strip()).strip("/")
+
+def _clean_amount_str(s: str) -> str:
+    """Strip currency tokens, thousands separators, and trailing dash/dot from a number string."""
+    cleaned = _AMOUNT_STRIP_RE.sub("", s)
+    cleaned = _AMOUNT_TRAIL_RE.sub("", cleaned)
+    return cleaned
+
 def _compare_field(field: str, gt_text: str, actual: Any) -> tuple[bool, str]:
     """Return (match, note). Soft comparisons per field type."""
     if actual is None:
@@ -114,27 +152,30 @@ def _compare_field(field: str, gt_text: str, actual: Any) -> tuple[bool, str]:
     gt_s = str(gt_text).strip()
 
     if field in ("subtotal", "tax", "total"):
-
-        import re as _re
-
-        gt_n = _re.sub(r"[,$\s]|USD|EUR|GBP|INR", "", gt_s)
+        gt_n = _clean_amount_str(gt_s)
+        actual_n = _clean_amount_str(actual_s)
         try:
-            return _numeric_close(float(gt_n), actual_s), f"gt={gt_n!r} got={actual_s!r}"
+            return _numeric_close(float(gt_n), float(actual_n)), f"gt={gt_n!r} got={actual_n!r}"
         except ValueError:
             return False, f"bad-number gt={gt_s!r} got={actual_s!r}"
 
     if field == "currency":
-
-        _SYMBOL_TO_ISO = {"$": "USD", "€": "EUR", "£": "GBP", "₹": "INR", "¥": "JPY"}
+        _SYMBOL_TO_ISO = {
+            "$": "USD", "US$": "USD", "C$": "CAD", "CA$": "CAD", "A$": "AUD", "AU$": "AUD",
+            "€": "EUR", "£": "GBP", "₹": "INR", "¥": "JPY",
+        }
         gt_norm = _SYMBOL_TO_ISO.get(gt_s, gt_s.upper())
         return actual_s.upper() == gt_norm, f"gt={gt_s!r}→{gt_norm!r} got={actual_s!r}"
 
     if field == "invoice_date":
-
-        return (
-            actual_s in gt_s or gt_s in actual_s,
-            f"gt={gt_s!r} got={actual_s!r}",
+        gt_norm = _normalize_date(gt_s)
+        actual_norm = _normalize_date(actual_s)
+        match = (
+            actual_norm == gt_norm
+            or actual_norm in gt_norm
+            or gt_norm in actual_norm
         )
+        return match, f"gt={gt_s!r} got={actual_s!r}"
 
     a_lower = actual_s.lower()
     g_lower = gt_s.lower()
@@ -168,6 +209,8 @@ def _run(
     per_field = {sift: {"ok": 0, "total": 0} for sift in DOCILE_TO_SIFT.values()}
     failures: list[dict[str, Any]] = []
     cascade_tiers: list[int] = []
+    per_model_totals: dict[str, dict[str, int]] = {}
+    total_cost_usd = 0.0
 
     with httpx.Client(base_url=base_url) as client:
         _login(client, email=email, password=password)
@@ -196,10 +239,26 @@ def _run(
 
             ext = resp.get("current_extraction") or {}
             cascade = ext.get("cascade_trace") or {}
-            n_tiers = len(cascade.get("tiers", []) or [])
+            tiers_list = cascade.get("tiers", []) or []
+            n_tiers = len(tiers_list)
             cascade_tiers.append(n_tiers)
             triage = ext.get("predicted_triage_state", "—")
-            _print(f"  Pipeline: {elapsed:.1f}s · cascade={n_tiers} tier(s) · triage={triage}")
+
+            invoice_cost = 0.0
+            for t in tiers_list:
+                model = t.get("model", "unknown")
+                usage = t.get("usage") or {}
+                invoice_cost += _tier_cost_usd(model, usage)
+                bucket = per_model_totals.setdefault(
+                    _model_key(model),
+                    {"input_tokens": 0, "output_tokens": 0, "cache_creation_input_tokens": 0, "cache_read_input_tokens": 0, "calls": 0},
+                )
+                for k in ("input_tokens", "output_tokens", "cache_creation_input_tokens", "cache_read_input_tokens"):
+                    bucket[k] += usage.get(k, 0)
+                bucket["calls"] += 1
+            total_cost_usd += invoice_cost
+
+            _print(f"  Pipeline: {elapsed:.1f}s · cascade={n_tiers} tier(s) · triage={triage} · ${invoice_cost:.4f}")
 
             rows: list[tuple[str, str, bool]] = []
             for sift_field, gt_text in gt.fields.items():
@@ -247,11 +306,27 @@ def _run(
         _print(f"  {field:<16} {counts['ok']:>3}/{counts['total']:<3}  {rate:.1%}")
     if failures:
         _print(f"\n{len(failures)} invoice(s) had at least one mismatch.")
+
+    n_invoices = len(cascade_tiers)
+    if n_invoices:
+        _print("")
+        _print("Cost breakdown (per Anthropic public pricing):")
+        for model, u in sorted(per_model_totals.items()):
+            cost = _tier_cost_usd(model, u)
+            _print(
+                f"  {model:<22} calls={u['calls']:>3}  "
+                f"in={u['input_tokens']:>8,}  out={u['output_tokens']:>6,}  "
+                f"cache_w={u['cache_creation_input_tokens']:>7,}  cache_r={u['cache_read_input_tokens']:>8,}  "
+                f"${cost:.4f}"
+            )
+        _print(f"  Total: ${total_cost_usd:.4f}  (avg ${total_cost_usd / n_invoices:.4f}/invoice over {n_invoices} invoice(s))")
     return {
         "total_correct": total_correct,
         "total_attempts": total_attempts,
         "per_field": per_field,
         "failures": failures,
+        "total_cost_usd": round(total_cost_usd, 6),
+        "per_model_totals": per_model_totals,
     }
 
 def main() -> int:

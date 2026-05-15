@@ -67,10 +67,28 @@ class TestCascadeTrigger:
             is True
         )
 
-    def test_unseen_vendor_always_triggers(self) -> None:
+    def test_unseen_vendor_with_high_confidence_does_not_trigger(self) -> None:
+        """Amended ADR-0003: unseen vendor + min confidence >= 0.85 → no cascade.
+
+        Originally unseen vendor unconditionally fired the cascade. We
+        relaxed this to avoid paying for escalation on first-touch
+        vendors where the initial tier was already confident.
+        """
         assert (
             should_trigger_cascade(
                 confidence={"total": 0.95},
+                math_passed=True,
+                is_unseen_vendor=True,
+            )
+            is False
+        )
+
+    def test_unseen_vendor_with_low_confidence_triggers(self) -> None:
+        """Unseen vendor lowers the cascade threshold to 0.85 — anything
+        below that fires even when normal threshold (0.7) would not."""
+        assert (
+            should_trigger_cascade(
+                confidence={"total": 0.80},
                 math_passed=True,
                 is_unseen_vendor=True,
             )
