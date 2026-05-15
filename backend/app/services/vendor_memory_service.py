@@ -27,6 +27,7 @@ from app.domain.confidence import (
     NUMERIC_HISTORY_FIELDS,
     compute_history_scores_from_stats,
 )
+from app.domain.models import VendorMemoryStats
 
 def update_stats_from_extraction(
     session: Session, *, vendor: Vendor, extraction: Extraction
@@ -81,7 +82,8 @@ def compute_history_scores(
     """
     if vendor is None:
         return {}
-    stats = (vendor.memory or {}).get("stats") or {}
+    raw = (vendor.memory or {}).get("stats") or None
+    stats = VendorMemoryStats(**raw) if raw else None
     return compute_history_scores_from_stats(
         extracted_fields=fields, vendor_stats=stats
     )

@@ -35,6 +35,7 @@ export const Icons = {
   lock: () => <Icon d="M5 12h14a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1zM8 12V7a4 4 0 1 1 8 0v5" />,
   refresh: () => <Icon d="M3 12a9 9 0 0 1 15-6.7L21 8M21 3v5h-5M21 12a9 9 0 0 1-15 6.7L3 16M3 21v-5h5" />,
   arrowL: () => <Icon d="M19 12H5M12 19l-7-7 7-7" />,
+  arrowR: () => <Icon d="M5 12h14M12 5l7 7-7 7" />,
   chevron: () => <Icon d="M9 18l6-6-6-6" />,
   filter: () => <Icon d="M3 5h18M6 12h12M10 19h4" />,
   layers: () => <Icon d="M12 2 2 8l10 6 10-6-10-6zM2 16l10 6 10-6M2 12l10 6 10-6" />,

@@ -1,14 +1,16 @@
 import type { VendorMemory } from '@/types/generated/domain'
-import { formatNumber } from '@/utils/format'
+import { formatMoney } from '@/utils/format'
 
 import { Icons } from './Icons'
 
 export function VendorMemoryCard({
   memory,
   vendorName,
+  currency,
 }: {
   memory: VendorMemory
   vendorName: string
+  currency?: string
 }) {
   const seen = memory.stats?.total_seen ?? 0
   if (seen === 0) {
@@ -29,7 +31,7 @@ export function VendorMemoryCard({
     <div className="card">
       <div className="grid grid-cols-2 border-b border-hairline">
         <Cell label="Invoices seen" value={String(seen)} />
-        <Cell label="Avg total" value={`$${formatNumber(memory.stats?.avg_total)}`} right />
+        <Cell label="Avg total" value={formatMoney(memory.stats?.avg_total, currency)} right />
       </div>
       {memory.rules && memory.rules.length > 0 && (
         <div className="px-3.5 py-2.5">

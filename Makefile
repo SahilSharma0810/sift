@@ -65,6 +65,7 @@ test-frontend: ## Run vitest inside the frontend container.
 lint: ## Lint + type-check both stacks.
 	docker compose exec backend uv run ruff check .
 	docker compose exec backend uv run lint-imports
+	docker compose exec backend uv run mypy app
 	docker compose exec frontend pnpm tsc --noEmit
 
 format: ## Format code in both stacks.

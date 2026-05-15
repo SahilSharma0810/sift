@@ -8,10 +8,12 @@ from __future__ import annotations
 
 from uuid import uuid4
 
+from app.domain.models import DuplicateOfReason, FieldValue
 from app.domain.triage import derive_triage
 
+
 class TestDeriveTriage:
-    def _clean_fields(self) -> dict[str, object]:
+    def _clean_fields(self) -> dict[str, FieldValue]:
         return {
             "vendor_name": "Vega Logistics",
             "invoice_number": "INV-001",
@@ -52,12 +54,11 @@ class TestDeriveTriage:
             duplicate_of=None,
         )
         assert state == "needs_review"
-        assert any(r["type"] == "math_fails" for r in reasons)
-        math_reason = next(r for r in reasons if r["type"] == "math_fails")
-        assert math_reason["subtotal"] == 1000.0
-        assert math_reason["tax"] == 180.0
-        assert math_reason["total"] == 1181.0
-        assert math_reason["delta"] == 1.0
+        math_reason = next(r for r in reasons if r.type == "math_fails")
+        assert math_reason.subtotal == 1000.0  # type: ignore[union-attr]
+        assert math_reason.tax == 180.0  # type: ignore[union-attr]
+        assert math_reason.total == 1181.0  # type: ignore[union-attr]
+        assert math_reason.delta == 1.0  # type: ignore[union-attr]
 
     def test_duplicate_is_likely_duplicate(self) -> None:
         original_id = uuid4()
@@ -66,16 +67,16 @@ class TestDeriveTriage:
             confidence={"total": 0.95},
             math_passed=True,
             is_unseen_vendor=False,
-            duplicate_of={
-                "invoice_id": original_id,
-                "similarity": 0.98,
-                "match_method": "perceptual_hash",
-            },
+            duplicate_of=DuplicateOfReason(
+                invoice_id=original_id,
+                similarity=0.98,
+                match_method="perceptual_hash",
+            ),
         )
         assert state == "likely_duplicate"
-        dup_reason = next(r for r in reasons if r["type"] == "duplicate_of")
-        assert dup_reason["invoice_id"] == original_id
-        assert dup_reason["similarity"] == 0.98
+        dup_reason = next(r for r in reasons if r.type == "duplicate_of")
+        assert dup_reason.invoice_id == original_id  # type: ignore[union-attr]
+        assert dup_reason.similarity == 0.98  # type: ignore[union-attr]
 
     def test_low_confidence_field_is_needs_review(self) -> None:
         state, reasons = derive_triage(
@@ -86,8 +87,8 @@ class TestDeriveTriage:
             duplicate_of=None,
         )
         assert state == "needs_review"
-        low = next(r for r in reasons if r["type"] == "low_confidence")
-        assert low["field"] == "invoice_number"
+        low = next(r for r in reasons if r.type == "low_confidence")
+        assert low.field == "invoice_number"  # type: ignore[union-attr]
 
     def test_missing_field_is_needs_review(self) -> None:
         fields = self._clean_fields()
@@ -100,11 +101,10 @@ class TestDeriveTriage:
             duplicate_of=None,
         )
         assert state == "needs_review"
-        missing = next(r for r in reasons if r["type"] == "missing_field")
-        assert missing["field"] == "currency"
+        missing = next(r for r in reasons if r.type == "missing_field")
+        assert missing.field == "currency"  # type: ignore[union-attr]
 
     def test_unseen_vendor_attaches_reason_but_state_can_still_be_confident(self) -> None:
-
         state, reasons = derive_triage(
             extracted_fields=self._clean_fields(),
             confidence={
@@ -121,4 +121,4 @@ class TestDeriveTriage:
             duplicate_of=None,
         )
         assert state == "confident"
-        assert any(r["type"] == "unseen_vendor" for r in reasons)
+        assert any(r.type == "unseen_vendor" for r in reasons)

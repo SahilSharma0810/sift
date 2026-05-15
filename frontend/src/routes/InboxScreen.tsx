@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { toast } from 'sonner'
 
@@ -13,6 +13,8 @@ import type { InvoiceOut, TriageState } from '@/types/generated/domain'
 import { formatNumber } from '@/utils/format'
 
 type FilterId = 'all' | 'needs_review' | 'confident' | 'likely_duplicate' | 'unprocessable' | 'confirmed'
+
+const PAGE_SIZE = 25
 
 function pillVariant(inv: InvoiceOut): TriageState | 'unprocessable' {
   if (inv.review_status === 'unprocessable') return 'unprocessable'
@@ -115,22 +117,65 @@ export function InboxScreen() {
     })
   }, [invoices, filter])
 
+  const [page, setPage] = useState(1)
+  const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
+  useEffect(() => {
+    setPage(1)
+  }, [filter])
+  useEffect(() => {
+    if (page > pageCount) setPage(pageCount)
+  }, [page, pageCount])
+  const paged = useMemo(
+    () => filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE),
+    [filtered, page],
+  )
+
   const handleFiles = useCallback(
     async (files: FileList | null) => {
       if (!files?.length) return
-      const file = files[0]
-      if (file.type !== 'application/pdf') {
-        toast.error('Only PDFs are accepted right now.')
+      const pdfs = Array.from(files).filter((f) => f.type === 'application/pdf')
+      const skipped = files.length - pdfs.length
+      if (skipped > 0) {
+        toast.error(
+          `${skipped} non-PDF file${skipped === 1 ? '' : 's'} skipped. Only PDFs are accepted.`,
+        )
+      }
+      if (pdfs.length === 0) return
+
+      if (pdfs.length === 1) {
+        const file = pdfs[0]
+        const id = toast.loading(`Extracting ${file.name}…`)
+        try {
+          const inv = await upload.mutateAsync(file)
+          const vendor =
+            inv.current_extraction?.extracted_fields?.vendor_name?.value ?? 'invoice'
+          toast.success(`Extracted ${String(vendor)}`, { id })
+        } catch (e) {
+          toast.error(`Upload failed: ${(e as Error).message}`, { id })
+        }
         return
       }
-      const id = toast.loading(`Extracting ${file.name}…`)
-      try {
-        const inv = await upload.mutateAsync(file)
-        const vendor =
-          inv.current_extraction?.extracted_fields?.vendor_name?.value ?? 'invoice'
-        toast.success(`Extracted ${String(vendor)}`, { id })
-      } catch (e) {
-        toast.error(`Upload failed: ${(e as Error).message}`, { id })
+
+      const toastId = toast.loading(`Extracting ${pdfs.length} invoices…`)
+      let ok = 0
+      let failed = 0
+      for (const file of pdfs) {
+        try {
+          await upload.mutateAsync(file)
+          ok += 1
+          toast.loading(`Extracting ${pdfs.length} invoices… (${ok}/${pdfs.length})`, {
+            id: toastId,
+          })
+        } catch {
+          failed += 1
+        }
+      }
+      if (failed === 0) {
+        toast.success(`Extracted ${ok} ${ok === 1 ? 'invoice' : 'invoices'}`, { id: toastId })
+      } else if (ok === 0) {
+        toast.error(`All ${failed} uploads failed.`, { id: toastId })
+      } else {
+        toast.success(`Extracted ${ok}, ${failed} failed.`, { id: toastId })
       }
     },
     [upload]
@@ -174,8 +219,7 @@ export function InboxScreen() {
             Drop invoices to extract
           </div>
           <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>
-            Digital or scanned PDF · We hash, route through Haiku → Sonnet → Opus as needed,
-            and triage in &lt; 8s
+            Drop one or many PDFs · digital or scanned
           </div>
         </div>
         <Btn variant="primary" icon={Icons.upload}>
@@ -185,33 +229,29 @@ export function InboxScreen() {
           ref={fileInput}
           type="file"
           accept="application/pdf"
+          multiple
           className="hidden"
           style={{ display: 'none' }}
-          onChange={(e) => void handleFiles(e.target.files)}
+          onChange={(e) => {
+            void handleFiles(e.target.files)
+            e.target.value = ''
+          }}
         />
       </div>
 
       <div className="inbox-toolbar" style={{ marginTop: 16 }}>
         <FilterTabs filter={filter} setFilter={setFilter} counts={counts} />
 
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
-          <Btn variant="ghost" size="sm" icon={Icons.filter}>
-            Filter
-          </Btn>
-          <Btn variant="ghost" size="sm" icon={Icons.download}>
-            Export
-          </Btn>
-          {selected.size > 0 && (
-            <>
-              <span className="mono" style={{ alignSelf: 'center', fontSize: 12, color: 'var(--ink-60)' }}>
-                {selected.size} selected
-              </span>
-              <Btn size="sm" icon={Icons.check} variant="primary" onClick={handleBulkConfirm}>
-                Confirm
-              </Btn>
-            </>
-          )}
-        </div>
+        {selected.size > 0 && (
+          <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+            <span className="mono" style={{ alignSelf: 'center', fontSize: 12, color: 'var(--ink-60)' }}>
+              {selected.size} selected
+            </span>
+            <Btn size="sm" icon={Icons.check} variant="primary" onClick={handleBulkConfirm}>
+              Confirm
+            </Btn>
+          </div>
+        )}
       </div>
 
       <div
@@ -258,7 +298,7 @@ export function InboxScreen() {
                 </td>
               </tr>
             )}
-            {filtered.map((inv) => {
+            {paged.map((inv) => {
               const fields = inv.current_extraction?.extracted_fields ?? {}
               const reasons = inv.current_extraction?.predicted_triage_reasons ?? []
               return (
@@ -326,12 +366,35 @@ export function InboxScreen() {
         </table>
       </div>
 
-      <InboxFooter shown={filtered.length} total={invoices.length} />
+      <InboxFooter
+        shown={filtered.length}
+        total={invoices.length}
+        page={page}
+        pageCount={pageCount}
+        onPrev={() => setPage((p) => Math.max(1, p - 1))}
+        onNext={() => setPage((p) => Math.min(pageCount, p + 1))}
+      />
     </div>
   )
 }
 
-function InboxFooter({ shown, total }: { shown: number; total: number }) {
+function InboxFooter({
+  shown,
+  total,
+  page,
+  pageCount,
+  onPrev,
+  onNext,
+}: {
+  shown: number
+  total: number
+  page: number
+  pageCount: number
+  onPrev: () => void
+  onNext: () => void
+}) {
+  const from = shown === 0 ? 0 : (page - 1) * PAGE_SIZE + 1
+  const to = Math.min(page * PAGE_SIZE, shown)
   return (
     <div className="mt-3.5 flex flex-wrap items-center gap-2 text-xs text-ink-48">
       <span>
@@ -353,9 +416,38 @@ function InboxFooter({ shown, total }: { shown: number; total: number }) {
       <span>
         <Kbd>⌘</Kbd> <Kbd>K</Kbd> natural-language search
       </span>
-      <span className="ml-auto">
-        {shown} of {total} invoices
-      </span>
+      <div className="ml-auto flex items-center gap-2">
+        <span>
+          {from}–{to} of {shown}
+          {shown !== total && <> · {total} total</>}
+        </span>
+        {pageCount > 1 && (
+          <>
+            <FooterSep />
+            <button
+              type="button"
+              onClick={onPrev}
+              disabled={page <= 1}
+              aria-label="Previous page"
+              className="inline-flex h-6 w-6 items-center justify-center border border-hairline bg-surface text-ink-80 hover:bg-surface-recess disabled:cursor-not-allowed disabled:text-ink-48"
+            >
+              <Icons.arrowL />
+            </button>
+            <span className="mono text-ink-80">
+              {page} / {pageCount}
+            </span>
+            <button
+              type="button"
+              onClick={onNext}
+              disabled={page >= pageCount}
+              aria-label="Next page"
+              className="inline-flex h-6 w-6 items-center justify-center border border-hairline bg-surface text-ink-80 hover:bg-surface-recess disabled:cursor-not-allowed disabled:text-ink-48"
+            >
+              <Icons.arrowR />
+            </button>
+          </>
+        )}
+      </div>
     </div>
   )
 }

@@ -177,8 +177,8 @@ export const REASON_SPECS: ReasonRegistry = {
     ),
     Detail: () => (
       <>
-        No vendor history yet. Confidence scores fall back to the cold-start default of
-        0.85. Confirming this extraction will seed the vendor memory.
+        No history for this vendor yet. Confirming this invoice will let Sift learn the
+        vendor&apos;s format and typical totals.
       </>
     ),
     actions: [],

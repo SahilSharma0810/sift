@@ -1,12 +1,15 @@
 """Anomaly detection for extracted invoice fields.
 
 Pure: no IO. Compares numeric fields against per-vendor stats (mean + std)
-and emits `anomaly` reason payloads matching the AnomalyReason discriminator.
+and emits `AnomalyReason` payloads matching the discriminated union in
+app.domain.models.
 """
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TypedDict
+
+from app.domain.models import AnomalyReason, FieldValue, VendorMemoryStats
 
 ANOMALY_FIELDS = ("total",)
 
@@ -17,54 +20,54 @@ Z_THRESHOLD = 3.0
 ACK_TOLERANCE_FRAC = 0.10
 
 
+class AcknowledgedOutlier(TypedDict, total=False):
+    value: float
+
+
 def detect_anomalies(
     *,
-    fields: dict[str, Any],
-    stats: dict[str, Any],
-    acknowledged_outliers: dict[str, list[dict[str, Any]]] | None = None,
-) -> list[dict[str, Any]]:
-    """Return `anomaly` reason payloads for fields outside +-3 sigma of vendor history.
+    fields: dict[str, FieldValue],
+    stats: VendorMemoryStats,
+    acknowledged_outliers: dict[str, list[AcknowledgedOutlier]] | None = None,
+) -> list[AnomalyReason]:
+    """Return `AnomalyReason` payloads for fields outside +-3 sigma of vendor history.
 
-    `stats` shape: {"total_seen": int, "avg_total": float, "std_total": float}.
     Skips the check when vendor history is too small or std is degenerate.
-
     `acknowledged_outliers` maps field name → list of prior-acked values for
     that field. A new value within ACK_TOLERANCE_FRAC of any acked value is
     treated as a known outlier and is NOT emitted as an anomaly.
     """
-    acks = acknowledged_outliers or {}
-    out: list[dict[str, Any]] = []
-    total_seen = int(stats.get("total_seen", 0) or 0)
-    if total_seen < MIN_VENDOR_HISTORY:
+    out: list[AnomalyReason] = []
+    if stats.total_seen < MIN_VENDOR_HISTORY:
         return out
-    for field in ANOMALY_FIELDS:
-        value = fields.get(field)
-        if value is None:
-            continue
-        avg = float(stats.get(f"avg_{field}", 0.0) or 0.0)
-        std = float(stats.get(f"std_{field}", 0.0) or 0.0)
-        if std <= 0:
-            continue
-        try:
-            z = abs(float(value) - avg) / std
-        except (TypeError, ValueError):
-            continue
-        if z < Z_THRESHOLD:
-            continue
-        if _is_acked(float(value), acks.get(field, [])):
-            continue
-        out.append(
-            {
-                "field": field,
-                "vendor_mean": avg,
-                "vendor_std": std,
-                "z_score": round(z, 2),
-            }
+
+    acks = acknowledged_outliers or {}
+    value = fields.get("total")
+    if value is None or stats.std_total <= 0:
+        return out
+    try:
+        x = float(value)
+    except (TypeError, ValueError):
+        return out
+
+    z = abs(x - stats.avg_total) / stats.std_total
+    if z < Z_THRESHOLD:
+        return out
+    if _is_acked(x, acks.get("total", [])):
+        return out
+
+    out.append(
+        AnomalyReason(
+            field="total",
+            vendor_mean=stats.avg_total,
+            vendor_std=stats.std_total,
+            z_score=round(z, 2),
         )
+    )
     return out
 
 
-def _is_acked(value: float, acked: list[dict[str, Any]]) -> bool:
+def _is_acked(value: float, acked: list[AcknowledgedOutlier]) -> bool:
     for a in acked:
         a_val = float(a.get("value", 0.0) or 0.0)
         if a_val <= 0:
