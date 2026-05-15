@@ -192,3 +192,33 @@ class TestResolveSession:
         resolve_session(db_session, outcome.signed_cookie, secret=SECRET)
         db_session.refresh(before_row)
         assert before_row.last_seen_at > before
+
+
+class TestLogout:
+    def test_logout_deletes_session_row(self, db_session: Session) -> None:
+        from app.services.auth_service import logout, resolve_session
+
+        upsert_demo_user(db_session, email="logout@example.test", password="pw")
+        outcome = login(
+            db_session,
+            email="logout@example.test",
+            password="pw",
+            remember=False,
+            user_agent=None,
+            secret=SECRET,
+        )
+        assert outcome is not None
+
+        logout(db_session, outcome.signed_cookie, secret=SECRET)
+        assert resolve_session(db_session, outcome.signed_cookie, secret=SECRET) is None
+
+    def test_logout_no_cookie_is_a_noop(self, db_session: Session) -> None:
+        from app.services.auth_service import logout
+
+        logout(db_session, None, secret=SECRET)
+        logout(db_session, "", secret=SECRET)
+
+    def test_logout_invalid_cookie_is_a_noop(self, db_session: Session) -> None:
+        from app.services.auth_service import logout
+
+        logout(db_session, "not-a-real-cookie", secret=SECRET)

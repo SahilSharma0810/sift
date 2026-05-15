@@ -96,3 +96,22 @@ def resolve_session(
 
     session_repo.touch_last_seen(session, session_id)
     return _to_clerk(user)
+
+
+def logout(
+    session: Session,
+    signed_cookie: str | None,
+    *,
+    secret: str | None = None,
+) -> None:
+    if not signed_cookie:
+        return
+
+    settings = get_settings()
+    secret_key = secret or settings.secret_key
+
+    session_id = unsign_session_id(signed_cookie, secret=secret_key)
+    if session_id is None:
+        return
+
+    session_repo.delete(session, session_id)
