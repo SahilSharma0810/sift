@@ -100,3 +100,24 @@ flyctl deploy --image-label v<N>
 ```
 
 Or via the Fly dashboard. Rolling back the image without rolling back migrations is safe as long as migrations remain additive.
+
+## Auth — required Fly secrets
+
+The login backend needs two secrets set on the Fly app before first deploy:
+
+```bash
+fly secrets set SIFT_SECRET_KEY="$(openssl rand -hex 32)"
+fly secrets set SIFT_COOKIE_SECURE=true
+```
+
+The demo user is seeded automatically by `make demo` (using
+`SIFT_DEMO_EMAIL` / `SIFT_DEMO_PASSWORD`). If you want a different demo
+email or password in prod, also set those secrets before running the
+seed:
+
+```bash
+fly secrets set SIFT_DEMO_EMAIL="..." SIFT_DEMO_PASSWORD="..."
+```
+
+The seed function is idempotent — re-running `make demo` will not reset
+an existing demo user's password.
