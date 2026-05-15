@@ -251,3 +251,13 @@ class TestSearchEmptyQuery:
         assert res.status_code == 200
         body = res.json()
         assert len(body) >= 2
+
+
+class TestAuthGate:
+    def test_search_requires_auth(self, unauthed_client) -> None:
+        res = unauthed_client.post("/api/search", json={"filters": []})
+        assert res.status_code == 401
+
+    def test_translate_requires_auth(self, unauthed_client) -> None:
+        res = unauthed_client.post("/api/search/translate", json={"query": "x"})
+        assert res.status_code == 401

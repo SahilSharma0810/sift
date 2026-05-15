@@ -18,7 +18,9 @@ from fastapi.responses import Response
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
+from app.api.deps import get_current_clerk
 from app.db.session import get_session
+from app.domain.auth import ClerkOut
 from app.domain.models import InvoiceOut
 from app.domain.nl_schema import StructuredQuery
 from app.services.nl_translation_service import TranslationError, translate
@@ -48,6 +50,7 @@ def _stringify_pydantic_errors(errors: list[dict]) -> list[dict]:
 @router.post("", response_model=list[InvoiceOut])
 def run_search(
     query: StructuredQuery,
+    _clerk: ClerkOut = Depends(get_current_clerk),
     session: Session = Depends(get_session),
 ) -> list[InvoiceOut]:
     """Execute a validated StructuredQuery against current extractions.
@@ -89,6 +92,7 @@ def _flatten_for_export(invoice: InvoiceOut) -> dict[str, str | float | None]:
 def export_search(
     query: StructuredQuery,
     format: Literal["csv", "json"] = Query(default="csv"),
+    _clerk: ClerkOut = Depends(get_current_clerk),
     session: Session = Depends(get_session),
 ) -> Response:
     """Export the current search results as CSV or JSON.
@@ -138,7 +142,10 @@ def export_search(
     )
 
 @router.post("/translate", response_model=StructuredQuery)
-def translate_nl(body: _TranslateRequest) -> StructuredQuery:
+def translate_nl(
+    body: _TranslateRequest,
+    _clerk: ClerkOut = Depends(get_current_clerk),
+) -> StructuredQuery:
     """Translate a natural-language search string to a StructuredQuery.
 
     Returns a 422 with field-level errors if the LLM emitted a payload that
