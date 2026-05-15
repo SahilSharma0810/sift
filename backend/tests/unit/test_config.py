@@ -32,3 +32,6 @@ class TestBlobStoreSettings:
         )
         assert s.blob_store == "r2"
         assert s.r2_account_id == "acct"
+        assert s.r2_access_key_id == "ak"
+        assert s.r2_secret_access_key == "sk"
+        assert s.r2_bucket == "b"
