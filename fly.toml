@@ -15,9 +15,6 @@ primary_region = "iad"
 [build]
   dockerfile = "Dockerfile"
 
-[deploy]
-  release_command = "alembic upgrade head"
-
 [env]
   SIFT_LOG_FORMAT = "json"
   SIFT_LOG_LEVEL = "INFO"
