@@ -18,6 +18,7 @@ from sqlalchemy import (
     Index,
     String,
     Text,
+    UniqueConstraint,
     func,
 )
 from sqlalchemy.dialects.postgresql import CITEXT, JSONB, UUID
@@ -179,3 +180,31 @@ class AuthSession(Base):
     )
 
     user: Mapped[User] = relationship(back_populates="sessions")
+
+
+class AnomalyAck(Base):
+    __tablename__ = "anomaly_acks"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    invoice_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("invoices.id", ondelete="CASCADE"), nullable=False
+    )
+    anomaly_subtype: Mapped[str] = mapped_column(Text, nullable=False)
+    anomaly_field: Mapped[str] = mapped_column(Text, nullable=False)
+    acknowledged_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    acknowledged_by_user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id"), nullable=False
+    )
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    __table_args__ = (
+        Index("ix_anomaly_acks_invoice_id", "invoice_id"),
+        UniqueConstraint(
+            "invoice_id",
+            "anomaly_subtype",
+            "anomaly_field",
+            name="uq_anomaly_acks_key",
+        ),
+    )
