@@ -28,3 +28,37 @@ class TestPasswordHashing:
         verify_password("anything", DUMMY_PASSWORD_HASH)
         elapsed = time.perf_counter() - start
         assert elapsed > 0.001
+
+
+import uuid
+
+
+class TestCookieSigning:
+    SECRET = "test-secret-do-not-use-in-prod"
+
+    def test_sign_and_unsign_roundtrip(self) -> None:
+        from app.domain.auth import sign_session_id, unsign_session_id
+
+        sid = uuid.uuid4()
+        signed = sign_session_id(sid, secret=self.SECRET)
+        assert unsign_session_id(signed, secret=self.SECRET) == sid
+
+    def test_unsign_rejects_tampered_value(self) -> None:
+        from app.domain.auth import sign_session_id, unsign_session_id
+
+        sid = uuid.uuid4()
+        signed = sign_session_id(sid, secret=self.SECRET) + "x"
+        assert unsign_session_id(signed, secret=self.SECRET) is None
+
+    def test_unsign_rejects_wrong_secret(self) -> None:
+        from app.domain.auth import sign_session_id, unsign_session_id
+
+        sid = uuid.uuid4()
+        signed = sign_session_id(sid, secret=self.SECRET)
+        assert unsign_session_id(signed, secret="other-secret") is None
+
+    def test_unsign_rejects_garbage(self) -> None:
+        from app.domain.auth import unsign_session_id
+
+        assert unsign_session_id("not-a-real-cookie", secret=self.SECRET) is None
+        assert unsign_session_id("", secret=self.SECRET) is None
