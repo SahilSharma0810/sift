@@ -49,6 +49,16 @@ class TestR2BlobStore:
         fake_client.head_object.side_effect = _not_found_error()
         assert store.exists("nope.pdf") is False
 
+    def test_exists_reraises_non_404_client_errors(
+        self, store: R2BlobStore, fake_client: MagicMock
+    ) -> None:
+        fake_client.head_object.side_effect = ClientError(
+            error_response={"Error": {"Code": "AccessDenied"}},
+            operation_name="HeadObject",
+        )
+        with pytest.raises(ClientError):
+            store.exists("abc.pdf")
+
     def test_put_path_uploads_when_missing(
         self, store: R2BlobStore, fake_client: MagicMock, tmp_path: Path
     ) -> None:
