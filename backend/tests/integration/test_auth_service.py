@@ -113,3 +113,82 @@ class TestLogin:
         )
         elapsed = time.perf_counter() - start
         assert elapsed > 0.001
+
+
+class TestResolveSession:
+    def _login(self, db_session: Session, *, remember: bool = False):
+        upsert_demo_user(db_session, email="resolve@example.test", password="pw")
+        return login(
+            db_session,
+            email="resolve@example.test",
+            password="pw",
+            remember=remember,
+            user_agent="pytest",
+            secret=SECRET,
+        )
+
+    def test_resolves_valid_cookie(self, db_session: Session) -> None:
+        from app.services.auth_service import resolve_session
+
+        outcome = self._login(db_session)
+        assert outcome is not None
+        clerk = resolve_session(db_session, outcome.signed_cookie, secret=SECRET)
+        assert clerk is not None
+        assert clerk.email.lower() == "resolve@example.test"
+
+    def test_returns_none_for_none_or_empty(self, db_session: Session) -> None:
+        from app.services.auth_service import resolve_session
+
+        assert resolve_session(db_session, None, secret=SECRET) is None
+        assert resolve_session(db_session, "", secret=SECRET) is None
+
+    def test_returns_none_for_tampered_cookie(self, db_session: Session) -> None:
+        from app.services.auth_service import resolve_session
+
+        outcome = self._login(db_session)
+        assert outcome is not None
+        tampered = outcome.signed_cookie + "x"
+        assert resolve_session(db_session, tampered, secret=SECRET) is None
+
+    def test_returns_none_when_wrong_secret(self, db_session: Session) -> None:
+        from app.services.auth_service import resolve_session
+
+        outcome = self._login(db_session)
+        assert outcome is not None
+        assert resolve_session(db_session, outcome.signed_cookie, secret="other") is None
+
+    def test_returns_none_and_deletes_row_when_session_expired(
+        self, db_session: Session
+    ) -> None:
+        from app.services.auth_service import resolve_session
+        from sqlalchemy import update
+        from app.db.models import AuthSession
+
+        outcome = self._login(db_session)
+        assert outcome is not None
+
+        db_session.execute(
+            update(AuthSession).values(expires_at=datetime.now(UTC) - timedelta(seconds=1))
+        )
+        db_session.commit()
+
+        assert resolve_session(db_session, outcome.signed_cookie, secret=SECRET) is None
+        from sqlalchemy import select
+
+        remaining = db_session.execute(select(AuthSession)).all()
+        assert remaining == []
+
+    def test_touches_last_seen_on_resolve(self, db_session: Session) -> None:
+        from app.services.auth_service import resolve_session
+        from sqlalchemy import select
+        from app.db.models import AuthSession
+
+        outcome = self._login(db_session)
+        assert outcome is not None
+        before_row = db_session.execute(select(AuthSession)).scalar_one()
+        before = before_row.last_seen_at
+
+        time.sleep(0.01)
+        resolve_session(db_session, outcome.signed_cookie, secret=SECRET)
+        db_session.refresh(before_row)
+        assert before_row.last_seen_at > before

@@ -11,6 +11,7 @@ from app.domain.auth import (
     DUMMY_PASSWORD_HASH,
     ClerkOut,
     sign_session_id,
+    unsign_session_id,
     verify_password,
 )
 
@@ -65,3 +66,33 @@ def login(
         signed_cookie=sign_session_id(auth_session.id, secret=secret_key),
         max_age_seconds=max_age_seconds,
     )
+
+
+def resolve_session(
+    session: Session,
+    signed_cookie: str | None,
+    *,
+    secret: str | None = None,
+) -> ClerkOut | None:
+    if not signed_cookie:
+        return None
+
+    settings = get_settings()
+    secret_key = secret or settings.secret_key
+
+    session_id = unsign_session_id(signed_cookie, secret=secret_key)
+    if session_id is None:
+        return None
+
+    auth_session = session_repo.get_active(session, session_id)
+    if auth_session is None:
+        session_repo.delete(session, session_id)
+        return None
+
+    user = auth_session.user
+    if user is None:
+        session_repo.delete(session, session_id)
+        return None
+
+    session_repo.touch_last_seen(session, session_id)
+    return _to_clerk(user)
