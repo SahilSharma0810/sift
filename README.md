@@ -648,7 +648,14 @@ The backend builds a single Docker image. The Vite production bundle is copied i
 
 Shipped target: **Render free tier** ([`render.yaml`](./render.yaml)) — blueprint deploy from this repo, Neon Postgres, single web service. Every push to `main` triggers an auto-deploy from the Render side.
 
-Full guide — secrets, anthropic-mode toggle, migration safety, local production-mode test — lives in [`DEPLOY.md`](./DEPLOY.md).
+First-time setup (matches the comment block at the top of `render.yaml`):
+
+1. Sign up at <https://dashboard.render.com> → **New → Blueprint** → connect this repo. Render reads `render.yaml` and provisions a single web service.
+2. Provision Postgres on [Neon](https://neon.tech) (free tier). Convert the URL from `postgres://…` to `postgresql+psycopg://…?sslmode=require` for SQLAlchemy 2.0 sync.
+3. In the Render dashboard set two secret env vars: `DATABASE_URL` (the Neon URL) and `SIFT_SECRET_KEY` (`openssl rand -hex 32`).
+4. Click **Apply**. First deploy runs `alembic upgrade head` then uvicorn.
+
+To run the live deploy in anthropic mode, also set `SIFT_LLM_PROVIDER=anthropic` and `ANTHROPIC_API_KEY=sk-ant-…` as secret env vars on the Render service. Without those, the default `stub` provider keeps the live URL free of API spend.
 
 ---
 
@@ -665,14 +672,3 @@ In the order I'd ship them given another sprint:
 7. **Multi-currency.** Surfaces in the export schema, never as pixels in the demo. Real treatment needs an FX-rate snapshot per invoice date + a normalised-currency column.
 
 ---
-
-## References
-
-- [`DEPLOY.md`](./DEPLOY.md) — deployment guide (Render)
-- [`docs/adr/`](./docs/adr/) — six locked architectural decisions:
-  - [ADR-0001](./docs/adr/0001-extraction-pipeline-no-docling.md) — dual-path extraction (PyMuPDF + vision LLM, no Docling)
-  - [ADR-0002](./docs/adr/0002-postgres-on-neon-over-sqlite.md) — Postgres over SQLite
-  - [ADR-0003](./docs/adr/0003-composite-confidence-scoring.md) — composite confidence with cascade-agreement override
-  - [ADR-0004](./docs/adr/0004-nl-to-sql-structured-query.md) — NL→SQL via flat-conjunction StructuredQuery + field whitelist
-  - [ADR-0005](./docs/adr/0005-layered-architecture.md) — layered architecture with CI-enforced one-way deps
-  - [ADR-0006](./docs/adr/0006-failure-modes.md) — first-class failure modes
