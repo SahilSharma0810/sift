@@ -105,7 +105,7 @@ def _build_anomaly_out(
         invoice_id=invoice.id,
         detected_at=invoice.uploaded_at,
         headline=_format_headline(value, currency),
-        sub=_format_sub(z, avg, currency),
+        sub=_format_sub(value=value, avg=avg, currency=currency, prior_count=len(prior)),
         z_score=z,
         severity=_severity_band(z),
         metric=AnomalyMetric(value=value, currency=currency, unit="$"),
@@ -122,9 +122,24 @@ def _format_headline(value: float, currency: str) -> str:
     return f"{currency} {value:,.2f} invoice"
 
 
-def _format_sub(z: float, avg: float, currency: str) -> str:
+def _format_ratio(r: float) -> str:
+    if r >= 100:
+        return f"{r:,.0f}×"
+    if r >= 10:
+        return f"{r:.0f}×"
+    return f"{r:.1f}×"
+
+
+def _format_sub(*, value: float, avg: float, currency: str, prior_count: int) -> str:
     symbol = "$" if currency == "USD" else f"{currency} "
-    return f"{z:.1f}σ above rolling average of {symbol}{avg:,.0f}"
+    n_label = f"{prior_count} prior invoice{'s' if prior_count != 1 else ''}"
+    if avg <= 0:
+        return f"No prior history for this vendor — first material extraction ({n_label})"
+    if value >= avg:
+        return f"{_format_ratio(value / avg)} this vendor's average ({symbol}{avg:,.0f} across {n_label})"
+    if value <= 0:
+        return f"Zero or missing total against this vendor's {symbol}{avg:,.0f} average ({n_label})"
+    return f"{_format_ratio(avg / value)} smaller than this vendor's average ({symbol}{avg:,.0f} across {n_label})"
 
 
 def _severity_band(z: float) -> str:

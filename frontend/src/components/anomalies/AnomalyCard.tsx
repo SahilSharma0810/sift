@@ -41,7 +41,7 @@ export function AnomalyCard({
             SEVERITY_CLASS[anomaly.severity] ?? '',
           ].join(' ')}
         >
-          {anomaly.z_score.toFixed(1)}σ
+          {anomaly.z_score > 20 ? '≥20σ' : `${anomaly.z_score.toFixed(1)}σ`}
         </span>
         <span className="ml-auto flex items-center gap-1.5">
           {isAck && (
