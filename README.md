@@ -6,6 +6,9 @@ A working end-to-end system: drag a PDF in, the pipeline extracts header fields,
 
 ---
 
+<img width="1800" height="1169" alt="image" src="https://github.com/user-attachments/assets/1c03a315-e235-4677-a98e-54efe1842b07" />
+
+
 ## Table of contents
 
 1. [The problem](#the-problem)
