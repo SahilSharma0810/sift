@@ -136,11 +136,55 @@ class TestListAnomaliesPopulated:
         assert a.severity == "high"
         assert a.z_score == 4.2
         assert a.headline == "$34,062.50 invoice"
-        assert "4.2σ" in a.sub
+        # Sub copy is plain-English ratio against vendor mean — no sigma jargon.
+        # 34062.50 / 7900 = 4.31× → formatted as "4.3×".
+        assert "4.3×" in a.sub
+        assert "this vendor's average" in a.sub
         assert "$7,900" in a.sub
+        assert "11 prior invoices" in a.sub
+        assert "σ" not in a.sub
         # 11 prior + 1 current = 12 history points
         assert len(a.history) == 12
         assert a.history[-1].current is True
+
+    def test_sub_copy_below_average_says_smaller(self, db_session: Session) -> None:
+        _seed_invoice_with_anomaly(
+            db_session,
+            vendor_name="Below Avg Vendor",
+            file_hash="below-1",
+            total=50.0,
+            currency="USD",
+            z_score=3.5,
+            avg=500.0,
+            std=100.0,
+            confirmed_history_totals=[450, 500, 550, 480, 520],
+        )
+        resp = list_anomalies(db_session)
+        a = resp.anomalies[0]
+        # 500 / 50 = 10× → formatted as "10×"
+        assert "10×" in a.sub
+        assert "smaller than this vendor's average" in a.sub
+        assert "$500" in a.sub
+
+    def test_sub_copy_huge_ratio_renders_as_thousands(self, db_session: Session) -> None:
+        _seed_invoice_with_anomaly(
+            db_session,
+            vendor_name="Huge Ratio Vendor",
+            file_hash="huge-1",
+            total=472396.0,
+            currency="USD",
+            z_score=4541.5,
+            avg=433.0,
+            std=104.0,
+            confirmed_history_totals=[313, 493, 493],
+        )
+        resp = list_anomalies(db_session)
+        a = resp.anomalies[0]
+        # 472396 / 433 ≈ 1091 → formatted with thousands separator as "1,091×"
+        assert "1,091×" in a.sub
+        assert "this vendor's average" in a.sub
+        assert "$433" in a.sub
+        assert "σ" not in a.sub
 
     def test_severity_bands(self, db_session: Session) -> None:
         _seed_invoice_with_anomaly(
