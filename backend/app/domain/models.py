@@ -207,3 +207,14 @@ class FieldCorrectionOut(BaseModel):
 
 
 from app.domain.auth import ClerkOut, LoginIn  # noqa: F401, E402
+from app.domain.anomalies_models import (  # noqa: F401, E402
+    AnomaliesResponse,
+    AnomalyAggregates,
+    AnomalyCounts,
+    AnomalyHistoryPoint,
+    AnomalyMetric,
+    AnomalyOut,
+    BulkAcknowledgeFailure,
+    BulkAcknowledgeIn,
+    BulkAcknowledgeOut,
+)
