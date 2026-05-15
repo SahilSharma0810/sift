@@ -21,10 +21,6 @@ services:
     region: oregon
     dockerfilePath: ./Dockerfile
     healthCheckPath: /health
-    # Wraps the Dockerfile CMD: run migrations before serving traffic on
-    # each deploy. $PORT is set by Render; default 8000 keeps local docker
-    # run working the same way.
-    dockerCommand: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"
     envVars:
       - key: SIFT_LLM_PROVIDER
         value: stub

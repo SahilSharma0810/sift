@@ -57,7 +57,12 @@ WORKDIR /app/backend
 COPY --from=python-build /app/backend /app/backend
 COPY --from=frontend-build /app/frontend/dist /app/frontend/dist
 
+# Ensure entrypoint script is executable regardless of host file modes.
+RUN chmod +x /app/backend/start.sh
+
 EXPOSE 8000
 
-# Fly health check hits /health (configured in fly.toml).
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# start.sh runs `alembic upgrade head` and then uvicorn on $PORT (default
+# 8000). Same script works on Fly (PORT unset → 8000, matches fly.toml's
+# internal_port) and Render (PORT set by the platform).
+CMD ["/app/backend/start.sh"]
