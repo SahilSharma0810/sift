@@ -140,6 +140,19 @@ Argon2 hashing lives in `domain/auth.py` — pure CPU, no IO, keeps unit tests
 fixture-free. The existing import-linter contracts in `pyproject.toml` cover
 the new paths without edits.
 
+## Code style — comments
+
+Match the rest of this codebase: comments are rare and load-bearing, not
+narration. Add a comment only when the *why* is non-obvious — a hidden
+constraint, a security-critical detail (e.g. why we run argon2 verify on
+nonexistent users), or a subtle invariant a future reader could break.
+Don't restate what well-named identifiers already say. Don't reference
+this task, ADR numbers in inline comments, or callers — those belong in
+commits and PR descriptions. If removing the comment wouldn't confuse a
+future reader, don't write it. This matches the recent `feat: remove
+too many comments` cleanup and applies to both backend Python and any
+new frontend TypeScript.
+
 ## Config
 
 Additions to [`app/config.py`](../../../backend/app/config.py):
