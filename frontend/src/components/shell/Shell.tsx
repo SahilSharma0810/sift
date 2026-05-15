@@ -60,6 +60,18 @@ export function Shell() {
     return c
   }, [invoices])
 
+  const vendorCount = useMemo(() => {
+    const names = new Set<string>()
+    for (const inv of invoices) {
+      const v = inv.current_extraction?.extracted_fields?.vendor_name?.value
+      if (v != null) {
+        const name = String(v).trim()
+        if (name) names.add(name)
+      }
+    }
+    return names.size
+  }, [invoices])
+
   if (meLoading) {
     return (
       <div className="grid h-screen place-items-center bg-canvas text-ink-60 text-sm">
@@ -72,14 +84,25 @@ export function Shell() {
   }
 
   const onInbox = location.pathname === '/inbox' || location.pathname === '/'
+  const onVendors = location.pathname === '/vendors'
+  const onSearch = location.pathname === '/search'
+  const onReview = !onInbox && !onVendors && !onSearch
   const reviewVendor =
-    !onInbox && params.id
+    onReview && params.id
       ? invoices.find((i) => i.id === params.id)?.current_extraction?.extracted_fields
           ?.vendor_name?.value
       : null
 
+  const screenLabel = onInbox
+    ? '01 Inbox'
+    : onVendors
+      ? '03 Vendors'
+      : onSearch
+        ? '04 Search'
+        : '02 Review'
+
   return (
-    <div className="app" data-screen-label={onInbox ? '01 Inbox' : '02 Review'}>
+    <div className="app" data-screen-label={screenLabel}>
       <aside className="sidebar">
         <div className="sidebar-header">
           <SiftMark size={22} dark />
@@ -122,10 +145,16 @@ export function Shell() {
           </Link>
 
           <div className="nav-section">Library</div>
-          <div className="nav-item">
+          <Link
+            to="/vendors"
+            className="nav-item"
+            data-active={onVendors}
+            style={{ textDecoration: 'none' }}
+          >
             <Icons.vendor />
             <span>Vendors</span>
-          </div>
+            <span className="nav-count">{vendorCount}</span>
+          </Link>
           <div className="nav-item">
             <Icons.layers />
             <span>Tax breakdowns</span>
@@ -166,7 +195,7 @@ export function Shell() {
 
       <main className="main">
         <div className="topbar">
-          {onInbox ? (
+          {onInbox && (
             <>
               <div className="topbar-title">Inbox</div>
               <div className="topbar-crumbs">
@@ -176,7 +205,28 @@ export function Shell() {
                 <span className="mono">{counts.confident} ready to confirm</span>
               </div>
             </>
-          ) : (
+          )}
+          {onVendors && (
+            <>
+              <div className="topbar-title">Vendors</div>
+              <div className="topbar-crumbs">
+                <span style={{ color: 'var(--ink-48)' }}>·</span>
+                <span className="mono">
+                  {vendorCount} {vendorCount === 1 ? 'vendor' : 'vendors'} tracked
+                </span>
+              </div>
+            </>
+          )}
+          {onSearch && (
+            <>
+              <div className="topbar-title">Search</div>
+              <div className="topbar-crumbs">
+                <span style={{ color: 'var(--ink-48)' }}>·</span>
+                <span className="mono">Natural-language query</span>
+              </div>
+            </>
+          )}
+          {onReview && (
             <>
               <div className="topbar-title">Review</div>
               <div className="topbar-crumbs">
