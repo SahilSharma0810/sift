@@ -148,24 +148,6 @@ export function Shell() {
             <span>Vendors</span>
             <span className="nav-count">{vendorCount}</span>
           </Link>
-          <div className="nav-item">
-            <Icons.layers />
-            <span>Tax breakdowns</span>
-          </div>
-          <div className="nav-item">
-            <Icons.history />
-            <span>History</span>
-          </div>
-
-          <div className="nav-section">System</div>
-          <div className="nav-item">
-            <Icons.brain />
-            <span>Vendor memory</span>
-          </div>
-          <div className="nav-item">
-            <Icons.cascade />
-            <span>Cascade runs</span>
-          </div>
         </nav>
 
         <div className="sidebar-footer">
