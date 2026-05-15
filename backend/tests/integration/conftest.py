@@ -36,14 +36,10 @@ from sqlalchemy.orm import Session
 from app.db.session import engine, get_session
 from app.main import app
 
-@pytest.fixture
-def api_client() -> Generator[TestClient, None, None]:
-    """TestClient bound to an isolated, rolled-back session.
 
-    Service-layer `session.commit()` calls inside the request handler only
-    commit the savepoint, which is discarded at fixture teardown. No data
-    written by this test persists to the dev database.
-    """
+@pytest.fixture
+def _api_session() -> Generator[Session, None, None]:
+    """Shared session for both API handler and test-side seeding."""
     connection = engine.connect()
     outer_txn = connection.begin()
     session = Session(bind=connection, autocommit=False, autoflush=False, expire_on_commit=False)
@@ -52,12 +48,63 @@ def api_client() -> Generator[TestClient, None, None]:
     @event.listens_for(session, "after_transaction_end")
     def _restart_savepoint(_session: Session, transaction) -> None:
         nonlocal nested
-
         if transaction.nested and not transaction._parent.nested:
             nested = connection.begin_nested()
 
-    def _override_get_session() -> Generator[Session, None, None]:
+    try:
         yield session
+    finally:
+        session.close()
+        if outer_txn.is_active:
+            outer_txn.rollback()
+        connection.close()
+
+
+@pytest.fixture
+def db_session(_api_session: Session) -> Session:
+    """Override root db_session so API tests seed into the same connection."""
+    return _api_session
+
+
+@pytest.fixture
+def api_client(_api_session: Session) -> Generator[TestClient, None, None]:
+    """TestClient bound to an isolated session and authenticated as a test clerk."""
+    from datetime import UTC, datetime, timedelta
+
+    from app.adapters.storage.session_repo import create as create_session
+    from app.adapters.storage.user_repo import upsert_demo_user
+    from app.config import get_settings
+    from app.domain.auth import sign_session_id
+
+    def _override_get_session() -> Generator[Session, None, None]:
+        yield _api_session
+
+    app.dependency_overrides[get_session] = _override_get_session
+    try:
+        with TestClient(app) as client:
+            user = upsert_demo_user(
+                _api_session,
+                email="test-clerk@sift.demo",
+                password="test-password",
+            )
+            auth_session = create_session(
+                _api_session,
+                user_id=user.id,
+                expires_at=datetime.now(UTC) + timedelta(hours=1),
+                user_agent="pytest",
+            )
+            signed = sign_session_id(auth_session.id, secret=get_settings().secret_key)
+            client.cookies.set("sift_session", signed)
+            yield client
+    finally:
+        app.dependency_overrides.pop(get_session, None)
+
+
+@pytest.fixture
+def unauthed_client(_api_session: Session) -> Generator[TestClient, None, None]:
+    """Bare TestClient with the same session override but no auth cookie."""
+    def _override_get_session() -> Generator[Session, None, None]:
+        yield _api_session
 
     app.dependency_overrides[get_session] = _override_get_session
     try:
@@ -65,7 +112,3 @@ def api_client() -> Generator[TestClient, None, None]:
             yield client
     finally:
         app.dependency_overrides.pop(get_session, None)
-        session.close()
-        if outer_txn.is_active:
-            outer_txn.rollback()
-        connection.close()

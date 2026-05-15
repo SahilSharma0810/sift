@@ -10,7 +10,7 @@ dependencies = [
     "python-multipart>=0.0.12",          # file uploads
 
     # Validation & settings
-    "pydantic>=2.9.0",
+    "pydantic[email]>=2.9.0",
     "pydantic-settings>=2.6.0",
 
     # Database — Postgres + SQLAlchemy 2.0 sync per ADR-0002
@@ -18,6 +18,10 @@ dependencies = [
     "psycopg[binary]>=3.2.0",
     "alembic>=1.13.0",
     "pgvector>=0.3.0",                    # enabled from day one per ADR-0002
+
+    # Auth
+    "argon2-cffi>=23.1.0",
+    "itsdangerous>=2.2.0",
 
     # LLM
     "anthropic>=0.39.0",
@@ -115,4 +119,6 @@ allow_indirect_imports = "true"
 ignore_imports = [
     "app.api.invoices -> app.db.session",
     "app.api.search -> app.db.session",
+    "app.api.deps -> app.db.session",
+    "app.api.auth -> app.db.session",
 ]

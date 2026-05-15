@@ -21,8 +21,10 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from app.api.deps import get_current_clerk
 from app.config import get_settings
 from app.db.session import get_session
+from app.domain.auth import ClerkOut
 from app.domain.models import InvoiceOut, VendorOut
 from app.services.clerk_actions import (
     confirm_invoice,
@@ -50,6 +52,7 @@ def _serialize(invoice, session: Session) -> InvoiceOut:
 @router.post("", response_model=InvoiceOut, status_code=status.HTTP_201_CREATED)
 def upload_invoice(
     file: UploadFile = File(...),
+    _clerk: ClerkOut = Depends(get_current_clerk),
     session: Session = Depends(get_session),
 ) -> InvoiceOut:
     if file.content_type != "application/pdf":
@@ -70,18 +73,29 @@ def upload_invoice(
     return extract_and_serialize(session, pdf_path=target)
 
 @router.get("", response_model=list[InvoiceOut])
-def list_invoices_endpoint(session: Session = Depends(get_session)) -> list[InvoiceOut]:
+def list_invoices_endpoint(
+    _clerk: ClerkOut = Depends(get_current_clerk),
+    session: Session = Depends(get_session),
+) -> list[InvoiceOut]:
     return list_invoice_dtos(session, limit=200)
 
 @router.get("/{invoice_id}", response_model=InvoiceOut)
-def get_invoice_endpoint(invoice_id: UUID, session: Session = Depends(get_session)) -> InvoiceOut:
+def get_invoice_endpoint(
+    invoice_id: UUID,
+    _clerk: ClerkOut = Depends(get_current_clerk),
+    session: Session = Depends(get_session),
+) -> InvoiceOut:
     dto = get_invoice_dto(session, invoice_id)
     if dto is None:
         raise HTTPException(status_code=404, detail="not found")
     return dto
 
 @router.get("/{invoice_id}/file")
-def serve_invoice_pdf(invoice_id: UUID, session: Session = Depends(get_session)) -> FileResponse:
+def serve_invoice_pdf(
+    invoice_id: UUID,
+    _clerk: ClerkOut = Depends(get_current_clerk),
+    session: Session = Depends(get_session),
+) -> FileResponse:
     path = get_invoice_file_path(session, invoice_id)
     if path is None or not path.exists():
         raise HTTPException(status_code=404, detail="not found")
@@ -89,7 +103,9 @@ def serve_invoice_pdf(invoice_id: UUID, session: Session = Depends(get_session))
 
 @router.get("/{invoice_id}/vendor", response_model=VendorOut | None)
 def get_invoice_vendor(
-    invoice_id: UUID, session: Session = Depends(get_session)
+    invoice_id: UUID,
+    _clerk: ClerkOut = Depends(get_current_clerk),
+    session: Session = Depends(get_session),
 ) -> VendorOut | None:
     return get_vendor_for_invoice(session, invoice_id=invoice_id)
 
@@ -97,7 +113,11 @@ class _DismissBody(BaseModel):
     against_id: UUID
 
 @router.post("/{invoice_id}/confirm", response_model=InvoiceOut)
-def confirm_endpoint(invoice_id: UUID, session: Session = Depends(get_session)) -> InvoiceOut:
+def confirm_endpoint(
+    invoice_id: UUID,
+    _clerk: ClerkOut = Depends(get_current_clerk),
+    session: Session = Depends(get_session),
+) -> InvoiceOut:
     inv = confirm_invoice(session, invoice_id=invoice_id)
     return _serialize(inv, session)
 
@@ -105,13 +125,18 @@ def confirm_endpoint(invoice_id: UUID, session: Session = Depends(get_session)) 
 def dismiss_endpoint(
     invoice_id: UUID,
     body: _DismissBody,
+    _clerk: ClerkOut = Depends(get_current_clerk),
     session: Session = Depends(get_session),
 ) -> InvoiceOut:
     inv = dismiss_duplicate(session, invoice_id=invoice_id, against_id=body.against_id)
     return _serialize(inv, session)
 
 @router.post("/{invoice_id}/mark-unprocessable", response_model=InvoiceOut)
-def unprocessable_endpoint(invoice_id: UUID, session: Session = Depends(get_session)) -> InvoiceOut:
+def unprocessable_endpoint(
+    invoice_id: UUID,
+    _clerk: ClerkOut = Depends(get_current_clerk),
+    session: Session = Depends(get_session),
+) -> InvoiceOut:
     inv = mark_unprocessable(session, invoice_id=invoice_id)
     return _serialize(inv, session)
 
@@ -119,6 +144,7 @@ def unprocessable_endpoint(invoice_id: UUID, session: Session = Depends(get_sess
 def retry_endpoint(
     invoice_id: UUID,
     force_tier: str | None = None,
+    _clerk: ClerkOut = Depends(get_current_clerk),
     session: Session = Depends(get_session),
 ) -> InvoiceOut:
     result = retry_extraction(session, invoice_id=invoice_id, force_tier=force_tier)

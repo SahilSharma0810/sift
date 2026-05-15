@@ -68,16 +68,26 @@ def _load_ground_truth(docile_root: Path, doc_id: str) -> GroundTruth:
             fields.setdefault(sift_field, fe.get("text", ""))
     return GroundTruth(doc_id=doc_id, fields=fields)
 
-def _post_invoice(base_url: str, pdf_path: Path) -> dict[str, Any]:
+def _post_invoice(client: httpx.Client, pdf_path: Path) -> dict[str, Any]:
     with pdf_path.open("rb") as fh:
-        r = httpx.post(
-            f"{base_url}/api/invoices",
+        r = client.post(
+            "/api/invoices",
             files={"file": (pdf_path.name, fh, "application/pdf")},
             timeout=180.0,
         )
     if r.status_code >= 400:
         raise RuntimeError(f"upload failed for {pdf_path.name}: {r.status_code} {r.text[:200]}")
     return r.json()
+
+
+def _login(client: httpx.Client, *, email: str, password: str) -> None:
+    r = client.post(
+        "/api/auth/login",
+        json={"email": email, "password": password, "remember": False},
+        timeout=15.0,
+    )
+    if r.status_code != 200:
+        raise RuntimeError(f"login failed: {r.status_code} {r.text[:200]}")
 
 def _extracted_value(invoice_json: dict[str, Any], field: str) -> Any:
     ext = invoice_json.get("current_extraction") or {}
@@ -143,7 +153,14 @@ def _try_rich():
     except ImportError:
         return None, None
 
-def _run(*, docile_root: Path, base_url: str, doc_ids: list[str]) -> dict[str, Any]:
+def _run(
+    *,
+    docile_root: Path,
+    base_url: str,
+    doc_ids: list[str],
+    email: str,
+    password: str,
+) -> dict[str, Any]:
     console, RichTable = _try_rich()
 
     total_attempts = 0
@@ -152,65 +169,68 @@ def _run(*, docile_root: Path, base_url: str, doc_ids: list[str]) -> dict[str, A
     failures: list[dict[str, Any]] = []
     cascade_tiers: list[int] = []
 
-    for doc_id in doc_ids:
-        pdf = docile_root / "pdfs" / f"{doc_id}.pdf"
-        if not pdf.exists():
-            _print(f"[skip] {doc_id}: PDF missing")
-            continue
+    with httpx.Client(base_url=base_url) as client:
+        _login(client, email=email, password=password)
 
-        gt = _load_ground_truth(docile_root, doc_id)
-        if not gt.fields:
-            _print(f"[skip] {doc_id}: no Sift-relevant fields in annotation")
-            continue
+        for doc_id in doc_ids:
+            pdf = docile_root / "pdfs" / f"{doc_id}.pdf"
+            if not pdf.exists():
+                _print(f"[skip] {doc_id}: PDF missing")
+                continue
 
-        _print(f"\n── {doc_id} ──")
-        _print(f"  PDF: {pdf.name}  ({pdf.stat().st_size // 1024} KB)")
-        t0 = time.time()
-        try:
-            resp = _post_invoice(base_url, pdf)
-        except Exception as exc:
-            _print(f"  [ERROR] upload failed: {exc}")
-            failures.append({"doc_id": doc_id, "error": str(exc)})
-            continue
-        elapsed = time.time() - t0
+            gt = _load_ground_truth(docile_root, doc_id)
+            if not gt.fields:
+                _print(f"[skip] {doc_id}: no Sift-relevant fields in annotation")
+                continue
 
-        ext = resp.get("current_extraction") or {}
-        cascade = ext.get("cascade_trace") or {}
-        n_tiers = len(cascade.get("tiers", []) or [])
-        cascade_tiers.append(n_tiers)
-        triage = ext.get("predicted_triage_state", "—")
-        _print(f"  Pipeline: {elapsed:.1f}s · cascade={n_tiers} tier(s) · triage={triage}")
+            _print(f"\n── {doc_id} ──")
+            _print(f"  PDF: {pdf.name}  ({pdf.stat().st_size // 1024} KB)")
+            t0 = time.time()
+            try:
+                resp = _post_invoice(client, pdf)
+            except Exception as exc:
+                _print(f"  [ERROR] upload failed: {exc}")
+                failures.append({"doc_id": doc_id, "error": str(exc)})
+                continue
+            elapsed = time.time() - t0
 
-        rows: list[tuple[str, str, bool]] = []
-        for sift_field, gt_text in gt.fields.items():
-            actual = _extracted_value(resp, sift_field)
-            match, note = _compare_field(sift_field, gt_text, actual)
-            rows.append((sift_field, note, match))
-            per_field[sift_field]["total"] += 1
-            if match:
-                per_field[sift_field]["ok"] += 1
-            total_attempts += 1
-            if match:
-                total_correct += 1
+            ext = resp.get("current_extraction") or {}
+            cascade = ext.get("cascade_trace") or {}
+            n_tiers = len(cascade.get("tiers", []) or [])
+            cascade_tiers.append(n_tiers)
+            triage = ext.get("predicted_triage_state", "—")
+            _print(f"  Pipeline: {elapsed:.1f}s · cascade={n_tiers} tier(s) · triage={triage}")
 
-        if console and RichTable:
-            tbl = RichTable(show_header=True, header_style="bold")
-            tbl.add_column("field")
-            tbl.add_column("match")
-            tbl.add_column("detail")
-            for field, note, match in rows:
-                tbl.add_row(field, "✓" if match else "✗", note)
-            console.print(tbl)
-        else:
-            for field, note, match in rows:
-                mark = "✓" if match else "✗"
-                _print(f"  {mark} {field:<16} {note}")
+            rows: list[tuple[str, str, bool]] = []
+            for sift_field, gt_text in gt.fields.items():
+                actual = _extracted_value(resp, sift_field)
+                match, note = _compare_field(sift_field, gt_text, actual)
+                rows.append((sift_field, note, match))
+                per_field[sift_field]["total"] += 1
+                if match:
+                    per_field[sift_field]["ok"] += 1
+                total_attempts += 1
+                if match:
+                    total_correct += 1
 
-        if any(not m for _, _, m in rows):
-            failures.append({
-                "doc_id": doc_id,
-                "mismatches": [(f, n) for f, n, m in rows if not m],
-            })
+            if console and RichTable:
+                tbl = RichTable(show_header=True, header_style="bold")
+                tbl.add_column("field")
+                tbl.add_column("match")
+                tbl.add_column("detail")
+                for field, note, match in rows:
+                    tbl.add_row(field, "✓" if match else "✗", note)
+                console.print(tbl)
+            else:
+                for field, note, match in rows:
+                    mark = "✓" if match else "✗"
+                    _print(f"  {mark} {field:<16} {note}")
+
+            if any(not m for _, _, m in rows):
+                failures.append({
+                    "doc_id": doc_id,
+                    "mismatches": [(f, n) for f, n, m in rows if not m],
+                })
 
     _print("\n" + "=" * 60)
     _print("Summary")
@@ -251,6 +271,12 @@ def main() -> int:
         help="DocILE split to draw from",
     )
     p.add_argument("--doc", action="append", help="explicit doc_id(s) (overrides --n)")
+    p.add_argument(
+        "--email",
+        default="ap-clerk@sift.demo",
+        help="login email (must already exist; run seed_demo_user or make seed-demo first)",
+    )
+    p.add_argument("--password", default="letmein-demo", help="login password")
     args = p.parse_args()
 
     root = Path(args.docile_root)
@@ -278,7 +304,13 @@ def main() -> int:
         doc_ids = rng.sample(all_ids, k=min(args.n, len(all_ids)))
 
     _print(f"Testing {len(doc_ids)} invoice(s) from {args.split} split (seed={args.seed})")
-    summary = _run(docile_root=root, base_url=args.base_url, doc_ids=doc_ids)
+    summary = _run(
+        docile_root=root,
+        base_url=args.base_url,
+        doc_ids=doc_ids,
+        email=args.email,
+        password=args.password,
+    )
     return 0 if summary["total_correct"] == summary["total_attempts"] else 0
 
 if __name__ == "__main__":

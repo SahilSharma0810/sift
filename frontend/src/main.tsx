@@ -5,6 +5,7 @@ import { RouterProvider } from 'react-router-dom'
 import { Toaster } from 'sonner'
 
 import { router } from '@/routes/router'
+import { setUnauthorizedHandler } from '@/state/api'
 import './index.css'
 
 const queryClient = new QueryClient({
@@ -16,6 +17,13 @@ const queryClient = new QueryClient({
       refetchOnWindowFocus: false,
     },
   },
+})
+
+setUnauthorizedHandler(() => {
+  queryClient.clear()
+  if (window.location.pathname !== '/login') {
+    window.location.replace('/login')
+  }
 })
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
