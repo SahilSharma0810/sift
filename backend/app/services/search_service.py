@@ -261,7 +261,8 @@ def run_query(session: Session, *, query: StructuredQuery) -> list[InvoiceOut]:
 
     if query.sort is not None:
         col = _sortable_column(query.sort[0])
-        stmt = stmt.order_by(col.asc() if query.sort[1] == "asc" else col.desc())
+        direction = col.asc() if query.sort[1] == "asc" else col.desc()
+        stmt = stmt.order_by(direction.nulls_last())
     else:
         stmt = stmt.order_by(Invoice.uploaded_at.desc())
 

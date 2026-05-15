@@ -301,6 +301,52 @@ class TestAuthGate:
         assert res.status_code == 401
 
 
+class TestSearchSortNullsLast:
+    """`ORDER BY total DESC` in Postgres puts NULLs first by default, which
+    makes "highest invoices" return the vendor-less rows on top. The clerk
+    wants real data first; NULLs sink to the bottom regardless of direction.
+    """
+
+    def test_desc_sort_pushes_nulls_to_bottom(self, api_client: TestClient) -> None:
+        _upload(api_client, "low", "QA SortVendor Low", 500.0)
+        _upload(api_client, "high", "QA SortVendor High", 50000.0)
+        # `[stub:fail]` marker triggers the extraction_failed path, which
+        # writes a row with no extracted fields — null total, null vendor.
+        body = CLEAN_PDF.read_bytes() + b"\n%[stub:fail] null totals\n"
+        res = api_client.post(
+            "/api/invoices",
+            files={"file": ("fail.pdf", body, "application/pdf")},
+        )
+        assert res.status_code == 201, res.text
+
+        res = api_client.post(
+            "/api/search",
+            json={"filters": [], "sort": ["total", "desc"], "limit": 50},
+        )
+        assert res.status_code == 200, res.text
+        rows = res.json()
+        totals = [
+            r["current_extraction"]["extracted_fields"].get("total", {}).get("value")
+            if r["current_extraction"]
+            else None
+            for r in rows
+        ]
+        first_null_idx = next(
+            (i for i, t in enumerate(totals) if t is None), len(totals)
+        )
+        last_non_null_idx = max(
+            (i for i, t in enumerate(totals) if t is not None), default=-1
+        )
+        assert last_non_null_idx < first_null_idx, (
+            "NULL totals must sort after real values in DESC mode; "
+            f"got order: {totals}"
+        )
+        non_null = [t for t in totals if t is not None]
+        assert non_null == sorted(non_null, reverse=True), (
+            f"real values must be DESC: {non_null}"
+        )
+
+
 class TestSearchByInvoiceDate:
     """Filter by `invoice_date` reads `iso_from`, the canonical normalized form.
 
