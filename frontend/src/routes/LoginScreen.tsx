@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { useEffect, useReducer, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 
 import { SiftMark } from '@/components/primitives/SiftMark'
@@ -100,14 +100,49 @@ function PreviewRow({ variant, label, vendor, amount, reason }: PreviewRowProps)
   )
 }
 
+interface FormState {
+  email: string
+  password: string
+  showPassword: boolean
+  remember: boolean
+  errorMessage: string | null
+}
+
+type FormAction =
+  | { type: 'setEmail'; value: string }
+  | { type: 'setPassword'; value: string }
+  | { type: 'toggleShowPassword' }
+  | { type: 'setRemember'; value: boolean }
+  | { type: 'setError'; value: string | null }
+
+function formReducer(state: FormState, action: FormAction): FormState {
+  switch (action.type) {
+    case 'setEmail':
+      return { ...state, email: action.value }
+    case 'setPassword':
+      return { ...state, password: action.value }
+    case 'toggleShowPassword':
+      return { ...state, showPassword: !state.showPassword }
+    case 'setRemember':
+      return { ...state, remember: action.value }
+    case 'setError':
+      return { ...state, errorMessage: action.value }
+  }
+}
+
+const INITIAL_FORM: FormState = {
+  email: '',
+  password: '',
+  showPassword: false,
+  remember: true,
+  errorMessage: null,
+}
+
 export function LoginScreen() {
   const navigate = useNavigate()
   const loginMutation = useLoginMutation()
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [showPassword, setShowPassword] = useState(false)
-  const [remember, setRemember] = useState(true)
-  const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const [form, dispatch] = useReducer(formReducer, INITIAL_FORM)
+  const { email, password, showPassword, remember, errorMessage } = form
 
   useEffect(() => {
     const meta = document.querySelector<HTMLMetaElement>('meta[name="viewport"]')
@@ -122,7 +157,7 @@ export function LoginScreen() {
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     if (!email.trim() || !password) return
-    setErrorMessage(null)
+    dispatch({ type: 'setError', value: null })
     loginMutation.mutate(
       { email: email.trim(), password, remember },
       {
@@ -134,7 +169,7 @@ export function LoginScreen() {
             err.status === 401
               ? 'Email or password incorrect.'
               : 'Something went wrong. Try again.'
-          setErrorMessage(detail)
+          dispatch({ type: 'setError', value: detail })
         },
       },
     )
@@ -186,7 +221,7 @@ export function LoginScreen() {
               label="Confident"
               vendor="Vega Logistics"
               amount="USD 1,180.00"
-              reason="—"
+              reason="auto-approved"
             />
             <PreviewRow
               variant="review"
@@ -213,9 +248,9 @@ export function LoginScreen() {
       <main className="flex flex-col overflow-y-auto bg-canvas px-5 py-6 md:px-14 md:py-8">
         <div className="flex items-center gap-3.5 text-[13px] text-ink-60">
           <span>New here?</span>
-          <a href="#" className="font-medium text-action hover:underline">
+          <button type="button" className="font-medium text-action hover:underline">
             Request access
-          </a>
+          </button>
         </div>
 
         <div className="my-auto w-full max-w-[380px] py-6 md:py-14">
@@ -243,7 +278,7 @@ export function LoginScreen() {
                 autoComplete="username"
                 spellCheck={false}
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                onChange={(e) => dispatch({ type: 'setEmail', value: e.target.value })}
 
                 className="block w-full rounded-none border border-hairline bg-surface px-3.5 py-2.5 font-sans text-[14.5px] text-ink transition-colors placeholder:text-ink-48 hover:border-ink-48 focus:border-action focus:outline-none focus:ring-[3px] focus:ring-action/[0.14] max-md:px-4 max-md:py-3.5 max-md:text-base"
               />
@@ -257,12 +292,12 @@ export function LoginScreen() {
                 >
                   Password
                 </label>
-                <a
-                  href="#"
-                  className="text-[12px] font-medium text-action no-underline hover:underline"
+                <button
+                  type="button"
+                  className="text-[12px] font-medium text-action hover:underline"
                 >
                   Forgot password?
-                </a>
+                </button>
               </div>
               <div className="relative block w-full">
                 <input
@@ -273,15 +308,15 @@ export function LoginScreen() {
                   placeholder="••••••••••••"
                   autoComplete="current-password"
                   value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  onChange={(e) => dispatch({ type: 'setPassword', value: e.target.value })}
                   className="block w-full rounded-none border border-hairline bg-surface py-2.5 pl-3.5 pr-11 font-sans text-[14.5px] text-ink transition-colors placeholder:text-ink-48 hover:border-ink-48 focus:border-action focus:outline-none focus:ring-[3px] focus:ring-action/[0.14] max-md:py-3.5 max-md:pl-4 max-md:pr-[52px] max-md:text-base"
                 />
                 <button
                   type="button"
-                  onClick={() => setShowPassword((s) => !s)}
+                  onClick={() => dispatch({ type: 'toggleShowPassword' })}
                   aria-label={showPassword ? 'Hide password' : 'Show password'}
 
-                  className="absolute inset-y-0 right-1 my-auto grid h-9 w-9 cursor-pointer place-items-center border-0 bg-transparent text-ink-48 transition-colors duration-100 hover:text-ink max-md:h-11 max-md:w-11"
+                  className="absolute inset-y-0 right-1 my-auto grid size-9 cursor-pointer place-items-center border-0 bg-transparent text-ink-48 transition-colors duration-100 hover:text-ink max-md:size-11"
                 >
                   {showPassword ? <EyeOffIcon /> : <EyeIcon />}
                 </button>
@@ -302,7 +337,7 @@ export function LoginScreen() {
                 id="remember"
                 type="checkbox"
                 checked={remember}
-                onChange={(e) => setRemember(e.target.checked)}
+                onChange={(e) => dispatch({ type: 'setRemember', value: e.target.checked })}
                 className={[
                   'inline-grid h-4 w-4 cursor-pointer appearance-none place-items-center',
                   'border-[1.5px] border-hairline-strong bg-surface transition-colors duration-100',
@@ -336,16 +371,16 @@ export function LoginScreen() {
           </form>
 
           <div className="mt-[22px] flex flex-col items-start gap-2 border-t border-hairline pt-[18px] text-[13px] text-ink-60">
-            <a
-              href="#"
+            <button
+              type="button"
               className="border-b border-hairline pb-px font-medium text-ink-80 hover:border-action hover:text-action"
             >
               Trouble signing in?
-            </a>
+            </button>
             <span>
               Need a hand?{' '}
               <a
-                href="#"
+                href="mailto:support@sift.app"
                 className="border-b border-hairline pb-px font-medium text-ink-80 hover:border-action hover:text-action"
               >
                 support@sift.app
@@ -356,17 +391,17 @@ export function LoginScreen() {
 
         <div className="mt-auto flex items-center justify-between gap-3 font-mono text-[11.5px] tracking-[0.04em] text-ink-48 max-md:flex-col max-md:items-start max-md:gap-1.5 max-md:pt-6">
           <div className="flex items-center gap-3">
-            <a href="#" className="text-ink-60 hover:text-ink">
+            <button type="button" className="text-ink-60 hover:text-ink">
               Privacy
-            </a>
+            </button>
             <span className="text-hairline">·</span>
-            <a href="#" className="text-ink-60 hover:text-ink">
+            <button type="button" className="text-ink-60 hover:text-ink">
               Terms
-            </a>
+            </button>
             <span className="text-hairline">·</span>
-            <a href="#" className="text-ink-60 hover:text-ink">
+            <button type="button" className="text-ink-60 hover:text-ink">
               Status
-            </a>
+            </button>
           </div>
           <span className="md:ml-auto">v0.4 · build 2026.05.15</span>
         </div>

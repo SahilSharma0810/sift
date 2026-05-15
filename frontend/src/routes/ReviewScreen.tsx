@@ -46,20 +46,35 @@ function minConfidence(inv: InvoiceOut): number | null {
   return Math.min(...vals)
 }
 
-function cascadeTiers(inv: InvoiceOut): string[] {
+interface CascadeStep {
+  tier: string
+  callIndex: number
+}
+
+function cascadeTiers(inv: InvoiceOut): CascadeStep[] {
   const trace = inv.current_extraction?.cascade_trace as
     | { tiers?: Array<{ model?: string }> }
     | undefined
   const tiers = trace?.tiers ?? []
-  return tiers
-    .map((t) => {
-      const m = (t?.model ?? '').toLowerCase()
-      if (m.includes('haiku')) return 'haiku'
-      if (m.includes('sonnet')) return 'sonnet'
-      if (m.includes('opus')) return 'opus'
-      return m || 'unknown'
-    })
-    .filter(Boolean)
+  return tiers.flatMap((t, idx) => {
+    const m = (t?.model ?? '').toLowerCase()
+    let tier: string
+    if (m.includes('haiku')) tier = 'haiku'
+    else if (m.includes('sonnet')) tier = 'sonnet'
+    else if (m.includes('opus')) tier = 'opus'
+    else tier = m || 'unknown'
+    return tier ? [{ tier, callIndex: idx }] : []
+  })
+}
+
+function reasonKey(
+  r: NonNullable<InvoiceOut['current_extraction']>['predicted_triage_reasons'][number],
+): string {
+  if ('field' in r) return `${r.type}:${r.field}`
+  if ('invoice_id' in r) return `${r.type}:${r.invoice_id}`
+  if ('vendor_name' in r) return `${r.type}:${r.vendor_name}`
+  if ('stage' in r) return `${r.type}:${r.stage}`
+  return r.type ?? 'reason'
 }
 
 export function ReviewScreen() {
@@ -103,12 +118,11 @@ export function ReviewScreen() {
 
   const bboxes = useMemo(
     () =>
-      Object.entries(fields)
-        .filter(([_, f]) => Array.isArray(f?.bbox))
-        .map(([name, f]) => ({
-          name,
-          bbox: f!.bbox as [number, number, number, number],
-        })),
+      Object.entries(fields).flatMap(([name, f]) =>
+        Array.isArray(f?.bbox)
+          ? [{ name, bbox: f.bbox as [number, number, number, number] }]
+          : [],
+      ),
     [fields]
   )
 
@@ -229,7 +243,9 @@ export function ReviewScreen() {
           >
             <span className="mono">{invoiceNumber}</span>
             <span>·</span>
-            <span>{new Date(invoice.uploaded_at).toLocaleString()}</span>
+            <span suppressHydrationWarning>
+              {new Date(invoice.uploaded_at).toLocaleString()}
+            </span>
             {total != null && (
               <>
                 <span>·</span>
@@ -243,15 +259,7 @@ export function ReviewScreen() {
           <div style={{ display: 'flex', gap: 6, marginTop: 12 }}>
             <Btn variant="primary" icon={Icons.check} onClick={() => confirm.mutate(invoice.id)}>
               Confirm
-              <span
-                style={{
-                  marginLeft: 4,
-                  padding: '0 4px',
-                  background: 'rgba(255,255,255,0.12)',
-                  fontFamily: 'var(--font-mono)',
-                  fontSize: 10,
-                }}
-              >
+              <span className="ml-1 bg-white/[0.12] px-1 font-mono text-[12px]">
                 C
               </span>
             </Btn>
@@ -272,8 +280,8 @@ export function ReviewScreen() {
               </span>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {reasons.map((r, i) => (
-                <ReasonCard key={i} reason={r} ctx={reasonCtx} />
+              {reasons.map((r) => (
+                <ReasonCard key={reasonKey(r)} reason={r} ctx={reasonCtx} />
               ))}
             </div>
           </div>
@@ -292,15 +300,8 @@ export function ReviewScreen() {
                 <span>Manual entry mode</span>
               </span>
             )}
-            <span
-              style={{
-                marginLeft: 'auto',
-                fontFamily: 'var(--font-mono)',
-                fontSize: 11,
-                color: 'var(--ink-48)',
-              }}
-            >
-              cascade: {tiers.length ? tiers.join(' → ') : '—'}
+            <span className="ml-auto font-mono text-[12px] text-ink-48">
+              cascade: {tiers.length ? tiers.map((t) => t.tier).join(' → ') : '–'}
             </span>
           </div>
 
@@ -361,57 +362,60 @@ const TIER_META: Record<string, { label: string; color: string; bg: string; cost
   opus: { label: 'Opus 4.7', color: '#6b3b8c', bg: '#f3e9f9', cost: '$0.060' },
 }
 
-function CascadeTrace({ tiers }: { tiers: string[] }) {
+function CascadeTrace({ tiers }: { tiers: CascadeStep[] }) {
   return (
-    <div className="card" style={{ padding: 12 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
-        {tiers.map((tier, i) => {
-          const m = TIER_META[tier] ?? {
-            label: tier,
+    <div className="card p-3">
+      <div className="flex flex-wrap items-center gap-1">
+        {tiers.map((step, i) => {
+          const m = TIER_META[step.tier] ?? {
+            label: step.tier,
             color: 'var(--ink-60)',
             bg: 'var(--surface-recess)',
             cost: '',
           }
           return (
-            <span key={`${tier}-${i}`} style={{ display: 'inline-flex', alignItems: 'center' }}>
-              <span
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 6,
-                  padding: '4px 8px',
-                  background: m.bg,
-                  color: m.color,
-                  border: '1px solid var(--hairline)',
-                  fontSize: 12,
-                  fontFamily: 'var(--font-mono)',
-                }}
-              >
-                <span
-                  style={{
-                    width: 6,
-                    height: 6,
-                    borderRadius: 50,
-                    background: m.color,
-                  }}
-                />
-                <span>{m.label}</span>
-                {m.cost && <span style={{ opacity: 0.6 }}>{m.cost}</span>}
-              </span>
+            <span
+              key={`${step.tier}-${step.callIndex}`}
+              className="inline-flex items-center"
+            >
+              <CascadeBadge label={m.label} cost={m.cost} bg={m.bg} color={m.color} />
               {i < tiers.length - 1 && (
-                <span style={{ color: 'var(--ink-48)', margin: '0 4px' }}>→</span>
+                <span className="mx-1 text-ink-48">→</span>
               )}
             </span>
           )
         })}
       </div>
-      <div className="muted" style={{ fontSize: 11.5, marginTop: 8, lineHeight: 1.5 }}>
+      <div className="muted mt-2 text-xs leading-[1.5]">
         {tiers.length === 1
-          ? 'First tier returned high composite confidence — no escalation needed.'
+          ? 'First tier returned high composite confidence; no escalation needed.'
           : tiers.length === 2
             ? "Haiku's output triggered the cascade (math fails or low confidence). Sonnet's values shown above."
-            : 'Sonnet disagreed with Haiku on disputed fields. Opus broke the tie — agreement scores merged into composite.'}
+            : 'Sonnet disagreed with Haiku on disputed fields. Opus broke the tie; agreement scores merged into composite.'}
       </div>
     </div>
+  )
+}
+
+function CascadeBadge({
+  label,
+  cost,
+  bg,
+  color,
+}: {
+  label: string
+  cost: string
+  bg: string
+  color: string
+}) {
+  return (
+    <span
+      className="inline-flex items-center gap-1.5 border border-hairline px-2 py-1 font-mono text-xs"
+      style={{ background: bg, color }}
+    >
+      <span className="size-1.5 rounded-full" style={{ background: color }} />
+      <span>{label}</span>
+      {cost && <span className="opacity-60">{cost}</span>}
+    </span>
   )
 }

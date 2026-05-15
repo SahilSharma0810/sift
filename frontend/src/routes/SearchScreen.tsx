@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 
 import { Btn } from '@/components/primitives/Btn'
@@ -85,15 +85,15 @@ export function SearchScreen() {
   const translate = useTranslateMutation()
   const { data: results = [], isFetching, error } = useSearchQuery(query)
 
-  useEffect(() => {
-    setNlInput('')
-  }, [params])
-
   const setQuery = (next: StructuredQuery) => {
     setParams({ q: JSON.stringify(next) }, { replace: true })
+    setNlInput('')
   }
 
-  const clearAll = () => setParams({}, { replace: true })
+  const clearAll = () => {
+    setParams({}, { replace: true })
+    setNlInput('')
+  }
 
   const removeChip = (idx: number) => {
     const next: StructuredQuery = {
@@ -126,53 +126,32 @@ export function SearchScreen() {
     }
   }
 
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
-      <div
-        style={{
-          padding: '14px 20px',
-          borderBottom: '1px solid var(--hairline)',
-          background: 'var(--paper)',
-        }}
-      >
+  const handleNlKey = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.preventDefault()
+      void onNlSubmit(nlInput)
+    }
+  }
 
-        <form
-          onSubmit={(e) => {
-            e.preventDefault()
-            void onNlSubmit(nlInput)
-          }}
-          style={{ display: 'flex', gap: 8, alignItems: 'center' }}
-        >
-          <div
-            style={{
-              flex: 1,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-              padding: '8px 12px',
-              border: '1px solid var(--hairline)',
-              background: '#fff',
-            }}
-          >
+  return (
+    <div className="flex h-full flex-col overflow-hidden">
+      <div className="border-b border-hairline px-5 py-3.5">
+        <div className="flex items-center gap-2">
+          <div className="flex flex-1 items-center gap-2 border border-hairline bg-white px-3 py-2 focus-within:border-action">
             <Icons.search />
             <input
               type="text"
               value={nlInput}
               onChange={(e) => setNlInput(e.target.value)}
-              placeholder="Ask in plain English — e.g. 'duplicates from Vega over $5,000 this month'"
-              style={{
-                flex: 1,
-                border: 'none',
-                outline: 'none',
-                background: 'transparent',
-                fontSize: 14,
-              }}
+              onKeyDown={handleNlKey}
+              placeholder="Ask in plain English, e.g. 'duplicates from Vega over $5,000 this month'"
+              className="flex-1 border-none bg-transparent text-sm focus:outline-none focus-visible:outline-none"
             />
             {translate.isPending && (
-              <span style={{ fontSize: 11, color: 'var(--ink-48)' }}>translating…</span>
+              <span className="text-xs text-ink-48">translating…</span>
             )}
           </div>
-          <Btn variant="primary" type="submit">
+          <Btn variant="primary" onClick={() => void onNlSubmit(nlInput)}>
             Search
           </Btn>
           {query.filters.length > 0 && (
@@ -188,33 +167,16 @@ export function SearchScreen() {
               </Btn>
             </>
           )}
-        </form>
+        </div>
 
-        {}
         {query.filters.length > 0 && (
-          <div
-            style={{
-              display: 'flex',
-              flexWrap: 'wrap',
-              gap: 6,
-              marginTop: 12,
-              alignItems: 'center',
-            }}
-          >
-            <span
-              style={{
-                fontSize: 10.5,
-                textTransform: 'uppercase',
-                letterSpacing: '0.06em',
-                color: 'var(--ink-48)',
-                marginRight: 4,
-              }}
-            >
+          <div className="mt-3 flex flex-wrap items-center gap-1.5">
+            <span className="mr-1 text-[12px] uppercase tracking-[0.06em] text-ink-48">
               Filters
             </span>
             {query.filters.map((c, i) => (
               <ChipWithRemove
-                key={`${c.field}-${c.op}-${i}`}
+                key={chipKey(c)}
                 label={chipLabel(c)}
                 onRemove={() => removeChip(i)}
               />
@@ -222,83 +184,38 @@ export function SearchScreen() {
           </div>
         )}
 
-        {}
         {query.untranslated_intent && (
-          <div
-            style={{
-              marginTop: 10,
-              padding: '8px 12px',
-              fontSize: 12.5,
-              color: '#7a4a00',
-              background: '#fdf3da',
-              border: '1px solid #e6c75a',
-              display: 'flex',
-              gap: 8,
-              alignItems: 'flex-start',
-            }}
-          >
-            <span style={{ marginTop: 1 }}>⚠</span>
+          <div className="mt-2.5 flex items-start gap-2 border border-[#e6c75a] bg-[#fdf3da] px-3 py-2 text-xs text-[#7a4a00]">
+            <span className="mt-px">⚠</span>
             <div>
               <b>Partial translation.</b> The system couldn't translate "
-              <em>{query.untranslated_intent}</em>" into a structured filter — surfaced here so it's
+              <em>{query.untranslated_intent}</em>" into a structured filter; surfaced here so it's
               not silently dropped.
             </div>
           </div>
         )}
       </div>
 
-      <div style={{ flex: 1, overflow: 'auto', padding: '12px 20px' }}>
+      <div className="flex-1 overflow-auto px-5 py-3">
         {error ? (
-          <div style={{ color: 'var(--ink-60)', padding: 16 }}>
-            Search failed: {String(error)}
-          </div>
+          <div className="p-4 text-ink-60">Search failed: {String(error)}</div>
         ) : isFetching && results.length === 0 ? (
-          <div style={{ color: 'var(--ink-60)', padding: 16 }}>Loading…</div>
+          <div className="p-4 text-ink-60">Loading…</div>
         ) : results.length === 0 ? (
-          <div
-            style={{
-              padding: 32,
-              textAlign: 'center',
-              color: 'var(--ink-60)',
-              fontSize: 13.5,
-            }}
-          >
-            {query.filters.length === 0 ? (
-              <>Type a query above to search the corpus.</>
-            ) : (
-              <>No invoices match this query.</>
-            )}
+          <div className="p-8 text-center text-[13.5px] text-ink-60">
+            {query.filters.length === 0
+              ? 'Type a query above to search the corpus.'
+              : 'No invoices match this query.'}
           </div>
         ) : (
-          <table
-            style={{
-              width: '100%',
-              borderCollapse: 'collapse',
-              fontSize: 13.5,
-            }}
-          >
+          <table className="w-full border-collapse text-[13.5px]">
             <thead>
               <tr>
-                {[
-                  ['triage', 110],
-                  ['vendor', 220],
-                  ['invoice #', 160],
-                  ['date', 110],
-                  ['total', 110],
-                  ['status', 110],
-                ].map(([label, w]) => (
+                {SEARCH_COLS.map(([label, w]) => (
                   <th
-                    key={String(label)}
-                    style={{
-                      textAlign: 'left',
-                      padding: '8px 12px',
-                      fontSize: 10.5,
-                      textTransform: 'uppercase',
-                      letterSpacing: '0.06em',
-                      color: 'var(--ink-48)',
-                      borderBottom: '1px solid var(--hairline)',
-                      width: w as number,
-                    }}
+                    key={label}
+                    style={{ width: w }}
+                    className="border-b border-hairline px-3 py-2 text-left text-[12px] uppercase tracking-[0.06em] text-ink-48"
                   >
                     {label}
                   </th>
@@ -308,31 +225,26 @@ export function SearchScreen() {
             <tbody>
               {results.map((inv) => {
                 const fields = inv.current_extraction?.extracted_fields ?? {}
-                const vendor = fields.vendor_name?.value ?? '—'
-                const invoiceNum = fields.invoice_number?.value ?? '—'
+                const vendor = fields.vendor_name?.value ?? '–'
+                const invoiceNum = fields.invoice_number?.value ?? '–'
                 const total = fields.total?.value
-                const date = fields.invoice_date?.value ?? '—'
+                const date = fields.invoice_date?.value ?? '–'
                 return (
                   <tr
                     key={inv.id}
                     onClick={() => navigate(`/invoice/${inv.id}`)}
-                    style={{
-                      cursor: 'pointer',
-                      borderBottom: '1px solid var(--hairline-soft)',
-                    }}
+                    className="cursor-pointer border-b border-hairline-soft"
                   >
-                    <td style={{ padding: '10px 12px' }}>
+                    <td className="px-3 py-2.5">
                       <TriagePill variant={pillVariant(inv)} />
                     </td>
-                    <td style={{ padding: '10px 12px' }}>{String(vendor)}</td>
-                    <td className="num" style={{ padding: '10px 12px' }}>{String(invoiceNum)}</td>
-                    <td className="num" style={{ padding: '10px 12px' }}>{String(date)}</td>
-                    <td className="num" style={{ padding: '10px 12px', textAlign: 'right' }}>
-                      {total == null ? '—' : `$${formatNumber(Number(total))}`}
+                    <td className="px-3 py-2.5">{String(vendor)}</td>
+                    <td className="num px-3 py-2.5">{String(invoiceNum)}</td>
+                    <td className="num px-3 py-2.5">{String(date)}</td>
+                    <td className="num px-3 py-2.5 text-right">
+                      {total == null ? '–' : `$${formatNumber(Number(total))}`}
                     </td>
-                    <td style={{ padding: '10px 12px', color: 'var(--ink-60)' }}>
-                      {inv.review_status}
-                    </td>
+                    <td className="px-3 py-2.5 text-ink-60">{inv.review_status}</td>
                   </tr>
                 )
               })}
@@ -344,37 +256,28 @@ export function SearchScreen() {
   )
 }
 
+const SEARCH_COLS: [string, number][] = [
+  ['triage', 110],
+  ['vendor', 220],
+  ['invoice #', 160],
+  ['date', 110],
+  ['total', 110],
+  ['status', 110],
+]
+
+function chipKey(c: FilterClause): string {
+  return `${c.field}|${c.op}|${JSON.stringify(c.value)}`
+}
+
 function ChipWithRemove({ label, onRemove }: { label: string; onRemove: () => void }) {
   return (
-    <span
-      style={{
-        display: 'inline-flex',
-        alignItems: 'center',
-        gap: 6,
-        padding: '4px 4px 4px 10px',
-        fontSize: 11.5,
-        fontFamily: 'var(--font-mono)',
-        color: 'var(--ink-80)',
-        background: '#eef3fb',
-        border: '1px solid #c2d4ee',
-      }}
-    >
+    <span className="inline-flex items-center gap-1.5 border border-[#c2d4ee] bg-[#eef3fb] py-1 pl-2.5 pr-1 font-mono text-xs text-ink-80">
       {label}
       <button
         onClick={onRemove}
         type="button"
         aria-label={`Remove ${label}`}
-        style={{
-          width: 18,
-          height: 18,
-          display: 'inline-grid',
-          placeItems: 'center',
-          background: 'transparent',
-          border: 'none',
-          cursor: 'pointer',
-          color: 'var(--ink-60)',
-          padding: 0,
-        }}
+        className="inline-grid size-[18px] place-items-center border-none bg-transparent p-0 text-ink-60"
       >
         ✕
       </button>

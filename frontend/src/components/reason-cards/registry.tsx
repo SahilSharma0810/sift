@@ -1,23 +1,77 @@
 import { Icons } from '@/components/primitives/Icons'
+import type {
+  AnomalyReason,
+  DuplicateOfReason,
+  ExtractionFailedReason,
+  LowConfidenceReason,
+  MathFailsReason,
+  MissingFieldReason,
+  UnseenVendorReason,
+} from '@/types/generated/domain'
 import { formatNumber } from '@/utils/format'
 
 import type { ReasonRegistry } from './types'
 
+const MathFailsDetail = ({ reason: r }: { reason: MathFailsReason }) => (
+  <>
+    <span className="mono-snip">
+      subtotal {formatNumber(r.subtotal)} + tax {formatNumber(r.tax)} ={' '}
+      {formatNumber(r.subtotal + r.tax)}
+    </span>{' '}
+    but invoice says total{' '}
+    <span className="mono-snip">{formatNumber(r.total)}</span>; off by{' '}
+    <span className="mono-snip">{r.delta.toFixed(2)}</span>.
+  </>
+)
+
+const DuplicateOfDetail = ({
+  reason: r,
+  ctx,
+}: {
+  reason: DuplicateOfReason
+  ctx: { byId: Record<string, { current_extraction?: { extracted_fields?: Record<string, { value?: unknown }> } | null }> }
+}) => {
+  const orig = ctx.byId[r.invoice_id]
+  const origFields = orig?.current_extraction?.extracted_fields
+  const origLabel = orig
+    ? `${origFields?.invoice_number?.value ?? '–'} (${origFields?.vendor_name?.value ?? '–'})`
+    : r.invoice_id
+  return (
+    <>
+      {Math.round(r.similarity * 100)}% match against{' '}
+      <span className="mono-snip">{String(origLabel)}</span>; matched on{' '}
+      <span className="mono-snip">{r.match_method}</span>.
+    </>
+  )
+}
+
+const LowConfidenceDetail = ({ reason: r }: { reason: LowConfidenceReason }) => (
+  <>
+    Composite confidence{' '}
+    <span className="mono-snip">{Math.round(r.score * 100)}%</span>: {r.reason}.
+  </>
+)
+
+const AnomalyDetail = ({ reason: r }: { reason: AnomalyReason }) => (
+  <>
+    <span className="mono-snip">${formatNumber(r.vendor_mean)}</span> is the rolling
+    average; this extraction is{' '}
+    <span className="mono-snip">{r.z_score.toFixed(1)}σ</span> away (σ ={' '}
+    <span className="mono-snip">${formatNumber(r.vendor_std)}</span>).
+  </>
+)
+
+const ExtractionFailedDetail = ({ reason: r }: { reason: ExtractionFailedReason }) => (
+  <>
+    Failed at stage <span className="mono-snip">{r.stage}</span>: {r.detail}.
+  </>
+)
+
 export const REASON_SPECS: ReasonRegistry = {
   math_fails: {
     icon: Icons.warn,
-    renderTitle: () => "Math doesn't reconcile",
-    renderDetail: (r) => (
-      <>
-        <span className="mono-snip">
-          subtotal {formatNumber(r.subtotal)} + tax {formatNumber(r.tax)} ={' '}
-          {formatNumber(r.subtotal + r.tax)}
-        </span>{' '}
-        but invoice says total{' '}
-        <span className="mono-snip">{formatNumber(r.total)}</span> — off by{' '}
-        <span className="mono-snip">{r.delta.toFixed(2)}</span>.
-      </>
-    ),
+    Title: () => <>Math doesn't reconcile</>,
+    Detail: MathFailsDetail,
     actions: [
       {
         label: 'Edit total',
@@ -35,21 +89,8 @@ export const REASON_SPECS: ReasonRegistry = {
 
   duplicate_of: {
     icon: Icons.copy,
-    renderTitle: () => 'Looks like a duplicate',
-    renderDetail: (r, ctx) => {
-      const orig = ctx.byId[r.invoice_id]
-      const origFields = orig?.current_extraction?.extracted_fields
-      const origLabel = orig
-        ? `${origFields?.invoice_number?.value ?? '—'} (${origFields?.vendor_name?.value ?? '—'})`
-        : r.invoice_id
-      return (
-        <>
-          {Math.round(r.similarity * 100)}% match against{' '}
-          <span className="mono-snip">{origLabel}</span> — matched on{' '}
-          <span className="mono-snip">{r.match_method}</span>.
-        </>
-      )
-    },
+    Title: () => <>Looks like a duplicate</>,
+    Detail: DuplicateOfDetail,
     actions: [
       {
         label: 'Open original',
@@ -74,13 +115,10 @@ export const REASON_SPECS: ReasonRegistry = {
 
   low_confidence: {
     icon: Icons.alert,
-    renderTitle: (r) => `Low confidence on ${r.field.replace('_', ' ')}`,
-    renderDetail: (r) => (
-      <>
-        Composite confidence{' '}
-        <span className="mono-snip">{Math.round(r.score * 100)}%</span> — {r.reason}.
-      </>
+    Title: ({ reason: r }: { reason: LowConfidenceReason }) => (
+      <>Low confidence on {r.field.replace('_', ' ')}</>
     ),
+    Detail: LowConfidenceDetail,
     actions: [
       {
         label: (r) => `Fix ${r.field.replace('_', ' ')}`,
@@ -98,8 +136,10 @@ export const REASON_SPECS: ReasonRegistry = {
 
   missing_field: {
     icon: Icons.alert,
-    renderTitle: (r) => `Missing ${r.field.replace('_', ' ')}`,
-    renderDetail: () => 'Required field is empty in the extraction.',
+    Title: ({ reason: r }: { reason: MissingFieldReason }) => (
+      <>Missing {r.field.replace('_', ' ')}</>
+    ),
+    Detail: () => <>Required field is empty in the extraction.</>,
     actions: [
       {
         label: 'Add value',
@@ -111,20 +151,14 @@ export const REASON_SPECS: ReasonRegistry = {
 
   anomaly: {
     icon: Icons.spark,
-    renderTitle: (r) => `Unusual ${r.field} for this vendor`,
-    renderDetail: (r) => (
-      <>
-        <span className="mono-snip">${formatNumber(r.vendor_mean)}</span> is the rolling
-        average; this extraction is{' '}
-        <span className="mono-snip">{r.z_score.toFixed(1)}σ</span> away (σ ={' '}
-        <span className="mono-snip">${formatNumber(r.vendor_std)}</span>).
-      </>
+    Title: ({ reason: r }: { reason: AnomalyReason }) => (
+      <>Unusual {r.field} for this vendor</>
     ),
+    Detail: AnomalyDetail,
     actions: [
       {
         label: 'See vendor history',
         icon: Icons.history,
-
         handler: () => undefined,
       },
       {
@@ -138,20 +172,22 @@ export const REASON_SPECS: ReasonRegistry = {
 
   unseen_vendor: {
     icon: Icons.vendor,
-    renderTitle: (r) => `First invoice from ${r.vendor_name}`,
-    renderDetail: () =>
-      'No vendor history yet — confidence scores fall back to the cold-start default of 0.85. Confirming this extraction will seed the vendor memory.',
+    Title: ({ reason: r }: { reason: UnseenVendorReason }) => (
+      <>First invoice from {r.vendor_name}</>
+    ),
+    Detail: () => (
+      <>
+        No vendor history yet. Confidence scores fall back to the cold-start default of
+        0.85. Confirming this extraction will seed the vendor memory.
+      </>
+    ),
     actions: [],
   },
 
   extraction_failed: {
     icon: Icons.lock,
-    renderTitle: () => "Couldn't read this PDF",
-    renderDetail: (r) => (
-      <>
-        Failed at stage <span className="mono-snip">{r.stage}</span>: {r.detail}.
-      </>
-    ),
+    Title: () => <>Couldn't read this PDF</>,
+    Detail: ExtractionFailedDetail,
     actions: [
       {
         label: 'Manually enter fields',

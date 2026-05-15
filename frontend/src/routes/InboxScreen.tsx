@@ -27,6 +27,16 @@ function minConfidence(inv: InvoiceOut): number | null {
   return Math.min(...values)
 }
 
+function reasonKey(
+  r: NonNullable<InvoiceOut['current_extraction']>['predicted_triage_reasons'][number],
+): string {
+  if ('field' in r) return `${r.type}:${r.field}`
+  if ('invoice_id' in r) return `${r.type}:${r.invoice_id}`
+  if ('vendor_name' in r) return `${r.type}:${r.vendor_name}`
+  if ('stage' in r) return `${r.type}:${r.stage}`
+  return r.type ?? 'reason'
+}
+
 export function InboxScreen() {
   const { data: invoices = [], isLoading, error } = useInboxQuery()
   const upload = useUploadMutation()
@@ -130,6 +140,9 @@ export function InboxScreen() {
     <div className="inbox-content">
       <div
         className="dropzone"
+        role="button"
+        tabIndex={0}
+        aria-label="Drop or select an invoice PDF to upload"
         onDragOver={(e) => {
           e.preventDefault()
           setDragOver(true)
@@ -141,6 +154,12 @@ export function InboxScreen() {
           void handleFiles(e.dataTransfer.files)
         }}
         onClick={() => fileInput.current?.click()}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault()
+            fileInput.current?.click()
+          }
+        }}
         style={
           dragOver
             ? { borderColor: 'var(--primary)', background: 'var(--primary-bg-soft)' }
@@ -173,48 +192,7 @@ export function InboxScreen() {
       </div>
 
       <div className="inbox-toolbar" style={{ marginTop: 16 }}>
-        <div className="seg" role="tablist">
-          <FilterTab id="all" cur={filter} set={setFilter} label="All" count={counts.all} />
-          <FilterTab
-            id="needs_review"
-            cur={filter}
-            set={setFilter}
-            label="Needs review"
-            count={counts.needs_review}
-            variant="needs_review"
-          />
-          <FilterTab
-            id="confident"
-            cur={filter}
-            set={setFilter}
-            label="Confident"
-            count={counts.confident}
-            variant="confident"
-          />
-          <FilterTab
-            id="likely_duplicate"
-            cur={filter}
-            set={setFilter}
-            label="Duplicates"
-            count={counts.likely_duplicate}
-            variant="likely_duplicate"
-          />
-          <FilterTab
-            id="unprocessable"
-            cur={filter}
-            set={setFilter}
-            label="Unprocessable"
-            count={counts.unprocessable}
-            variant="unprocessable"
-          />
-          <FilterTab
-            id="confirmed"
-            cur={filter}
-            set={setFilter}
-            label="Confirmed"
-            count={counts.confirmed}
-          />
-        </div>
+        <FilterTabs filter={filter} setFilter={setFilter} counts={counts} />
 
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
           <Btn variant="ghost" size="sm" icon={Icons.filter}>
@@ -319,19 +297,19 @@ export function InboxScreen() {
                         {formatNumber(Number(fields.total.value))}
                       </span>
                     ) : (
-                      <span className="subtle">—</span>
+                      <span className="subtle">–</span>
                     )}
                   </td>
                   <td>
                     {reasons.length === 0 ? (
-                      <span className="subtle">—</span>
+                      <span className="subtle">–</span>
                     ) : (
-                      <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                        {reasons.slice(0, 2).map((r, i) => (
-                          <WhyChip key={i} reason={r} />
+                      <div className="flex flex-wrap gap-1">
+                        {reasons.slice(0, 2).map((r) => (
+                          <WhyChip key={reasonKey(r)} reason={r} />
                         ))}
                         {reasons.length > 2 && (
-                          <span className="subtle mono" style={{ fontSize: 11 }}>
+                          <span className="subtle mono text-xs">
                             +{reasons.length - 2}
                           </span>
                         )}
@@ -348,40 +326,79 @@ export function InboxScreen() {
         </table>
       </div>
 
-      <div
-        style={{
-          marginTop: 14,
-          fontSize: 12,
-          color: 'var(--ink-48)',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 8,
-          flexWrap: 'wrap',
-        }}
-      >
-        <span>
-          <Kbd>J</Kbd> <Kbd>K</Kbd> navigate
-        </span>
-        <span style={{ width: 1, height: 10, background: 'var(--hairline)' }} />
-        <span>
-          <Kbd>Enter</Kbd> open
-        </span>
-        <span style={{ width: 1, height: 10, background: 'var(--hairline)' }} />
-        <span>
-          <Kbd>C</Kbd> confirm
-        </span>
-        <span style={{ width: 1, height: 10, background: 'var(--hairline)' }} />
-        <span>
-          <Kbd>X</Kbd> dismiss
-        </span>
-        <span style={{ width: 1, height: 10, background: 'var(--hairline)' }} />
-        <span>
-          <Kbd>⌘</Kbd> <Kbd>K</Kbd> natural-language search
-        </span>
-        <span style={{ marginLeft: 'auto' }}>
-          {filtered.length} of {invoices.length} invoices
-        </span>
-      </div>
+      <InboxFooter shown={filtered.length} total={invoices.length} />
+    </div>
+  )
+}
+
+function InboxFooter({ shown, total }: { shown: number; total: number }) {
+  return (
+    <div className="mt-3.5 flex flex-wrap items-center gap-2 text-xs text-ink-48">
+      <span>
+        <Kbd>J</Kbd> <Kbd>K</Kbd> navigate
+      </span>
+      <FooterSep />
+      <span>
+        <Kbd>Enter</Kbd> open
+      </span>
+      <FooterSep />
+      <span>
+        <Kbd>C</Kbd> confirm
+      </span>
+      <FooterSep />
+      <span>
+        <Kbd>X</Kbd> dismiss
+      </span>
+      <FooterSep />
+      <span>
+        <Kbd>⌘</Kbd> <Kbd>K</Kbd> natural-language search
+      </span>
+      <span className="ml-auto">
+        {shown} of {total} invoices
+      </span>
+    </div>
+  )
+}
+
+function FooterSep() {
+  return <span className="h-2.5 w-px bg-hairline" />
+}
+
+const FILTER_TABS: {
+  id: FilterId
+  label: string
+  variant?: 'confident' | 'needs_review' | 'likely_duplicate' | 'unprocessable'
+}[] = [
+  { id: 'all', label: 'All' },
+  { id: 'needs_review', label: 'Needs review', variant: 'needs_review' },
+  { id: 'confident', label: 'Confident', variant: 'confident' },
+  { id: 'likely_duplicate', label: 'Duplicates', variant: 'likely_duplicate' },
+  { id: 'unprocessable', label: 'Unprocessable', variant: 'unprocessable' },
+  { id: 'confirmed', label: 'Confirmed' },
+]
+
+function FilterTabs({
+  filter,
+  setFilter,
+  counts,
+}: {
+  filter: FilterId
+  setFilter: (v: FilterId) => void
+  counts: Record<FilterId, number>
+}) {
+  return (
+    <div className="seg" role="tablist">
+      {FILTER_TABS.map((t) => (
+        <FilterTab
+          key={t.id}
+          id={t.id}
+          cur={filter}
+          set={setFilter}
+          label={t.label}
+          count={counts[t.id]}
+          variant={t.variant}
+        />
+      ))}
     </div>
   )
 }

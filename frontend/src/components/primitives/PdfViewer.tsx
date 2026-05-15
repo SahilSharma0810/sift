@@ -10,9 +10,11 @@ export type BboxRect = {
   bbox: [number, number, number, number]
 }
 
+const EMPTY_BBOXES: BboxRect[] = []
+
 export function PdfViewer({
   src,
-  bboxes = [],
+  bboxes = EMPTY_BBOXES,
   activeField = null,
   onHoverBbox,
 }: {
@@ -39,10 +41,8 @@ export function PdfViewer({
         const context = canvas.getContext('2d')!
         canvas.width = viewport.width
         canvas.height = viewport.height
-        canvas.style.maxWidth = '100%'
-        canvas.style.height = 'auto'
-        canvas.style.boxShadow = 'var(--shadow-product)'
-        canvas.style.display = 'block'
+        canvas.style.cssText =
+          'max-width:100%;height:auto;display:block;box-shadow:var(--shadow-product);'
         if (cancelled) return
         stage.insertBefore(canvas, stage.firstChild)
         await page.render({ canvasContext: context, viewport }).promise

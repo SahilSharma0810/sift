@@ -77,14 +77,8 @@ export function DuplicateReviewScreen() {
     >
       <div className="pdf-stage">
         <div
-          style={{
-            fontSize: 11,
-            color: 'var(--ink-48)',
-            marginBottom: 8,
-            textAlign: 'center',
-            textTransform: 'uppercase',
-            letterSpacing: '0.08em',
-          }}
+          className="mb-2 text-center text-[12px] uppercase tracking-[0.08em] text-ink-48"
+          suppressHydrationWarning
         >
           Original · uploaded {new Date(original.uploaded_at).toLocaleString()}
         </div>
@@ -93,14 +87,8 @@ export function DuplicateReviewScreen() {
 
       <div className="pdf-stage" style={{ borderLeft: '1px solid var(--hairline)' }}>
         <div
-          style={{
-            fontSize: 11,
-            color: 'var(--ink-48)',
-            marginBottom: 8,
-            textAlign: 'center',
-            textTransform: 'uppercase',
-            letterSpacing: '0.08em',
-          }}
+          className="mb-2 text-center text-[12px] uppercase tracking-[0.08em] text-ink-48"
+          suppressHydrationWarning
         >
           New · uploaded {new Date(current.uploaded_at).toLocaleString()}
         </div>
@@ -142,7 +130,7 @@ export function DuplicateReviewScreen() {
                 <div style={{ fontSize: 12, color: 'var(--ink-60)' }}>{label}</div>
                 <div className="num" style={{ fontSize: 13 }}>
                   {origValue == null ? (
-                    <span className="subtle">—</span>
+                    <span className="subtle">–</span>
                   ) : (
                     String(origValue)
                   )}
@@ -152,7 +140,7 @@ export function DuplicateReviewScreen() {
                   style={{ fontSize: 13, fontWeight: matches ? 400 : 600 }}
                 >
                   {currValue == null ? (
-                    <span className="subtle">—</span>
+                    <span className="subtle">–</span>
                   ) : (
                     String(currValue)
                   )}
