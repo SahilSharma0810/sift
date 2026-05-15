@@ -144,3 +144,19 @@ class TestSessionRepo:
         touch_last_seen(db_session, s.id)
         db_session.refresh(s)
         assert s.last_seen_at > original
+
+
+class TestSeedDemoUser:
+    def test_seed_demo_user_is_idempotent_and_does_not_change_password(
+        self, db_session: Session
+    ) -> None:
+        from scripts.seed_demo import seed_demo_user
+        from app.config import get_settings
+
+        settings = get_settings()
+        u1 = seed_demo_user(db_session)
+        assert u1.email == settings.demo_email
+        assert verify_password(settings.demo_password, u1.password_hash)
+
+        u2 = seed_demo_user(db_session)
+        assert u1.id == u2.id
