@@ -461,6 +461,54 @@ The two "misses" are intentional partial-translation cases (`"duplicates this mo
 
 Methodology: [`NL_EVAL.md`](./NL_EVAL.md). Per-case detail: [`backend/eval/nl.md`](./backend/eval/nl.md).
 
+### Corpus 3 — DocILE real invoices (100 random, Anthropic-mode)
+
+The synthetic corpus is great for determinism and adversarial control, but it can't tell you how Sift behaves on **real** invoices — wild layouts, OCR noise, scanned faxes from 1999, broadcast-station billing templates, multi-column European VAT receipts. To cover that gap, the pipeline is smoke-tested against [DocILE](https://github.com/rossumai/docile) — a publicly-released benchmark of 6,680 annotated business invoices.
+
+The harness ([`scripts/smoke_docile.py`](./scripts/smoke_docile.py)) picks **100 random invoices** from the DocILE `val` split (seed-pinned, reproducible), uploads each through the live `/api/invoices` endpoint, and diffs the extracted header fields against DocILE's ground-truth annotations.
+
+Latest pass — `--n 100 --seed 42`, claude-haiku-4-5 + claude-sonnet-4-6 + claude-opus-4-7:
+
+| Metric | Value |
+|---|---:|
+| Overall field-comparison accuracy | **87.7%** (372 / 424) |
+| Avg cascade depth | 2.1 tiers (max 3) |
+| Total cost for 100 invoices | **$4.06** |
+| Avg cost per invoice | $0.041 |
+
+Per-field accuracy:
+
+| Field | Accuracy | n |
+|---|---:|---:|
+| `currency` | 95.7% | 70 |
+| `invoice_number` | 93.5% | 77 |
+| `invoice_date` | 86.5% | 89 |
+| `total` | 86.0% | 93 |
+| `vendor_name` | 80.0% | 90 |
+| `tax` | 80.0% | 5 |
+
+Cost split — Opus dominates because of how aggressively the cascade fires on a corpus where every vendor is unseen:
+
+| Tier | Calls | $ | Share |
+|---|---:|---:|---:|
+| Haiku 4-5 | 65 | $0.30 | 7% |
+| Sonnet 4-6 | 98 | $0.93 | 23% |
+| **Opus 4-7** | **49** | **$2.82** | **70%** |
+
+The 87.7% headline number is honest, not flattering — DocILE deliberately includes scanned faxes with broken OCR, slogans-as-letterheads, billing-period dates that look like issue dates, and station call signs without legal-entity names anywhere on the page. About a third of the "misses" are evaluator-side: ground-truth strings like `'7 26 99'` vs Sift's normalised `'7/26/99'`, or OCR'd `'O2 - 28-2001'` where Sift correctly read `0`. The harness's comparator now normalises these (date separators, currency tokens, trailing dash/dot) so the next pass measures Sift, not the ground-truth noise.
+
+The dominant **real** failure mode is `vendor_name` picking the station call sign (`KGMB`, `WAGT-TV`, `KMOZ 92.3 The Moose`) over the legal entity that would actually receive the cheque — an answer the LLM gets to by following the "most specific local issuer" rule that's wrong for the AP use case. The prompt now flips that preference to legal entity first.
+
+Run it yourself:
+
+```bash
+make seed-demo   # creates the ap-clerk@sift.demo login
+SIFT_LLM_PROVIDER=anthropic ANTHROPIC_API_KEY=sk-ant-... docker compose restart backend
+uv run --with httpx --with rich python scripts/smoke_docile.py --n 100 --seed 42
+```
+
+(DocILE is not bundled; set `--docile-root /path/to/docile/data/docile` if it's not at the default `/Users/lscypher/Workspace/docile/data/docile`.)
+
 ### Anthropic-mode rerun
 
 Same corpus, same harness, just flip the provider:
@@ -473,7 +521,7 @@ Burns ~$0.50–$2.00 in API credits per full pass depending on cascade depth. Th
 
 ### What's deliberately not measured (yet)
 
-- **Line items + tax breakdown.** Both run through their own LLM methods. Stub mode returns canned items, so stub-mode accuracy is uninformative for these. Left for an Anthropic-mode pass on a real-data subset (DocILE).
+- **Line items + tax breakdown.** Both run through their own LLM methods. Stub mode returns canned items, so stub-mode accuracy is uninformative for these. The DocILE pass exercises headers only; line-item accuracy on real data is the next eval to wire up.
 - **Bounding-box visual fidelity.** Manually verified during demo recording; an automated check is straightforward but skipped for the 5-day window.
 - **Latency / cost dashboards.** Per-tier token usage is logged in `cascade_trace` on every extraction, so the data is there; the aggregate dashboard isn't built.
 

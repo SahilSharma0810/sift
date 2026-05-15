@@ -33,15 +33,42 @@ The vendor is the **legal entity that the AP clerk will pay**. The cheque is mad
 
 ### `invoice_number` — the issuer's identifier for this document
 
-Look for labels: `Invoice #`, `Invoice No.`, `Invoice Number`, `Document ID`, `Doc #`, `Ref #`. If the invoice has a separate **PO number** or **customer order number**, those are NOT the invoice number — pick the issuer's identifier.
+The unique identifier the **vendor** stamped on this invoice. Look for labels: `Invoice #`, `Invoice No.`, `Invoice Number`, `Document ID`, `Doc #`, `Invoice ID`. The number directly adjacent to one of these labels is the answer.
+
+**Take the value exactly as the vendor printed it** — do not strip prefixes, suffixes, or hyphens. `MG12-018801` stays `MG12-018801`; `0301 E90282` stays `0301 E90282`; `WOC12746707 [00.00]` is `WOC12746707` (the trailing `[00.00]` is a separate sub-code, drop it).
+
+**Do NOT use any of these — they look like invoice numbers but aren't:**
+
+- **`PO #` / `Purchase Order` / `P.O.` / `Customer Order #` / `Order No.`** — that's the buyer's reference, not the vendor's invoice id.
+- **`Account #` / `Customer #` / `Client ID`** — that's the buyer's identifier on the vendor's books.
+- **`Tax ID` / `EIN` / `VAT #` / `GST #` / `Federal ID`** — that's a regulatory number, never the invoice id.
+- **`Statement #` / `Receipt #` / `Quote #`** — these are sibling document types, not this invoice.
+- **`Reference` or `Ref` lines elsewhere** — only the one labeled with `Invoice` qualifies. A bare `Ref` near the top may be the invoice id only when nothing labeled `Invoice` exists.
+- **A date printed without a label** (e.g. `MAY 2022`) — that's a date, even if it looks numeric.
+- **Cell values from a line-item table** — line items have their own row identifiers (`Item #`, `SKU`); never use those as the invoice number.
+
+If multiple plausibly-labeled candidates exist (rare), pick the one closest to the `Invoice Date`/`Date Issued` in the header block. If no `Invoice #`-style label exists anywhere on the page, return `null` — do not invent one from an account number or PO.
 
 ### `invoice_date` — the date the invoice was ISSUED
 
-Use the **issue date** of the invoice document itself. **Not** the delivery date, service date, due date, air date, line-item date, **billing-period start/end**, or **statement-period** date.
+Use the **issue date** of the invoice document itself — the single calendar day on which the vendor *cut* this invoice. **Not** the delivery date, service date, due date, air date, line-item date, **billing-period start/end**, or **statement-period** date.
 
-Look for labels: `Invoice Date`, `Date Issued`, `Date`, `Bill Date`. When multiple dates appear, prefer the one in the **header block alongside the invoice number** — this is almost always the issue date. A bare month-year like `Feb-99` or a range like `Period: Jan 1 – Jan 31` in the body is a billing window, not the issue date. If a header date and a body date disagree, the header date wins.
+**How to pick when multiple dates appear (do this in order):**
 
-Return the date string **exactly as it appears in the source** — do not reformat.
+1. **Take the date next to an issue-date label.** `Invoice Date`, `Date Issued`, `Date`, `Bill Date`, `Issued`, `Date Billed` — if any of these labels has a date next to it, that date wins.
+2. **Otherwise, take the date in the header block.** The date printed in the same band as `Invoice #` / `Invoice No.` is almost always the issue date.
+3. **If still ambiguous, take the most-specific single-day date.** A bare `Feb-99` (month-year only) or a range `Period: 1/1/22 – 1/31/22` is a billing window, NOT the issue date — keep looking for a precise `MM/DD/YYYY` form.
+4. **If only ranges or month-years are visible**, prefer the **end-date** of the billing period (it's closest to the issue date) — but flag low confidence; this is a fallback.
+
+**Common wrong-pick patterns to avoid:**
+
+- A **date range** like `11/1/2016 - 11/8/2016` is a service or billing period, not the issue date.
+- A **due date** (`Payable By`, `Due`, `Net 30 from`, `Pay By`) is when the buyer must pay — the invoice was issued earlier.
+- An **air date / broadcast date / shipping date** is when service was rendered, not when this paper was cut.
+- A **statement period** (`Statement for: October 2020`) describes the billing window of a recurring statement, not the issue date.
+- A **bare month-year** (`Feb-99`, `October 2020`) by itself is almost always a service/billing period, not an issue date.
+
+Return the date string **exactly as it appears in the source** — do not reformat. If the source shows `7/26/99` keep `7/26/99`; if it shows `June 16, 1999` keep `June 16, 1999`; if it shows `DEC11/01` keep `DEC11/01`.
 
 ### `subtotal`, `tax`, `total` — amounts
 
