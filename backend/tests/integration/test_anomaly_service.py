@@ -10,7 +10,12 @@ from app.adapters.storage.invoice_repo import create_invoice
 from app.adapters.storage.user_repo import upsert_demo_user
 from app.adapters.storage.vendor_repo import upsert_by_normalized_name
 from app.db.models import Extraction, Invoice
+from sqlalchemy import select
+
+from app.db.models import Vendor
 from app.services.anomaly_service import (
+    acknowledge,
+    acknowledge_bulk,
     list_anomalies,
 )
 
@@ -218,3 +223,106 @@ class TestListAnomaliesPopulated:
         assert resp.counts.frequency == 0
         assert resp.counts.pattern == 0
         assert resp.counts.acknowledged == 0
+
+
+class TestAcknowledge:
+    def test_acknowledge_inserts_ack_and_appends_vendor_memory(
+        self, db_session: Session
+    ) -> None:
+        inv = _seed_invoice_with_anomaly(
+            db_session,
+            vendor_name="Ack Halcyon",
+            file_hash="ack-halc-1",
+            total=34062.50,
+            currency="USD",
+            z_score=4.2,
+            avg=7900.0,
+            std=1500.0,
+        )
+        user = upsert_demo_user(db_session, email="acker@example.test", password="x")
+
+        anomaly_id = f"{inv.id}:amount:total"
+        updated = acknowledge(
+            db_session,
+            anomaly_id=anomaly_id,
+            user_id=user.id,
+            notes=None,
+        )
+        assert updated.status == "acknowledged"
+        assert updated.acknowledged_by == "acker@example.test"
+
+        vendor = db_session.execute(
+            select(Vendor).where(Vendor.id == inv.vendor_id)
+        ).scalar_one()
+        outliers = (vendor.memory or {}).get("acknowledged_outliers", {})
+        assert "total" in outliers
+        assert len(outliers["total"]) == 1
+        assert outliers["total"][0]["value"] == 34062.50
+
+    def test_acknowledge_is_idempotent(self, db_session: Session) -> None:
+        inv = _seed_invoice_with_anomaly(
+            db_session,
+            vendor_name="Idem Vendor",
+            file_hash="idem-1",
+            total=20000.0,
+            currency="USD",
+            z_score=4.0,
+            avg=2000.0,
+            std=500.0,
+        )
+        user = upsert_demo_user(db_session, email="idem-acker@example.test", password="x")
+
+        anomaly_id = f"{inv.id}:amount:total"
+        first = acknowledge(db_session, anomaly_id=anomaly_id, user_id=user.id, notes=None)
+        second = acknowledge(db_session, anomaly_id=anomaly_id, user_id=user.id, notes="extra")
+
+        assert first.acknowledged_at == second.acknowledged_at
+
+        vendor = db_session.execute(
+            select(Vendor).where(Vendor.id == inv.vendor_id)
+        ).scalar_one()
+        outliers = (vendor.memory or {}).get("acknowledged_outliers", {})
+        assert len(outliers["total"]) == 1
+
+    def test_acknowledge_unknown_id_raises(self, db_session: Session) -> None:
+        user = upsert_demo_user(db_session, email="nobody-acker@example.test", password="x")
+        with pytest.raises(LookupError):
+            acknowledge(
+                db_session,
+                anomaly_id="00000000-0000-0000-0000-000000000000:amount:total",
+                user_id=user.id,
+                notes=None,
+            )
+
+    def test_acknowledge_malformed_id_raises(self, db_session: Session) -> None:
+        user = upsert_demo_user(db_session, email="mal-acker@example.test", password="x")
+        with pytest.raises(ValueError):
+            acknowledge(db_session, anomaly_id="not-a-real-id", user_id=user.id, notes=None)
+
+
+class TestAcknowledgeBulk:
+    def test_partial_success(self, db_session: Session) -> None:
+        inv = _seed_invoice_with_anomaly(
+            db_session,
+            vendor_name="Bulk Vendor",
+            file_hash="bulk-1",
+            total=15000.0,
+            currency="USD",
+            z_score=3.5,
+            avg=1500.0,
+            std=400.0,
+        )
+        user = upsert_demo_user(db_session, email="bulk-acker@example.test", password="x")
+
+        good = f"{inv.id}:amount:total"
+        bad = "00000000-0000-0000-0000-000000000000:amount:total"
+        result = acknowledge_bulk(
+            db_session,
+            anomaly_ids=[good, bad],
+            user_id=user.id,
+        )
+        assert len(result.acknowledged) == 1
+        assert result.acknowledged[0].vendor == "Bulk Vendor"
+        assert len(result.failed) == 1
+        assert result.failed[0].id == bad
+        assert result.failed[0].error == "not_found"
