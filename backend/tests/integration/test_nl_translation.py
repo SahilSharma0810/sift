@@ -127,8 +127,8 @@ class TestTranslationErrorPath:
             translate(natural_language="anything", llm=bad_llm)
 
 @pytest.fixture
-def client() -> TestClient:
-    return TestClient(app)
+def client(api_client: TestClient) -> TestClient:
+    return api_client
 
 class TestTranslateEndpoint:
     def test_successful_translation(self, client: TestClient) -> None:
