@@ -1,6 +1,6 @@
 # Sift — 5-Day Execution Plan
 
-Built for the Zamp Engineering Project Round (Problem 01: messy docs → structured, queryable data).
+A 5-day execution plan for Sift (Problem: messy docs → structured, queryable data).
 
 For domain language, see [CONTEXT.md](./CONTEXT.md). For architecture
 decisions, see [docs/adr/](./docs/adr/).

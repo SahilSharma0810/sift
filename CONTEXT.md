@@ -1,8 +1,7 @@
 # Sift
 
 Sift takes messy vendor invoices in mixed formats and turns them into clean,
-structured data that an AP clerk can review and query. Built for the Zamp
-engineering project round (Problem 01).
+structured data that an AP clerk can review and query.
 
 ## Language
 
