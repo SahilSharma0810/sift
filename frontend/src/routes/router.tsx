@@ -1,6 +1,7 @@
 import { createBrowserRouter, Navigate } from 'react-router-dom'
 
 import { Shell } from '@/components/shell/Shell'
+import { AnomaliesScreen } from '@/routes/AnomaliesScreen'
 import { DuplicateReviewScreen } from '@/routes/DuplicateReviewScreen'
 import { InboxScreen } from '@/routes/InboxScreen'
 import { LoginScreen } from '@/routes/LoginScreen'
@@ -16,6 +17,7 @@ export const router = createBrowserRouter([
     children: [
       { index: true, element: <Navigate to="/inbox" replace /> },
       { path: 'inbox', element: <InboxScreen /> },
+      { path: 'anomalies', element: <AnomaliesScreen /> },
       { path: 'invoice/:id', element: <ReviewScreen /> },
       { path: 'duplicate-review/:id', element: <DuplicateReviewScreen /> },
       { path: 'search', element: <SearchScreen /> },
