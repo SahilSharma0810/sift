@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+from sqlalchemy.orm.attributes import flag_modified
 
 from app.adapters.storage import anomaly_repo
 from app.db.models import AnomalyAck, Extraction, Invoice, User, Vendor
@@ -16,6 +18,8 @@ from app.domain.anomalies_models import (
     AnomalyHistoryPoint,
     AnomalyMetric,
     AnomalyOut,
+    BulkAcknowledgeFailure,
+    BulkAcknowledgeOut,
 )
 
 SUPPORTED_SUBTYPE = "amount"
@@ -184,3 +188,136 @@ def _email_for_ack(ack: AnomalyAck | None, users: dict[UUID, str]) -> str | None
     if ack is None:
         return None
     return users.get(ack.acknowledged_by_user_id)
+
+
+def parse_anomaly_id(anomaly_id: str) -> tuple[UUID, str, str]:
+    parts = anomaly_id.split(":", 2)
+    if len(parts) != 3:
+        raise ValueError(f"malformed anomaly id: {anomaly_id!r}")
+    invoice_id_raw, subtype, field = parts
+    try:
+        invoice_id = UUID(invoice_id_raw)
+    except ValueError as exc:
+        raise ValueError(f"invalid invoice id in anomaly id: {anomaly_id!r}") from exc
+    if subtype != SUPPORTED_SUBTYPE:
+        raise ValueError(f"unsupported anomaly subtype: {subtype!r}")
+    return invoice_id, subtype, field
+
+
+def acknowledge(
+    session: Session,
+    *,
+    anomaly_id: str,
+    user_id: UUID,
+    notes: str | None,
+) -> AnomalyOut:
+    invoice_id, subtype, field = parse_anomaly_id(anomaly_id)
+
+    row = session.execute(
+        select(Invoice, Extraction, Vendor)
+        .join(Extraction, Extraction.invoice_id == Invoice.id)
+        .join(Vendor, Vendor.id == Invoice.vendor_id, isouter=True)
+        .where(
+            Invoice.id == invoice_id,
+            Extraction.is_current.is_(True),
+        )
+    ).first()
+    if row is None or row[2] is None:
+        raise LookupError(f"no active anomaly for id {anomaly_id!r}")
+
+    invoice, extraction, vendor = row
+    reason = next(
+        (
+            r
+            for r in (extraction.predicted_triage_reasons or [])
+            if r.get("type") == "anomaly" and r.get("field") == field
+        ),
+        None,
+    )
+    if reason is None:
+        raise LookupError(f"no anomaly reason for id {anomaly_id!r}")
+
+    ack = anomaly_repo.create_ack(
+        session,
+        invoice_id=invoice_id,
+        subtype=subtype,
+        field=field,
+        user_id=user_id,
+        notes=notes,
+    )
+
+    fields = extraction.extracted_fields or {}
+    value = float((fields.get(field) or {}).get("value") or 0.0)
+    _append_acknowledged_outlier(
+        session=session,
+        vendor=vendor,
+        field=field,
+        value=value,
+        invoice_id=invoice_id,
+        acked_at=ack.acknowledged_at,
+    )
+
+    user_email = session.execute(
+        select(User.email).where(User.id == user_id)
+    ).scalar_one()
+
+    return _build_anomaly_out(
+        session=session,
+        invoice=invoice,
+        extraction=extraction,
+        vendor=vendor,
+        reason=reason,
+        ack=ack,
+        ack_user_email=str(user_email),
+    )
+
+
+def acknowledge_bulk(
+    session: Session,
+    *,
+    anomaly_ids: list[str],
+    user_id: UUID,
+) -> BulkAcknowledgeOut:
+    acknowledged: list[AnomalyOut] = []
+    failed: list[BulkAcknowledgeFailure] = []
+    for aid in anomaly_ids:
+        try:
+            anomaly = acknowledge(session, anomaly_id=aid, user_id=user_id, notes=None)
+            acknowledged.append(anomaly)
+        except LookupError:
+            failed.append(BulkAcknowledgeFailure(id=aid, error="not_found"))
+        except ValueError as exc:
+            failed.append(BulkAcknowledgeFailure(id=aid, error=str(exc)))
+    return BulkAcknowledgeOut(acknowledged=acknowledged, failed=failed)
+
+
+def _append_acknowledged_outlier(
+    *,
+    session: Session,
+    vendor: Vendor,
+    field: str,
+    value: float,
+    invoice_id: UUID,
+    acked_at: datetime,
+) -> None:
+    memory = dict(vendor.memory or {})
+    outliers = dict(memory.get("acknowledged_outliers", {}) or {})
+    field_list = list(outliers.get(field, []) or [])
+
+    already = any(
+        abs(value - float(o.get("value") or 0.0)) < 1e-6 for o in field_list
+    )
+    if not already:
+        field_list.append(
+            {
+                "value": value,
+                "acked_at": acked_at.astimezone(UTC).isoformat(),
+                "invoice_id": str(invoice_id),
+            }
+        )
+
+    outliers[field] = field_list
+    memory["acknowledged_outliers"] = outliers
+    vendor.memory = memory
+    flag_modified(vendor, "memory")
+    session.commit()
