@@ -36,6 +36,9 @@ dist/
 *.swo
 .DS_Store
 
+# Worktrees (isolated workspaces for feature branches)
+.worktrees/
+
 # Generated (frontend types are hand-maintained for now — see
 # frontend/src/types/generated/domain.ts header for rationale)
 backend/app/db/alembic_version
