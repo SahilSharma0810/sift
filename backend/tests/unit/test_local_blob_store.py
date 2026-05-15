@@ -52,6 +52,11 @@ class TestLocalDiskBlobStore:
             assert p == tmp_path / "abc.pdf"
             assert p.read_bytes() == b"hello"
 
+    def test_local_path_raises_when_missing(self, store: LocalDiskBlobStore) -> None:
+        with pytest.raises(FileNotFoundError, match="blob not found"):
+            with store.local_path("missing.pdf"):
+                pass
+
     def test_serve_response_returns_fileresponse_with_immutable_cache(
         self, store: LocalDiskBlobStore, tmp_path: Path
     ) -> None:
