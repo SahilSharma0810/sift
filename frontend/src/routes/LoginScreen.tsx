@@ -1,6 +1,8 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 
+import { SiftMark } from '@/components/primitives/SiftMark'
+
 const ARROW_PATH = 'M5 12h14M12 5l7 7-7 7'
 
 function ArrowIcon({ className }: { className?: string }) {
@@ -135,11 +137,9 @@ export function LoginScreen() {
         ].join(' ')}
       >
         <div className="flex items-center gap-2.5">
-          <div className="grid h-7 w-7 place-items-center bg-light text-[14px] font-semibold tracking-[-0.02em] text-tile">
-            S
-          </div>
-          <div className="text-[17px] font-semibold tracking-[-0.012em] text-light">
-            Sift
+          <SiftMark size={28} dark className="shrink-0" />
+          <div className="text-[17px] font-bold leading-none tracking-[-0.04em] text-light">
+            Sift<span className="text-action-light">.</span>
           </div>
           <div className="ml-auto font-mono text-[11px] tracking-[0.04em] text-light-subtle">
             v0.4

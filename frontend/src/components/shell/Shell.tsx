@@ -3,6 +3,7 @@ import { Link, Outlet, useLocation, useNavigate, useParams } from 'react-router-
 
 import { Icons } from '@/components/primitives/Icons'
 import { Kbd } from '@/components/primitives/Kbd'
+import { SiftMark } from '@/components/primitives/SiftMark'
 import { SearchPalette } from '@/components/search-palette/SearchPalette'
 import { useAppMetaQuery, useInboxQuery } from '@/state/invoices'
 
@@ -65,8 +66,10 @@ export function Shell() {
     <div className="app" data-screen-label={onInbox ? '01 Inbox' : '02 Review'}>
       <aside className="sidebar">
         <div className="sidebar-header">
-          <div className="brand-mark">S</div>
-          <div className="brand-name">Sift</div>
+          <SiftMark size={22} dark />
+          <div className="brand-name">
+            Sift<span style={{ color: 'var(--primary-on-dark)' }}>.</span>
+          </div>
           <div className="brand-tag">v0.4</div>
         </div>
         <nav className="nav">
