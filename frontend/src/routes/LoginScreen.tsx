@@ -246,6 +246,16 @@ export function LoginScreen() {
       </aside>
 
       <main className="flex flex-col overflow-y-auto bg-canvas px-5 py-6 md:px-14 md:py-8">
+<<<<<<< HEAD
+=======
+        <div className="flex items-center gap-3.5 text-[13px] text-ink-60">
+          <span>New here?</span>
+          <button type="button" className="font-medium text-action hover:underline">
+            Request access
+          </button>
+        </div>
+
+>>>>>>> 7cc0db1c7ce8bec20cbff5176c27a5d8a53e53c3
         <div className="my-auto w-full max-w-[380px] py-6 md:py-14">
           <h2 className="m-0 mb-1.5 text-balance text-[30px] font-semibold tracking-[-0.02em] text-ink">
             Sign in to Sift
@@ -278,12 +288,29 @@ export function LoginScreen() {
             </div>
 
             <div className="mt-3.5 flex flex-col gap-1.5">
+<<<<<<< HEAD
               <label
                 htmlFor="password"
                 className="text-[12px] font-medium tracking-[-0.005em] text-ink-60"
               >
                 Password
               </label>
+=======
+              <div className="flex items-baseline justify-between gap-3">
+                <label
+                  htmlFor="password"
+                  className="text-[12px] font-medium tracking-[-0.005em] text-ink-60"
+                >
+                  Password
+                </label>
+                <button
+                  type="button"
+                  className="text-[12px] font-medium text-action hover:underline"
+                >
+                  Forgot password?
+                </button>
+              </div>
+>>>>>>> 7cc0db1c7ce8bec20cbff5176c27a5d8a53e53c3
               <div className="relative block w-full">
                 <input
                   id="password"
@@ -354,6 +381,27 @@ export function LoginScreen() {
               <ArrowIcon />
             </button>
           </form>
+<<<<<<< HEAD
+=======
+
+          <div className="mt-[22px] flex flex-col items-start gap-2 border-t border-hairline pt-[18px] text-[13px] text-ink-60">
+            <button
+              type="button"
+              className="border-b border-hairline pb-px font-medium text-ink-80 hover:border-action hover:text-action"
+            >
+              Trouble signing in?
+            </button>
+            <span>
+              Need a hand?{' '}
+              <a
+                href="mailto:support@sift.app"
+                className="border-b border-hairline pb-px font-medium text-ink-80 hover:border-action hover:text-action"
+              >
+                support@sift.app
+              </a>
+            </span>
+          </div>
+>>>>>>> 7cc0db1c7ce8bec20cbff5176c27a5d8a53e53c3
         </div>
 
         <div className="mt-auto flex items-center justify-between gap-3 font-mono text-[11.5px] tracking-[0.04em] text-ink-48 max-md:flex-col max-md:items-start max-md:gap-1.5 max-md:pt-6">
