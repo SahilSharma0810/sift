@@ -1,6 +1,37 @@
 # DEPLOY.md
 
-Sift deploys as a single Docker image to Fly.io with Postgres on Neon.
+Sift ships as a single Docker image that serves the FastAPI API and the
+Vite SPA on one port. Postgres lives on Neon (managed) per ADR-0002.
+
+Two supported targets:
+
+- **Render** (free tier, recommended for demo URLs) — see `render.yaml`.
+  Cold-start after 15 min idle; no persistent disk so uploads reset on
+  every restart.
+- **Fly.io** (paid, always-on) — see `fly.toml`. Includes a mounted
+  volume for uploads.
+
+## Render (free tier)
+
+1. Sign up at <https://dashboard.render.com>.
+2. **New → Blueprint** → connect this GitHub repo. Render reads
+   `render.yaml` and provisions a single web service named `sift`.
+3. Provision Postgres on [Neon](https://neon.tech) — free tier is fine.
+   Convert the connection string from `postgres://…` to
+   `postgresql+psycopg://…?sslmode=require` (SQLAlchemy 2.0 sync per
+   ADR-0002).
+4. In the Render dashboard, set the two secret env vars on the service:
+   - `DATABASE_URL` — the Neon URL from step 3.
+   - `SIFT_SECRET_KEY` — `openssl rand -hex 32`.
+5. Click **Apply**. First deploy runs `alembic upgrade head` and then
+   uvicorn (per `dockerCommand` in `render.yaml`).
+6. The live URL is `https://sift.onrender.com` (or whatever name Render
+   picked; the dashboard shows it).
+
+Every push to `main` triggers an auto-deploy by default. To deploy a
+non-main branch, change the branch on the service in the dashboard.
+
+## Fly.io (paid)
 
 ## One-time setup
 

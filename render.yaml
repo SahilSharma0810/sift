@@ -1,0 +1,42 @@
+# Sift — Render Blueprint.
+#
+# Free-tier deploy of the same Dockerfile used for Fly. Postgres lives on
+# Neon (managed) per ADR-0002 — DATABASE_URL set as a secret in the Render
+# dashboard. No persistent disk on the free plan, so uploads under
+# /data/uploads reset on every container restart (cold start every ~15 min idle).
+#
+# First-time setup:
+#   1. https://dashboard.render.com → New → Blueprint → connect this repo.
+#   2. Render reads this file and provisions the service.
+#   3. Set the secret envs in the dashboard (DATABASE_URL, SIFT_SECRET_KEY):
+#        DATABASE_URL=postgresql+psycopg://...neon...
+#        SIFT_SECRET_KEY=<openssl rand -hex 32>
+#   4. Click Apply. First deploy runs `alembic upgrade head` then uvicorn.
+
+services:
+  - type: web
+    name: sift
+    runtime: docker
+    plan: free
+    region: oregon
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /health
+    # Wraps the Dockerfile CMD: run migrations before serving traffic on
+    # each deploy. $PORT is set by Render; default 8000 keeps local docker
+    # run working the same way.
+    dockerCommand: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"
+    envVars:
+      - key: SIFT_LLM_PROVIDER
+        value: stub
+      - key: SIFT_COOKIE_SECURE
+        value: "true"
+      - key: SIFT_UPLOAD_DIR
+        value: /data/uploads
+      - key: SIFT_LOG_FORMAT
+        value: json
+      - key: SIFT_LOG_LEVEL
+        value: INFO
+      - key: DATABASE_URL
+        sync: false
+      - key: SIFT_SECRET_KEY
+        sync: false
