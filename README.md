@@ -39,7 +39,7 @@ SIFT_LLM_PROVIDER=anthropic
 ANTHROPIC_API_KEY=sk-ant-...
 ```
 
-The architecture supports this as a single setting change — see ADR-0005 (`adapters/llm_client.py` Protocol + factory). Adding an OpenAI or local provider is a new implementation class plus one factory branch.
+The architecture supports this as a single setting change — see ADR-0005 (`adapters/llm_client.py` Protocol + factory). Adding an OpenAI or local provider is a new implementation class with one method (`call(spec, ...)`) plus one factory branch.
 
 ---
 
