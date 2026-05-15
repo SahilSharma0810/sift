@@ -1,14 +1,3 @@
-/**
- * Domain types — mirrors backend/app/domain/models.py.
- *
- * IMPORTANT: This file is the single source of truth for frontend TS types
- * but is hand-maintained for now (pydantic2ts requires cross-container
- * tooling that's not pulling its weight on a 5-day build). When the backend
- * domain models change, update this file in the same commit. CI should
- * eventually auto-generate this from Pydantic via json-schema-to-typescript.
- */
-
-// ---------- Discriminated unions ----------
 export type TriageState = 'confident' | 'needs_review' | 'likely_duplicate'
 
 export type ReviewStatus =
@@ -23,9 +12,8 @@ export type ExtractionSource =
   | 'memory-applied'
   | 'manual-correction'
   | 'manual-entry'
-  | string // service emits "pymupdf+<full model name>" — keep loose
+  | string
 
-// ---------- ExtractedField (per-field shape stored in extracted_fields JSONB) ----------
 export interface ExtractedField {
   value: string | number | null
   bbox: [number, number, number, number] | null
@@ -34,7 +22,6 @@ export interface ExtractedField {
   source: ExtractionSource
 }
 
-// ---------- Triage reasons (discriminated union by `type`) ----------
 export interface MathFailsReason {
   type: 'math_fails'
   subtotal: number
@@ -90,7 +77,6 @@ export type TriageReason =
   | UnseenVendorReason
   | ExtractionFailedReason
 
-// ---------- LineItem (Day 3) ----------
 export interface LineItem {
   description: string
   quantity: number | null
@@ -101,7 +87,6 @@ export interface LineItem {
   confidence: number
 }
 
-// ---------- TaxBreakdownLine (Day 4) ----------
 export interface TaxBreakdownLine {
   jurisdiction: string
   rate: number | null
@@ -111,7 +96,6 @@ export interface TaxBreakdownLine {
   confidence: number
 }
 
-// ---------- Vendor memory ----------
 export interface VendorMemoryRule {
   field: string
   pattern_type: 'date_format' | 'name_normalization' | 'static_value'
@@ -132,7 +116,6 @@ export interface VendorMemory {
   stats: VendorMemoryStats
 }
 
-// ---------- Top-level DTOs ----------
 export interface VendorOut {
   id: string
   name: string

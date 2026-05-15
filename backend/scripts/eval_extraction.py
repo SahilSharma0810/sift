@@ -34,7 +34,6 @@ from app.services.invoice_queries import get_invoice_dto
 log = logging.getLogger("eval_extraction")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s  %(message)s")
 
-
 @dataclass(slots=True)
 class CaseResult:
     label: str
@@ -46,8 +45,7 @@ class CaseResult:
     actual_triage: str
     expected_reasons: set[str]
     actual_reasons: set[str]
-    confidence_min: float  # min field confidence (drives calibration buckets)
-
+    confidence_min: float
 
 def _load_groundtruth() -> list[dict[str, Any]]:
     gt_path = Path("eval") / "groundtruth.json"
@@ -56,7 +54,6 @@ def _load_groundtruth() -> list[dict[str, Any]]:
             f"{gt_path} missing — run `make seed-eval` first to populate the eval corpus."
         )
     return json.loads(gt_path.read_text())
-
 
 def _field_value(extraction_fields: Any, name: str) -> Any:
     """Read a value from extracted_fields, tolerating both Pydantic models and dicts."""
@@ -74,7 +71,6 @@ def _field_value(extraction_fields: Any, name: str) -> Any:
         return fd.get("value")
     return None
 
-
 def _min_field_confidence(extraction: Any) -> float:
     if extraction is None:
         return 0.0
@@ -82,7 +78,6 @@ def _min_field_confidence(extraction: Any) -> float:
     if not cpf:
         return 0.0
     return min(cpf.values())
-
 
 def _evaluate(record: dict, dto: Any) -> CaseResult:
     case = record["case"]
@@ -98,20 +93,17 @@ def _evaluate(record: dict, dto: Any) -> CaseResult:
     actual_triage = ext.predicted_triage_state if ext else "unknown"
     actual_reasons = {r.type for r in ext.predicted_triage_reasons} if ext else set()
 
-    # Vendor: exact match (we control vendor names via [seed-vendor:...])
     vendor_ok = actual_vendor == expected_vendor or (
         case.get("unprocessable") and actual_vendor in ("Unknown", None)
     )
 
-    # Total: exact for non-failed cases; 0/None expected on extraction_failed
     if case.get("unprocessable"):
         total_ok = actual_total in (None, 0, 0.0)
     else:
         total_ok = actual_total is not None and abs(float(actual_total) - expected_total) <= 0.50
 
     triage_ok = actual_triage == expected_triage
-    # reasons_ok: every expected reason type is present (we don't penalize
-    # extra reasons — the system can emit more detail without being wrong)
+
     reasons_ok = expected_reasons.issubset(actual_reasons)
 
     return CaseResult(
@@ -127,7 +119,6 @@ def _evaluate(record: dict, dto: Any) -> CaseResult:
         confidence_min=_min_field_confidence(ext),
     )
 
-
 def _write_calibration_png(results: list[CaseResult], out_path: Path) -> None:
     """10-bucket calibration plot: x = confidence bucket, y = correctness rate."""
     try:
@@ -141,11 +132,11 @@ def _write_calibration_png(results: list[CaseResult], out_path: Path) -> None:
 
     buckets: dict[int, list[bool]] = defaultdict(list)
     for r in results:
-        # Skip unprocessable rows — their confidence is 0 by design, would skew the plot
+
         if r.expected_triage == "needs_review" and "extraction_failed" in r.expected_reasons:
             continue
         idx = min(int(r.confidence_min * 10), 9)
-        # Define "correct" as: triage matched AND expected reasons present
+
         correct = r.triage_ok and r.reasons_ok and r.vendor_ok and r.total_ok
         buckets[idx].append(correct)
 
@@ -173,7 +164,6 @@ def _write_calibration_png(results: list[CaseResult], out_path: Path) -> None:
     plt.close(fig)
     log.info("calibration plot written to %s", out_path)
 
-
 def _write_report(results: list[CaseResult], out_path: Path) -> None:
     total = len(results)
     field_acc = {
@@ -183,17 +173,14 @@ def _write_report(results: list[CaseResult], out_path: Path) -> None:
     triage_acc = sum(r.triage_ok for r in results) / total
     reason_recall = sum(r.reasons_ok for r in results) / total
 
-    # Per-triage-state breakdown
     by_state: dict[str, list[CaseResult]] = defaultdict(list)
     for r in results:
         by_state[r.expected_triage].append(r)
 
-    # Confusion matrix
     confusion: dict[tuple[str, str], int] = defaultdict(int)
     for r in results:
         confusion[(r.expected_triage, r.actual_triage)] += 1
 
-    # Top errors — cases that got triage OR reasons wrong
     errors = [
         r for r in results if not (r.triage_ok and r.reasons_ok and r.vendor_ok and r.total_ok)
     ]
@@ -256,7 +243,6 @@ def _write_report(results: list[CaseResult], out_path: Path) -> None:
     out_path.write_text("\n".join(lines))
     log.info("report written to %s", out_path)
 
-
 def main() -> None:
     records = _load_groundtruth()
     log.info("loaded %d ground-truth records", len(records))
@@ -277,7 +263,6 @@ def main() -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
     _write_report(results, out_dir / "extraction.md")
     _write_calibration_png(results, out_dir / "calibration.png")
-
 
 if __name__ == "__main__":
     main()

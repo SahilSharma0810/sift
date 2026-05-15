@@ -7,7 +7,6 @@ import { Toaster } from 'sonner'
 import { router } from '@/routes/router'
 import './index.css'
 
-// Server state per PLAN.md pre-grilled non-decision — TanStack Query only.
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {

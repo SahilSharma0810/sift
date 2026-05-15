@@ -21,9 +21,6 @@ from app.domain.nl_schema import StructuredQuery
 from app.main import app
 from app.services.nl_translation_service import TranslationError, translate
 
-# --- Service-layer tests using the real StubLLMClient ---
-
-
 class TestStubTranslator:
     def test_empty_input_returns_empty_query(self) -> None:
         result = translate(natural_language="   ")
@@ -40,7 +37,7 @@ class TestStubTranslator:
     def test_anomalies_phrase(self) -> None:
         result = translate(natural_language="anomalies this month")
         assert any(f.field == "has_anomaly" and f.value is True for f in result.filters)
-        # "this month" isn't translated yet — surfaces as untranslated_intent
+
         assert result.untranslated_intent is not None
 
     def test_total_over(self) -> None:
@@ -74,10 +71,6 @@ class TestStubTranslator:
             f.field == "review_status" and f.value == "unprocessable" for f in result.filters
         )
 
-
-# --- Malformed payload path ---
-
-
 class TestTranslationErrorPath:
     def test_invalid_op_on_field_raises_translation_error(self) -> None:
         """If the LLM emits an op that violates FIELD_OP_COMPATIBILITY,
@@ -85,7 +78,7 @@ class TestTranslationErrorPath:
         and never pass the bad payload to the SQL builder."""
         bad_payload = {
             "filters": [
-                # "contains" is NOT allowed on `total` per nl_schema.FIELD_OP_COMPATIBILITY
+
                 {"field": "total", "op": "contains", "value": "anything"},
             ],
             "limit": 50,
@@ -133,14 +126,9 @@ class TestTranslationErrorPath:
         with pytest.raises(TranslationError):
             translate(natural_language="anything", llm=bad_llm)
 
-
-# --- API endpoint tests ---
-
-
 @pytest.fixture
 def client() -> TestClient:
     return TestClient(app)
-
 
 class TestTranslateEndpoint:
     def test_successful_translation(self, client: TestClient) -> None:

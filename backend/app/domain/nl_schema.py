@@ -12,7 +12,6 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-# ---------- Whitelisted fields ----------
 QueryField = Literal[
     "vendor_name",
     "invoice_date",
@@ -27,7 +26,6 @@ QueryField = Literal[
     "raw_text",
 ]
 
-# Subset that's sortable.
 SortableField = Literal[
     "vendor_name",
     "invoice_date",
@@ -36,7 +34,6 @@ SortableField = Literal[
     "tax_total",
 ]
 
-# ---------- Operators ----------
 QueryOp = Literal[
     "eq",
     "neq",
@@ -50,7 +47,6 @@ QueryOp = Literal[
     "fts_matches",
 ]
 
-# Per-field op compatibility — ADR-0004. Validator enforces this.
 FIELD_OP_COMPATIBILITY: dict[QueryField, set[str]] = {
     "vendor_name": {"eq", "neq", "in", "contains"},
     "invoice_date": {"eq", "neq", "gt", "gte", "lt", "lte", "between"},
@@ -65,8 +61,6 @@ FIELD_OP_COMPATIBILITY: dict[QueryField, set[str]] = {
     "raw_text": {"contains", "fts_matches"},
 }
 
-
-# ---------- FilterClause + StructuredQuery ----------
 class FilterClause(BaseModel):
     """One filter clause — implicit AND between clauses in a StructuredQuery.
 
@@ -77,10 +71,7 @@ class FilterClause(BaseModel):
 
     field: QueryField
     op: QueryOp
-    # Permissive value type — the per-field op compatibility check is the
-    # contract gate, not the value type itself. Day-4 supports scalar
-    # comparisons + `in`-with-list + `between`-with-two-element list for
-    # numbers and dates.
+
     value: str | float | int | bool | date | list[str] | list[float] | list[int] | tuple[date, date]
 
     @model_validator(mode="after")
@@ -91,7 +82,6 @@ class FilterClause(BaseModel):
                 f"op '{self.op}' is not allowed on field '{self.field}'. Allowed: {sorted(allowed)}"
             )
         return self
-
 
 class StructuredQuery(BaseModel):
     """Flat conjunction (implicit AND) + sort + limit + untranslated_intent.

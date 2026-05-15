@@ -19,7 +19,6 @@ from app.adapters.storage.vendor_repo import (
     upsert_by_normalized_name,
 )
 
-
 class TestVendorRepo:
     def test_normalize_name_strips_punctuation(self) -> None:
         assert normalize_name("Acme, Inc.") == "acme inc"
@@ -30,7 +29,7 @@ class TestVendorRepo:
         assert v.id is not None
         assert v.name == "Vega Logistics A"
         assert v.normalized_name == "vega logistics a"
-        assert v.memory == {}  # default empty per schema
+        assert v.memory == {}
 
     def test_upsert_returns_existing(self, db_session: Session) -> None:
         v1 = upsert_by_normalized_name(db_session, name="Vega Logistics B")
@@ -43,7 +42,6 @@ class TestVendorRepo:
         v1 = upsert_by_normalized_name(db_session, name="Acme Repo Inc.")
         v2 = upsert_by_normalized_name(db_session, name="Acme Repo Inc")
         assert v1.id == v2.id
-
 
 class TestInvoiceRepo:
     def test_create_and_fetch(self, db_session: Session) -> None:
@@ -69,12 +67,10 @@ class TestInvoiceRepo:
         a = create_invoice(db_session, file_path="/a", file_hash="ha-list-1", vendor_id=v.id)
         b = create_invoice(db_session, file_path="/b", file_hash="hb-list-1", vendor_id=v.id)
         invoices = list_invoices(db_session, limit=10)
-        # Both newly-created invoices should appear at the top of the list
-        # (same transaction → same uploaded_at → tie-broken by DB order).
+
         ids = {inv.id for inv in invoices[:5]}
         assert a.id in ids
         assert b.id in ids
-
 
 class TestExtractionRepo:
     def _make_invoice(self, db_session: Session, hash_suffix: str):
@@ -132,12 +128,12 @@ class TestExtractionRepo:
             predicted_triage_reasons=[],
             cascade_trace={},
         )
-        # Second is now current; first should be demoted.
+
         db_session.refresh(first)
         db_session.refresh(second)
         assert first.is_current is False
         assert second.is_current is True
-        # And get_current returns the second.
+
         current = get_current_extraction(db_session, invoice_id=inv.id)
         assert current is not None
         assert current.id == second.id
@@ -164,13 +160,12 @@ class TestExtractionRepo:
             predicted_triage_reasons=[],
             cascade_trace={},
         )
-        # second is currently current; promote the first.
+
         mark_current(db_session, extraction_id=first.id)
         db_session.refresh(first)
         db_session.refresh(second)
         assert first.is_current is True
         assert second.is_current is False
-
 
 from app.adapters.storage.invoice_repo import (  # noqa: E402
     find_phash_candidates,
@@ -178,7 +173,6 @@ from app.adapters.storage.invoice_repo import (  # noqa: E402
     set_perceptual_hash,
     update_review_status,
 )
-
 
 class TestInvoiceRepoExtensions:
     def _new_invoice(self, db_session, vendor_name: str, file_hash: str):

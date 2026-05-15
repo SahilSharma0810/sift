@@ -15,7 +15,6 @@ from typing import Any
 from app.domain.scoring import CASCADE_THRESHOLD
 from app.domain.validators import REQUIRED_FIELDS
 
-
 def derive_triage(
     *,
     extracted_fields: dict[str, object],
@@ -33,12 +32,10 @@ def derive_triage(
     """
     reasons: list[dict[str, Any]] = []
 
-    # 1) Duplicate — strongest signal, supersedes everything else.
     if duplicate_of:
         reasons.append({"type": "duplicate_of", **duplicate_of})
         return "likely_duplicate", reasons
 
-    # 2) Math failure → math_fails reason
     if not math_passed:
         try:
             subtotal = float(extracted_fields.get("subtotal", 0) or 0)
@@ -56,14 +53,10 @@ def derive_triage(
         except (TypeError, ValueError):
             pass
 
-    # 3) Anomalies (passed in from caller)
     if anomalies:
         for a in anomalies:
             reasons.append({"type": "anomaly", **a})
 
-    # 4) Missing fields — ONLY for REQUIRED_FIELDS. Optional fields like
-    #    subtotal and tax are commonly absent on real invoices (single-line
-    #    Total only) — they shouldn't push to needs_review when missing.
     missing_fields: set[str] = set()
     for field in REQUIRED_FIELDS:
         value = extracted_fields.get(field)
@@ -71,12 +64,6 @@ def derive_triage(
             missing_fields.add(field)
             reasons.append({"type": "missing_field", "field": field})
 
-    # 5) Low confidence — only on fields the model actually extracted a value
-    #    for. A null/missing field gives a 0 confidence score that's
-    #    semantically "absent" not "uncertain"; don't double-count it as
-    #    low_confidence on top of the missing_field reason (and don't fire
-    #    low_confidence on optional fields like subtotal/tax that weren't
-    #    on the invoice in the first place).
     for field, score in confidence.items():
         if not (0.0 < score < CASCADE_THRESHOLD):
             continue
@@ -92,7 +79,6 @@ def derive_triage(
             }
         )
 
-    # 6) Unseen vendor — reason only, doesn't gate the state alone.
     if is_unseen_vendor:
         reasons.append(
             {
@@ -101,8 +87,6 @@ def derive_triage(
             }
         )
 
-    # State derivation: anything in {math_fails, anomaly, missing_field,
-    # low_confidence} demotes to needs_review. unseen_vendor alone doesn't.
     blocking_types = {"math_fails", "anomaly", "missing_field", "low_confidence"}
     if any(r["type"] in blocking_types for r in reasons):
         return "needs_review", reasons

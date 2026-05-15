@@ -1,16 +1,3 @@
-/**
- * LineItemsTable — read-mode table of line items extracted from an invoice.
- *
- * Day-3 ships display-only. Inline edit + bbox-on-hover come later if the
- * Day-5 eval shows line-item extraction is reliable enough to keep in the
- * demo (PLAN.md Day-3 gate).
- *
- * Empty state renders distinct copy depending on whether the invoice has
- * no items (flat-fee service) vs. the extractor couldn't reach them
- * (vision path / extraction failure). For now we treat both the same; the
- * service short-circuits vision to [] and we don't surface the distinction
- * in the UI yet.
- */
 import type { LineItem } from '@/types/generated/domain'
 import { formatNumber } from '@/utils/format'
 

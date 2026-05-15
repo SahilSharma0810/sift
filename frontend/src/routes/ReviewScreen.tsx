@@ -1,13 +1,3 @@
-/**
- * ReviewScreen — design ported from Claude Design bundle.
- *
- * Split: PDF stage on the left (PDF.js + bbox overlays for each field with
- * a stored bbox), side panel on the right with sticky header (back/Confirm/
- * Dismiss/Force-Opus), reason cards, field rows, vendor memory, cascade trace.
- *
- * Day-1: read-only header + reason cards + field rows + cascade trace.
- * Day-2 wires the action handlers (Confirm/Dismiss/Force Opus/edits).
- */
 import { useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 
@@ -111,11 +101,6 @@ export function ReviewScreen() {
     return out
   }, [invoice, overrides])
 
-  // NOTE: all hooks MUST be called before any conditional `return` —
-  // moving a hook below the early returns triggers React's
-  // "Rendered more hooks than during the previous render" error
-  // because the hook fires after invoice loads but didn't fire when
-  // isLoading was true.
   const bboxes = useMemo(
     () =>
       Object.entries(fields)
@@ -169,7 +154,6 @@ export function ReviewScreen() {
   }
 
   const pdfSrc = `/api/invoices/${invoice.id}/file`
-  // bboxes computed above (must precede early-return for hooks order)
 
   const vendorName = String(fields.vendor_name?.value ?? 'Invoice')
   const invoiceNumber = String(fields.invoice_number?.value ?? 'no invoice #')
@@ -179,7 +163,7 @@ export function ReviewScreen() {
 
   return (
     <div className="review-grid">
-      {/* LEFT: PDF */}
+
       <div className="pdf-stage">
         {isUnprocessable ? (
           <div className="pdf-paper pdf-paper-encrypted">
@@ -214,9 +198,8 @@ export function ReviewScreen() {
         )}
       </div>
 
-      {/* RIGHT: Side panel */}
       <div className="review-side">
-        {/* Sticky header */}
+
         <div
           style={{
             padding: '14px 16px',
@@ -279,7 +262,7 @@ export function ReviewScreen() {
           </div>
         </div>
 
-        {/* Reasons */}
+        {}
         {reasons.length > 0 && (
           <div className="review-side-section">
             <div className="review-side-section-title">
@@ -296,7 +279,7 @@ export function ReviewScreen() {
           </div>
         )}
 
-        {/* Extracted fields */}
+        {}
         <div className="review-side-section">
           <div
             className="review-side-section-title"
@@ -340,19 +323,17 @@ export function ReviewScreen() {
           </div>
         </div>
 
-        {/* Line items (Day 3) */}
         <div className="review-side-section">
           <div className="review-side-section-title">Line items</div>
           <LineItemsTable items={invoice.current_extraction?.line_items ?? []} />
         </div>
 
-        {/* Tax breakdown (Day 4) */}
         <div className="review-side-section">
           <div className="review-side-section-title">Tax breakdown</div>
           <TaxBreakdownTable rows={invoice.current_extraction?.tax_breakdown ?? []} />
         </div>
 
-        {/* Cascade trace */}
+        {}
         {tiers.length > 0 && (
           <div className="review-side-section">
             <div className="review-side-section-title">Cascade trace</div>
@@ -360,7 +341,7 @@ export function ReviewScreen() {
           </div>
         )}
 
-        {/* Vendor memory */}
+        {}
         {vendor?.memory && (
           <div className="review-side-section">
             <div className="review-side-section-title">Vendor memory</div>

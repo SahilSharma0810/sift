@@ -1,11 +1,3 @@
-/**
- * Reason-card registry — single source of truth for "what does each
- * TriageReason render and what can a clerk do with it?"
- *
- * Each entry is fully typed against its specific reason variant via the
- * discriminated union. The renderTitle / renderDetail / action handler
- * bodies have access to the reason's narrowed fields without casts.
- */
 import { Icons } from '@/components/primitives/Icons'
 import { formatNumber } from '@/utils/format'
 
@@ -132,8 +124,7 @@ export const REASON_SPECS: ReasonRegistry = {
       {
         label: 'See vendor history',
         icon: Icons.history,
-        // Vendor-history side panel is a planned route; today the action
-        // is a no-op placeholder kept to preserve the demo button surface.
+
         handler: () => undefined,
       },
       {

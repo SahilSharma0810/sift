@@ -12,11 +12,11 @@ const META: Record<SourceKind, { label: string; Icon: ComponentType }> = {
 }
 
 function pickKind(rawSource: string): SourceKind {
-  // The service emits "pymupdf+<model>" — strip the prefix and match by token.
+
   const s = rawSource.toLowerCase()
   if (s.includes('memory-applied') || s === 'memory') return 'memory'
   if (s.includes('manual')) return 'manual'
-  if (s.includes('opus')) return 'sonnet' // Opus uses the sonnet badge styling
+  if (s.includes('opus')) return 'sonnet'
   if (s.includes('sonnet') || s.includes('claude-vision') || s.includes('vision')) return 'sonnet'
   return 'haiku'
 }

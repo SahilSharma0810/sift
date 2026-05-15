@@ -14,7 +14,6 @@ import pytest
 from app.domain.models import LineItem
 from app.domain.validators import AMOUNT_TOLERANCE, line_items_sum_check
 
-
 class TestLineItemModel:
     def test_minimal_line_item(self) -> None:
         li = LineItem(description="Freight last mile", line_total=780.0)
@@ -41,7 +40,7 @@ class TestLineItemModel:
         assert li.bbox == (0.08, 0.55, 0.92, 0.62)
 
     def test_extra_keys_rejected(self) -> None:
-        # extra="forbid" prevents schema drift from sneaking in
+
         with pytest.raises(ValueError):
             LineItem(
                 description="x",
@@ -54,7 +53,6 @@ class TestLineItemModel:
             LineItem(description="x", line_total=1.0, confidence=1.5)
         with pytest.raises(ValueError):
             LineItem(description="x", line_total=1.0, confidence=-0.1)
-
 
 class TestLineItemsSumCheck:
     def test_empty_list_is_vacuously_true(self) -> None:
@@ -77,7 +75,7 @@ class TestLineItemsSumCheck:
         assert delta == Decimal("0")
 
     def test_within_tolerance(self) -> None:
-        # AMOUNT_TOLERANCE = 0.02 — 0.01 mismatch is acceptable
+
         ok, delta = line_items_sum_check(
             [{"line_total": 500.005}, {"line_total": 500.005}], subtotal=1000.0
         )

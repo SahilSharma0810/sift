@@ -8,27 +8,26 @@ from app.domain.scoring import (
     should_trigger_cascade,
 )
 
-
 class TestCompositeConfidence:
     def test_no_history_falls_back_to_neutral(self) -> None:
         structural = {"total": 1.0, "vendor_name": 0.9}
-        history: dict[str, float] = {}  # cold-start vendor
+        history: dict[str, float] = {}
         out = compute_composite_confidence(structural, history)
-        # min(1.0, 0.85) = 0.85; min(0.9, 0.85) = 0.85
+
         assert out["total"] == 0.85
         assert out["vendor_name"] == 0.85
 
     def test_history_present_takes_min(self) -> None:
         structural = {"total": 1.0}
-        history = {"total": 0.6}  # vendor history says this total is unusual
+        history = {"total": 0.6}
         out = compute_composite_confidence(structural, history)
         assert out["total"] == 0.6
 
     def test_math_floor_dominates_even_with_perfect_history(self) -> None:
-        structural = {"total": 0.2}  # math failed
-        history = {"total": 1.0}  # vendor history says normal
+        structural = {"total": 0.2}
+        history = {"total": 1.0}
         out = compute_composite_confidence(structural, history)
-        # Math failure should never be overridden — pinned to 0.2.
+
         assert out["total"] == 0.2
 
     def test_missing_field_dominates(self) -> None:
@@ -36,7 +35,6 @@ class TestCompositeConfidence:
         history = {"currency": 1.0}
         out = compute_composite_confidence(structural, history)
         assert out["currency"] == 0.0
-
 
 class TestCascadeTrigger:
     def test_all_confident_no_trigger(self) -> None:
@@ -111,13 +109,12 @@ class TestCascadeTrigger:
             is True
         )
 
-
 class TestApplyAgreementOverrides:
     def test_empty_overrides_returns_copy(self) -> None:
         composite = {"total": 0.85, "vendor_name": 0.9}
         out = apply_agreement_overrides(composite, {})
         assert out == composite
-        assert out is not composite  # defensive copy
+        assert out is not composite
 
     def test_dispute_override_lowers_confidence(self) -> None:
         composite = {"total": 0.85}

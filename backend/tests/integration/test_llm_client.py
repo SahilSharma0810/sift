@@ -22,7 +22,6 @@ from app.adapters.llm_client import (
     ExtractionResult,
 )
 
-
 @pytest.fixture
 def fake_tool_response() -> dict:
     return {
@@ -45,7 +44,6 @@ def fake_tool_response() -> dict:
         "extraction_failed": False,
     }
 
-
 def _make_messages_mock(tool_input: dict) -> MagicMock:
     """Build a MagicMock that mimics anthropic.Anthropic().messages.create."""
     response = MagicMock()
@@ -63,7 +61,6 @@ def _make_messages_mock(tool_input: dict) -> MagicMock:
     response.stop_reason = "tool_use"
     response.model = "claude-haiku-4-5"
     return response
-
 
 class TestLLMClientExtractHeader:
     def test_extract_header_happy_path(self, fake_tool_response: dict) -> None:
@@ -91,7 +88,7 @@ class TestLLMClientExtractHeader:
 
         kwargs = client_mock.messages.create.call_args.kwargs
         system = kwargs["system"]
-        # System is a list of blocks; the cached block has cache_control.
+
         assert isinstance(system, list)
         assert any(b.get("cache_control") == {"type": "ephemeral"} for b in system)
 
@@ -126,7 +123,6 @@ class TestLLMClientExtractHeader:
             with pytest.raises(APIStatusError):
                 client.call(EXTRACT_HEADER, model="claude-haiku-4-5", text="text")
 
-        # Exactly one call — no retry on 4xx.
         assert client_mock.messages.create.call_count == 1
 
     def test_retry_exhausted_propagates_final_error(self) -> None:
@@ -168,7 +164,6 @@ class TestLLMClientExtractHeader:
             client = AnthropicLLMClient(api_key="test")
             with pytest.raises(RuntimeError, match="tool call"):
                 client.call(EXTRACT_HEADER, model="claude-haiku-4-5", text="text")
-
 
 def _fake_vision_response():
     """Vision tool_input shape: each field is {value, bbox, page, confidence}."""
@@ -221,7 +216,6 @@ def _fake_vision_response():
     response.model = "claude-sonnet-4-6"
     return response
 
-
 class TestLLMClientExtractHeaderVision:
     def test_extract_header_vision_happy_path(self) -> None:
         client_mock = MagicMock()
@@ -244,10 +238,10 @@ class TestLLMClientExtractHeaderVision:
         kwargs = client_mock.messages.create.call_args.kwargs
         msg = kwargs["messages"][0]
         assert msg["role"] == "user"
-        # First content item is an image block
+
         items = msg["content"]
         assert any(c.get("type") == "image" for c in items)
-        # Image is base64 PNG
+
         img = next(c for c in items if c.get("type") == "image")
         assert img["source"]["type"] == "base64"
         assert img["source"]["media_type"] == "image/png"

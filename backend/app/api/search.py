@@ -26,11 +26,9 @@ from app.services.search_service import run_query
 
 router = APIRouter()
 
-
 class _TranslateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     query: str = Field(min_length=0, max_length=2000)
-
 
 def _stringify_pydantic_errors(errors: list[dict]) -> list[dict]:
     """Pydantic errors carry exception objects in `ctx` which aren't JSON
@@ -47,7 +45,6 @@ def _stringify_pydantic_errors(errors: list[dict]) -> list[dict]:
         out.append(cleaned)
     return out
 
-
 @router.post("", response_model=list[InvoiceOut])
 def run_search(
     query: StructuredQuery,
@@ -61,7 +58,6 @@ def run_search(
     FilterClauses.
     """
     return run_query(session, query=query)
-
 
 def _flatten_for_export(invoice: InvoiceOut) -> dict[str, str | float | None]:
     """One row per invoice, columns mirror the inbox UI."""
@@ -88,7 +84,6 @@ def _flatten_for_export(invoice: InvoiceOut) -> dict[str, str | float | None]:
         if ext
         else "[]",
     }
-
 
 @router.post("/export")
 def export_search(
@@ -123,11 +118,8 @@ def export_search(
             },
         )
 
-    # CSV path
     buf = io.StringIO()
-    # Audit header (CSV comments aren't a real spec — most tools ignore lines
-    # starting with `#`; we keep them so a human opening the file knows what
-    # generated it). Excel/Numbers will show them as one-column rows.
+
     buf.write(f"# Sift export · {now}\n")
     buf.write(f"# Rows: {len(rows)}\n")
     buf.write(f"# Query: {query_json}\n")
@@ -144,7 +136,6 @@ def export_search(
             "Content-Disposition": f'attachment; filename="sift-export-{now[:10]}.csv"',
         },
     )
-
 
 @router.post("/translate", response_model=StructuredQuery)
 def translate_nl(body: _TranslateRequest) -> StructuredQuery:

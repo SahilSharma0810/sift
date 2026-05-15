@@ -12,7 +12,6 @@ from tests.conftest import patch_make_llm_client
 FIXTURES = Path(__file__).parents[1] / "fixtures"
 CLEAN_PDF = FIXTURES / "digital_invoice_clean.pdf"
 
-
 def _fake_llm(file_suffix: str = "") -> ExtractionResult:
     return ExtractionResult(
         fields={
@@ -38,7 +37,6 @@ def _fake_llm(file_suffix: str = "") -> ExtractionResult:
         },
     )
 
-
 def _upload(client: TestClient, unique: str) -> str:
     """Upload a unique-bytes copy of CLEAN_PDF and return the new invoice_id."""
     body = CLEAN_PDF.read_bytes() + f"\n%{unique}\n".encode()
@@ -49,7 +47,6 @@ def _upload(client: TestClient, unique: str) -> str:
         )
     assert res.status_code == 201, res.text
     return res.json()["id"]
-
 
 class TestTriageActions:
     def test_confirm_changes_status(self, api_client: TestClient) -> None:

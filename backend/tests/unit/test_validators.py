@@ -16,7 +16,6 @@ from app.domain.validators import (
     math_reconciles,
 )
 
-
 class TestMathReconciles:
     def test_exact_match(self) -> None:
         assert math_reconciles(subtotal=1000.0, tax=180.0, total=1180.0) is True
@@ -25,12 +24,11 @@ class TestMathReconciles:
         assert math_reconciles(subtotal=1000.0, tax=180.0, total=1181.0) is False
 
     def test_within_rounding_tolerance(self) -> None:
-        # 2-cent tolerance for rounding in scanned/OCRd amounts.
+
         assert math_reconciles(subtotal=1000.0, tax=180.0, total=1180.01) is True
 
     def test_negative_amounts_rejected(self) -> None:
         assert math_reconciles(subtotal=-100.0, tax=18.0, total=-82.0) is False
-
 
 class TestIsValidDate:
     def test_iso_date(self) -> None:
@@ -51,7 +49,6 @@ class TestIsValidDate:
     def test_none(self) -> None:
         assert is_valid_date(None) is False
 
-
 class TestIsValidCurrencyCode:
     def test_usd(self) -> None:
         assert is_valid_currency_code("USD") is True
@@ -70,7 +67,6 @@ class TestIsValidCurrencyCode:
 
     def test_empty(self) -> None:
         assert is_valid_currency_code("") is False
-
 
 class TestFindMissingRequired:
     def test_all_present(self) -> None:
@@ -112,7 +108,6 @@ class TestFindMissingRequired:
         }
         assert find_missing_required(fields) == ["invoice_number"]
 
-
 class TestComputeStructuralScores:
     def test_clean_invoice_all_high(self) -> None:
         fields = {
@@ -125,12 +120,12 @@ class TestComputeStructuralScores:
             "currency": "USD",
         }
         scores = compute_structural_scores(fields)
-        # Math reconciles → amount fields high.
+
         assert scores["total"] >= 0.99
         assert scores["subtotal"] >= 0.99
-        # Date parses → date field high.
+
         assert scores["invoice_date"] >= 0.99
-        # Currency valid → currency field high.
+
         assert scores["currency"] >= 0.99
 
     def test_math_failure_floors_amount_fields(self) -> None:
@@ -140,15 +135,15 @@ class TestComputeStructuralScores:
             "invoice_date": "2026-05-13",
             "subtotal": 1000.0,
             "tax": 180.0,
-            "total": 1181.0,  # off
+            "total": 1181.0,
             "currency": "USD",
         }
         scores = compute_structural_scores(fields)
-        # Amount fields pinned to 0.2 per ADR-0003.
+
         assert scores["total"] == 0.2
         assert scores["subtotal"] == 0.2
         assert scores["tax"] == 0.2
-        # Other fields unaffected.
+
         assert scores["invoice_date"] >= 0.99
         assert scores["currency"] >= 0.99
 
@@ -160,7 +155,7 @@ class TestComputeStructuralScores:
             "subtotal": 1000.0,
             "tax": 180.0,
             "total": 1180.0,
-            # currency missing
+
         }
         scores = compute_structural_scores(fields)
         assert scores["currency"] == 0.0
@@ -180,11 +175,10 @@ class TestComputeStructuralScores:
             "currency": "USD",
         }
         scores = compute_structural_scores(fields)
-        assert 0.0 < scores["invoice_date"] < 0.7  # below cascade threshold
+        assert 0.0 < scores["invoice_date"] < 0.7
 
     def test_neutral_ceiling_for_unstructurable_fields(self) -> None:
-        # vendor_name has no structural rule that can validate it without
-        # vendor history — per ADR-0003 it gets a neutral 0.9 ceiling.
+
         fields = {
             "vendor_name": "Vega Logistics",
             "invoice_number": "INV-001",

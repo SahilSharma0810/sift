@@ -30,13 +30,10 @@ down_revision: str | Sequence[str] | None = "cf50d4a567b6"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
-
 def upgrade() -> None:
-    # Plain text column — service writes the concatenation.
+
     op.add_column("extractions", sa.Column("raw_text", sa.Text(), nullable=True))
 
-    # Generated tsvector column. The expression keeps NULL-safe semantics so
-    # rows with no raw_text yet end up with an empty tsvector (matches nothing).
     op.execute(
         """
         ALTER TABLE extractions
@@ -46,7 +43,6 @@ def upgrade() -> None:
     )
 
     op.execute("CREATE INDEX ix_extractions_raw_text_tsv ON extractions USING gin (raw_text_tsv);")
-
 
 def downgrade() -> None:
     op.execute("DROP INDEX IF EXISTS ix_extractions_raw_text_tsv;")

@@ -36,7 +36,6 @@ from app.services.extraction_service import extract_from_pdf
 log = logging.getLogger("seed_demo")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s  %(message)s")
 
-
 @dataclass(frozen=True, slots=True)
 class Seed:
     label: str
@@ -44,9 +43,8 @@ class Seed:
     confirm: bool = False
     unprocessable: bool = False
 
-
 SEEDS: list[Seed] = [
-    # --- Halcyon vendor history (confirmed x 3, totals drift to give std > 0) ---
+
     Seed(
         label="halcyon-1",
         body=(
@@ -77,7 +75,7 @@ SEEDS: list[Seed] = [
         ),
         confirm=True,
     ),
-    # --- Halcyon anomaly: $89k vs ~$34k mean (std ~250 → z >> 3) ---
+
     Seed(
         label="halcyon-anomaly",
         body=(
@@ -87,7 +85,7 @@ SEEDS: list[Seed] = [
             "[seed-total:89000]\n"
         ),
     ),
-    # --- Vega clean (ready to confirm) ---
+
     Seed(
         label="vega-clean",
         body=(
@@ -98,7 +96,7 @@ SEEDS: list[Seed] = [
             "[seed-total:1180]\n"
         ),
     ),
-    # --- Vega near-duplicate: same visual content, different file_hash ---
+
     Seed(
         label="vega-near-dup",
         body=(
@@ -110,7 +108,7 @@ SEEDS: list[Seed] = [
             "near-duplicate of vega-clean\n"
         ),
     ),
-    # --- TidePoint extraction-failed (encrypted-scan equivalent) ---
+
     Seed(
         label="tidepoint-encrypted",
         body=(
@@ -121,20 +119,15 @@ SEEDS: list[Seed] = [
     ),
 ]
 
-
-# Per-seed visual marker positions, chosen so phash distance between any
-# two distinct seeds is > 5 (the duplicate threshold) but `vega-near-dup`
-# shares position + size with `vega-clean` so the duplicate beat fires.
 _VISUAL_MARKERS: dict[str, tuple[float, float, float, float]] = {
     "halcyon-1": (100, 220, 200, 110),
     "halcyon-2": (320, 220, 200, 110),
     "halcyon-3": (100, 420, 200, 110),
     "halcyon-anomaly": (320, 420, 200, 110),
     "vega-clean": (150, 300, 300, 140),
-    "vega-near-dup": (150, 300, 300, 140),  # MATCHES vega-clean → duplicate
+    "vega-near-dup": (150, 300, 300, 140),
     "tidepoint-encrypted": (220, 250, 240, 240),
 }
-
 
 def _make_pdf(text: str, dest: Path, *, marker: tuple[float, float, float, float]) -> None:
     """Write a single-page PDF with the given text body + a visual marker.
@@ -156,7 +149,6 @@ def _make_pdf(text: str, dest: Path, *, marker: tuple[float, float, float, float
     doc.save(str(dest))
     doc.close()
 
-
 def _persist_pdf(body_bytes: bytes, upload_dir: Path) -> Path:
     upload_dir.mkdir(parents=True, exist_ok=True)
     file_hash = hashlib.sha256(body_bytes).hexdigest()
@@ -164,7 +156,6 @@ def _persist_pdf(body_bytes: bytes, upload_dir: Path) -> Path:
     if not target.exists():
         target.write_bytes(body_bytes)
     return target
-
 
 def main() -> None:
     settings = get_settings()
@@ -213,7 +204,6 @@ def main() -> None:
             staging.rmdir()
 
     log.info("done. %d invoices seeded.", len(SEEDS))
-
 
 if __name__ == "__main__":
     main()

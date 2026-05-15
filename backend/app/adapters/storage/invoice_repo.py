@@ -10,7 +10,6 @@ from sqlalchemy.orm.attributes import flag_modified
 
 from app.db.models import Invoice
 
-
 def create_invoice(
     session: Session,
     *,
@@ -30,23 +29,19 @@ def create_invoice(
     session.flush()
     return inv
 
-
 def find_by_file_hash(session: Session, file_hash: str) -> Invoice | None:
     return session.execute(
         select(Invoice).where(Invoice.file_hash == file_hash)
     ).scalar_one_or_none()
 
-
 def get_invoice(session: Session, invoice_id: UUID) -> Invoice | None:
     return session.get(Invoice, invoice_id)
-
 
 def list_invoices(session: Session, *, limit: int = 100) -> list[Invoice]:
     """Newest first — drives the Inbox view ordering."""
     return list(
         session.execute(select(Invoice).order_by(Invoice.uploaded_at.desc()).limit(limit)).scalars()
     )
-
 
 def find_phash_candidates(session: Session) -> list[Invoice]:
     """Invoices with a stored perceptual_hash, for duplicate scanning.
@@ -58,14 +53,12 @@ def find_phash_candidates(session: Session) -> list[Invoice]:
         session.execute(select(Invoice).where(Invoice.perceptual_hash.is_not(None))).scalars()
     )
 
-
 def set_perceptual_hash(session: Session, *, invoice_id: UUID, perceptual_hash: str) -> None:
     inv = session.get(Invoice, invoice_id)
     if inv is None:
         raise LookupError(f"invoice {invoice_id} not found")
     inv.perceptual_hash = perceptual_hash
     session.flush()
-
 
 def update_review_status(session: Session, *, invoice_id: UUID, review_status: str) -> Invoice:
     inv = session.get(Invoice, invoice_id)
@@ -74,7 +67,6 @@ def update_review_status(session: Session, *, invoice_id: UUID, review_status: s
     inv.review_status = review_status
     session.flush()
     return inv
-
 
 def record_duplicate_dismissal(
     session: Session, *, invoice_id: UUID, dismissed_against_id: UUID

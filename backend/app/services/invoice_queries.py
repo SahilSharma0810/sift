@@ -22,18 +22,15 @@ from app.db.models import Vendor
 from app.domain.models import InvoiceOut, VendorOut
 from app.services.extraction_service import extract_from_pdf
 
-
 def extract_and_serialize(session: Session, *, pdf_path: Path) -> InvoiceOut:
     """Run the full extraction pipeline and return a serialized DTO."""
     result = extract_from_pdf(session, pdf_path=pdf_path)
     return invoice_to_dto(result.invoice, session)
 
-
 def list_invoice_dtos(session: Session, *, limit: int = 200) -> list[InvoiceOut]:
     """Return newest-first list of InvoiceOut DTOs."""
     invoices = invoice_repo.list_invoices(session, limit=limit)
     return [invoice_to_dto(inv, session) for inv in invoices]
-
 
 def get_invoice_dto(session: Session, invoice_id: UUID) -> InvoiceOut | None:
     """Return an InvoiceOut DTO for the given invoice_id, or None."""
@@ -42,14 +39,12 @@ def get_invoice_dto(session: Session, invoice_id: UUID) -> InvoiceOut | None:
         return None
     return invoice_to_dto(inv, session)
 
-
 def get_invoice_file_path(session: Session, invoice_id: UUID) -> Path | None:
     """Return the on-disk file path for an Invoice, or None if not found."""
     inv = invoice_repo.get_invoice(session, invoice_id)
     if inv is None:
         return None
     return Path(inv.file_path)
-
 
 def get_vendor_for_invoice(session: Session, *, invoice_id) -> VendorOut | None:
     """Return the Vendor (with memory) associated with an Invoice, or None."""

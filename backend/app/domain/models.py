@@ -15,22 +15,11 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
-# ---------- Triage states + review statuses ----------
 TriageState = Literal["confident", "needs_review", "likely_duplicate"]
 ReviewStatus = Literal["pending", "confirmed", "dismissed_duplicate", "unprocessable"]
-# Open-ended string so the service can emit `pymupdf+<full-model-id>` without
-# requiring a Literal update on every model rename. The frontend SourceBadge
-# component tokenizes by model keyword (haiku / sonnet / opus / memory /
-# manual). Known prefixes for documentation:
-#   "pymupdf+<model>"     digital text extraction
-#   "claude-vision"       vision tool-use
-#   "memory-applied"      auto-filled from vendor memory rule
-#   "manual-correction"   clerk edited an extracted value
-#   "manual-entry"        clerk filled an unextracted/failed field
+
 ExtractionSource = str
 
-
-# ---------- ExtractedField — locked shape from PLAN.md ----------
 class ExtractedField(BaseModel):
     """A single extracted field with bbox + confidence + provenance.
 
@@ -41,13 +30,11 @@ class ExtractedField(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     value: str | float | int | None
-    bbox: tuple[float, float, float, float] | None = None  # x0, y0, x1, y1
+    bbox: tuple[float, float, float, float] | None = None
     page: int = 0
     confidence: float = Field(ge=0.0, le=1.0)
     source: ExtractionSource
 
-
-# ---------- TaxBreakdownLine — Day 4 ----------
 class TaxBreakdownLine(BaseModel):
     """One row of the per-jurisdiction tax breakdown table.
 
@@ -59,14 +46,12 @@ class TaxBreakdownLine(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     jurisdiction: str
-    rate: float | None = None  # nullable: some invoices show only the amount
+    rate: float | None = None
     amount: float
     bbox: tuple[float, float, float, float] | None = None
     page: int = 0
     confidence: float = Field(ge=0.0, le=1.0, default=0.0)
 
-
-# ---------- LineItem — Day 3 ----------
 class LineItem(BaseModel):
     """A single invoice line item (one row of the line-items table).
 
@@ -87,11 +72,8 @@ class LineItem(BaseModel):
     page: int = 0
     confidence: float = Field(ge=0.0, le=1.0, default=0.0)
 
-
-# ---------- Triage reasons — discriminated union ----------
 class _BaseReason(BaseModel):
     model_config = ConfigDict(extra="forbid")
-
 
 class MathFailsReason(_BaseReason):
     type: Literal["math_fails"] = "math_fails"
@@ -100,7 +82,6 @@ class MathFailsReason(_BaseReason):
     total: float
     delta: float
 
-
 class AnomalyReason(_BaseReason):
     type: Literal["anomaly"] = "anomaly"
     field: str
@@ -108,13 +89,11 @@ class AnomalyReason(_BaseReason):
     vendor_std: float
     z_score: float
 
-
 class DuplicateOfReason(_BaseReason):
     type: Literal["duplicate_of"] = "duplicate_of"
     invoice_id: UUID
     similarity: float
     match_method: Literal["perceptual_hash", "content_fingerprint", "both"]
-
 
 class LowConfidenceReason(_BaseReason):
     type: Literal["low_confidence"] = "low_confidence"
@@ -122,16 +101,13 @@ class LowConfidenceReason(_BaseReason):
     score: float
     reason: str
 
-
 class MissingFieldReason(_BaseReason):
     type: Literal["missing_field"] = "missing_field"
     field: str
 
-
 class UnseenVendorReason(_BaseReason):
     type: Literal["unseen_vendor"] = "unseen_vendor"
     vendor_name: str
-
 
 class ExtractionFailedReason(_BaseReason):
     """Per ADR-0006. Distinct from low_confidence — this is the system,
@@ -141,7 +117,6 @@ class ExtractionFailedReason(_BaseReason):
     type: Literal["extraction_failed"] = "extraction_failed"
     stage: Literal["pdf_read", "llm_call", "validation", "cascade_exhausted"]
     detail: str
-
 
 TriageReason = Annotated[
     MathFailsReason
@@ -154,8 +129,6 @@ TriageReason = Annotated[
     Field(discriminator="type"),
 ]
 
-
-# ---------- Vendor memory — locked shape from PLAN.md ----------
 class VendorMemoryRule(BaseModel):
     """A single learned rule applied to extractions for a vendor."""
 
@@ -168,7 +141,6 @@ class VendorMemoryRule(BaseModel):
     applied_count: int = 0
     first_learned_at: datetime
 
-
 class VendorMemoryStats(BaseModel):
     """Cached per-vendor stats — feeds anomaly detection AND history_score."""
 
@@ -178,15 +150,12 @@ class VendorMemoryStats(BaseModel):
     avg_total: float = 0.0
     std_total: float = 0.0
 
-
 class VendorMemory(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     rules: list[VendorMemoryRule] = Field(default_factory=list)
     stats: VendorMemoryStats = Field(default_factory=VendorMemoryStats)
 
-
-# ---------- Top-level types (for API responses + frontend codegen) ----------
 class VendorOut(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -196,7 +165,6 @@ class VendorOut(BaseModel):
     normalized_name: str
     first_seen_at: datetime
     memory: VendorMemory
-
 
 class ExtractionOut(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -214,7 +182,6 @@ class ExtractionOut(BaseModel):
     is_current: bool
     created_at: datetime
 
-
 class InvoiceOut(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -227,7 +194,6 @@ class InvoiceOut(BaseModel):
     review_status: ReviewStatus
     duplicate_dismissals: list[UUID] = Field(default_factory=list)
     current_extraction: ExtractionOut | None = None
-
 
 class FieldCorrectionOut(BaseModel):
     model_config = ConfigDict(extra="forbid")

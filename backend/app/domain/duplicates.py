@@ -13,19 +13,16 @@ from __future__ import annotations
 
 from typing import Literal
 
-# 64-bit phash → distance <= 5 is the documented "visually identical" band.
 PHASH_THRESHOLD = 5
 PHASH_BITS = 64
 
 MatchMethod = Literal["perceptual_hash", "content_fingerprint", "both"]
-
 
 def hamming_distance(a: str, b: str) -> int:
     """Bit-level Hamming distance between two equal-length hex strings."""
     if len(a) != len(b):
         raise ValueError(f"hash length mismatch: {len(a)} vs {len(b)}")
     return bin(int(a, 16) ^ int(b, 16)).count("1")
-
 
 def phash_similarity(distance: int) -> float:
     """Normalize 0-64 Hamming distance into a 0-1 similarity score.
@@ -35,7 +32,6 @@ def phash_similarity(distance: int) -> float:
     that would fail Pydantic validation on DuplicateOfReason.similarity.
     """
     return max(0.0, 1.0 - (distance / PHASH_BITS))
-
 
 def classify_duplicate(
     *,

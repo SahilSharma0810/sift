@@ -15,7 +15,6 @@ from sqlalchemy.orm import Session
 
 from app.db.models import Extraction
 
-
 def _build_raw_text(
     extracted_fields: dict[str, Any],
     line_items: list[dict[str, Any]] | None,
@@ -43,9 +42,8 @@ def _build_raw_text(
             j = row.get("jurisdiction")
             if j:
                 chunks.append(str(j))
-    # Single space as separator — tsvector tokenization handles the rest.
-    return " ".join(chunks)
 
+    return " ".join(chunks)
 
 def create_extraction(
     session: Session,
@@ -67,7 +65,7 @@ def create_extraction(
     Also populates `raw_text` for FTS — Postgres maintains the tsvector
     column + GIN index automatically.
     """
-    # Demote previous current (if any).
+
     session.execute(
         update(Extraction)
         .where(Extraction.invoice_id == invoice_id, Extraction.is_current.is_(True))
@@ -92,14 +90,12 @@ def create_extraction(
     session.flush()
     return ext
 
-
 def get_current_extraction(session: Session, *, invoice_id: UUID) -> Extraction | None:
     return session.execute(
         select(Extraction).where(
             Extraction.invoice_id == invoice_id, Extraction.is_current.is_(True)
         )
     ).scalar_one_or_none()
-
 
 def mark_current(session: Session, *, extraction_id: UUID) -> None:
     """Manual override — promote a specific row, demoting siblings."""

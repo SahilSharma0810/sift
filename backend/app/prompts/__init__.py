@@ -15,7 +15,6 @@ from pathlib import Path
 PROMPT_DIR = Path(__file__).parent
 SCHEMA_DIR = PROMPT_DIR / "schemas"
 
-
 @dataclass(frozen=True, slots=True)
 class LoadedPrompt:
     name: str
@@ -24,11 +23,9 @@ class LoadedPrompt:
     schema: dict
     schema_hash: str
 
-
 def _hash(s: str | bytes) -> str:
     data = s.encode() if isinstance(s, str) else s
     return hashlib.sha256(data).hexdigest()[:16]
-
 
 @lru_cache(maxsize=8)
 def load(name: str) -> LoadedPrompt:

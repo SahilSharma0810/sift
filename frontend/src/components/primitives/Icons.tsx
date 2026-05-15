@@ -1,8 +1,3 @@
-/**
- * Inline SVG icon set — ported from the design bundle's primitives.jsx.
- * Stroke-based, 14px viewBox 24x24, currentColor.
- */
-
 type IconProps = { d: string; size?: number; fill?: string; strokeWidth?: number }
 
 const Icon = ({ d, size = 14, fill = 'none', strokeWidth = 1.75 }: IconProps) => (

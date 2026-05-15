@@ -28,7 +28,6 @@ from app.domain.confidence import (
     compute_history_scores_from_stats,
 )
 
-
 def update_stats_from_extraction(
     session: Session, *, vendor: Vendor, extraction: Extraction
 ) -> None:
@@ -67,9 +66,8 @@ def update_stats_from_extraction(
     memory["stats"] = stats
     memory["rules"] = rules
     vendor.memory = memory
-    flag_modified(vendor, "memory")  # JSONB mutation needs explicit dirty flag
+    flag_modified(vendor, "memory")
     session.flush()
-
 
 def compute_history_scores(
     *,

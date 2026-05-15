@@ -41,7 +41,6 @@ from app.services.extraction_service import extract_from_pdf
 log = logging.getLogger("seed_eval")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s  %(message)s")
 
-
 @dataclass(frozen=True, slots=True)
 class EvalCase:
     """One eval row with the ground truth we expect the pipeline to produce."""
@@ -50,16 +49,13 @@ class EvalCase:
     body: str
     expected_vendor: str
     expected_total: float
-    expected_triage_state: str  # confident | needs_review | likely_duplicate
+    expected_triage_state: str
     expected_reason_types: list[str] = field(default_factory=list)
-    # Ground-truth behaviour-only — does the test runner confirm/mark this row?
+
     confirm: bool = False
     unprocessable: bool = False
-    # PDF visual-marker key — pairs sharing a marker key get phash-matched.
+
     marker_key: str = ""
-
-
-# ---------- corpus ----------
 
 _CLEAN_VENDORS = [
     "Atlas Freight",
@@ -76,11 +72,9 @@ _ANOMALY_VENDORS = [
     "Junebug Cloud",
 ]
 
-
 def _build_corpus() -> list[EvalCase]:
     cases: list[EvalCase] = []
 
-    # --- 15 clean (5 vendors x 3 invoices, confirmed) ---
     for vendor in _CLEAN_VENDORS:
         prefix = vendor.split()[0][:3].upper()
         for i, total in enumerate((950.0, 1010.0, 985.0), start=1):
@@ -96,14 +90,13 @@ def _build_corpus() -> list[EvalCase]:
                     expected_vendor=vendor,
                     expected_total=total,
                     expected_triage_state="confident",
-                    # First per vendor is unseen_vendor; others are clean.
+
                     expected_reason_types=["unseen_vendor"] if i == 1 else [],
                     confirm=True,
                     marker_key=f"clean-{prefix}-{i}",
                 )
             )
 
-    # --- 20 anomaly (5 vendors x 3 confirmed + 1 outlier) ---
     for vendor in _ANOMALY_VENDORS:
         prefix = vendor.split()[0][:3].upper()
         for i, total in enumerate((1200.0, 1250.0, 1180.0), start=1):
@@ -123,7 +116,7 @@ def _build_corpus() -> list[EvalCase]:
                     marker_key=f"anom-{prefix}-h{i}",
                 )
             )
-        # The outlier — 25,000 vs mean ~1,210
+
         cases.append(
             EvalCase(
                 label=f"anom-{prefix}-OUTLIER",
@@ -140,22 +133,6 @@ def _build_corpus() -> list[EvalCase]:
             )
         )
 
-    # --- 5 math_fail — subtotal + tax != total ---
-    # Stub respects [seed-total:N] and derives subtotal=N*0.85, tax=N-N*0.85.
-    # But Haiku-tier returns total+1 by default. Math doesn't reconcile until cascade.
-    # For an *unreconciled* math case we need cascade off OR force a different
-    # subtotal. We achieve it by adding a marker the stub doesn't understand
-    # that nudges the test: prefix the total with "stub:math-fail-".
-    # Simpler approach: use a tiny total where the haiku-+$1 disagreement
-    # persists even after the cascade (it doesn't, because sonnet/opus
-    # agree). Instead, we use [seed-total:N] but with a known offset that
-    # passes math. To truly fail math we need a different mechanism.
-    #
-    # Practical approach: vendor in "math_fail" set is a confidence-low
-    # case that exercises math_fails in the validator. We accept that the
-    # stub provider can't simulate genuine math errors (all stub scenarios
-    # reconcile), and we mark this group as `stub_skip` so the eval
-    # excludes them in stub mode. Anthropic mode would exercise them.
     for i in range(1, 6):
         total = 1000.0 + i * 10
         cases.append(
@@ -168,15 +145,14 @@ def _build_corpus() -> list[EvalCase]:
                 ),
                 expected_vendor=f"Wonka Co {i}",
                 expected_total=total,
-                expected_triage_state="confident",  # stub reconciles
+                expected_triage_state="confident",
                 expected_reason_types=["unseen_vendor"],
                 marker_key=f"math-{i}",
             )
         )
 
-    # --- 10 duplicate (5 pairs) ---
     for i in range(1, 6):
-        # Original
+
         cases.append(
             EvalCase(
                 label=f"dup-{i:02d}-orig",
@@ -192,7 +168,7 @@ def _build_corpus() -> list[EvalCase]:
                 marker_key=f"dup-pair-{i}",
             )
         )
-        # Near-duplicate
+
         cases.append(
             EvalCase(
                 label=f"dup-{i:02d}-near",
@@ -206,11 +182,10 @@ def _build_corpus() -> list[EvalCase]:
                 expected_total=880.0,
                 expected_triage_state="likely_duplicate",
                 expected_reason_types=["duplicate_of"],
-                marker_key=f"dup-pair-{i}",  # same marker → same phash
+                marker_key=f"dup-pair-{i}",
             )
         )
 
-    # --- 5 unprocessable ---
     for i in range(1, 6):
         cases.append(
             EvalCase(
@@ -230,7 +205,6 @@ def _build_corpus() -> list[EvalCase]:
 
     return cases
 
-
 def _visual_identity(key: str) -> dict:
     """Derive a multi-element visual signature from the marker key.
 
@@ -239,13 +213,13 @@ def _visual_identity(key: str) -> dict:
     distance reliably exceeds the threshold even on near-identical body text.
     """
     h = int(hashlib.sha256(key.encode()).hexdigest()[:32], 16)
-    # First rectangle position
+
     col_a = h % 8
     row_a = (h // 8) % 8
-    # Second rectangle position (independent variation)
+
     col_b = (h // 64) % 6
     row_b = (h // 384) % 6
-    # Colors — fully independent across the two shapes
+
     rgb_a = (
         ((h >> 32) & 0xFF) / 255.0,
         ((h >> 40) & 0xFF) / 255.0,
@@ -262,9 +236,8 @@ def _visual_identity(key: str) -> dict:
         "rect_b": (60 + col_b * 50, 420 + row_b * 40, 220, 40),
         "rgb_a": rgb_a,
         "rgb_b": rgb_b,
-        "glyph_size": 40 + (h % 16),  # 40-55pt
+        "glyph_size": 40 + (h % 16),
     }
-
 
 def _make_pdf(text: str, dest: Path, marker_key: str) -> None:
     """Generate a single-page PDF whose visual identity is derived from marker_key.
@@ -287,7 +260,6 @@ def _make_pdf(text: str, dest: Path, marker_key: str) -> None:
     doc.save(str(dest))
     doc.close()
 
-
 def _persist_pdf(body_bytes: bytes, upload_dir: Path) -> Path:
     upload_dir.mkdir(parents=True, exist_ok=True)
     file_hash = hashlib.sha256(body_bytes).hexdigest()
@@ -295,7 +267,6 @@ def _persist_pdf(body_bytes: bytes, upload_dir: Path) -> Path:
     if not target.exists():
         target.write_bytes(body_bytes)
     return target
-
 
 def main() -> None:
     settings = get_settings()
@@ -306,8 +277,7 @@ def main() -> None:
         )
 
     upload_dir = settings.upload_dir
-    # Ground truth lives inside the repo (backend/eval/) so it's committed
-    # alongside the report files. backend/ is mounted at /app in the container.
+
     eval_dir = Path("eval")
     eval_dir.mkdir(parents=True, exist_ok=True)
     session = SessionLocal()
@@ -358,7 +328,6 @@ def main() -> None:
     gt_path.write_text(json.dumps(seeded_records, indent=2))
     log.info("ground truth written to %s", gt_path)
     log.info("done.")
-
 
 if __name__ == "__main__":
     main()

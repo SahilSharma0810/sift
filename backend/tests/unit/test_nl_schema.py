@@ -13,7 +13,6 @@ from pydantic import ValidationError
 
 from app.domain.nl_schema import FilterClause, StructuredQuery
 
-
 class TestFilterClause:
     def test_basic_eq(self) -> None:
         f = FilterClause(field="vendor_name", op="eq", value="Vega Logistics")
@@ -24,12 +23,12 @@ class TestFilterClause:
         assert f.value == 5000
 
     def test_op_field_incompat_rejected(self) -> None:
-        # `gt` doesn't apply to vendor_name (string field; only eq/neq/in/contains).
+
         with pytest.raises(ValidationError):
             FilterClause(field="vendor_name", op="gt", value="x")
 
     def test_fts_only_on_raw_text(self) -> None:
-        # fts_matches is reserved for the raw_text FTS bridge.
+
         with pytest.raises(ValidationError):
             FilterClause(field="total", op="fts_matches", value="anything")
         f = FilterClause(field="raw_text", op="fts_matches", value="vega")
@@ -38,7 +37,6 @@ class TestFilterClause:
     def test_off_whitelist_field_rejected(self) -> None:
         with pytest.raises(ValidationError):
             FilterClause(field="rogue_field", op="eq", value="x")  # type: ignore[arg-type]
-
 
 class TestStructuredQuery:
     def test_minimal(self) -> None:

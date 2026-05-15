@@ -25,13 +25,9 @@ from app.domain.scoring import (
 )
 from app.domain.validators import compute_structural_scores, math_reconciles
 
-# Fields where we maintain Z-scored vendor history.
 NUMERIC_HISTORY_FIELDS: tuple[str, ...] = ("total",)
 
-# Minimum vendor-history sample size for a meaningful Z-score. Below this,
-# the history component is suppressed and structural_score governs.
 MIN_HISTORY_SAMPLES = 3
-
 
 @dataclass(frozen=True, slots=True)
 class FieldConfidence:
@@ -48,7 +44,6 @@ class FieldConfidence:
     history: float | None
     agreement_override: float | None
 
-
 @dataclass(frozen=True, slots=True)
 class ConfidenceReport:
     """Full per-extraction confidence picture."""
@@ -61,7 +56,6 @@ class ConfidenceReport:
     def composite(self) -> dict[str, float]:
         """Convenience dict view of the final per-field scores."""
         return {f: c.composite for f, c in self.fields.items()}
-
 
 def compute_confidence(
     *,
@@ -99,7 +93,6 @@ def compute_confidence(
         has_vendor_history=bool(history),
     )
 
-
 def compute_history_scores_from_stats(
     *,
     extracted_fields: dict[str, Any],
@@ -133,7 +126,6 @@ def compute_history_scores_from_stats(
         out[fname] = _history_bucket(z)
     return out
 
-
 def _history_bucket(z: float) -> float:
     """ADR-0003 Z-score buckets: |z|<1: 1.0, <2: 0.85, <3: 0.6, else 0.3."""
     az = abs(z)
@@ -145,14 +137,12 @@ def _history_bucket(z: float) -> float:
         return 0.6
     return 0.3
 
-
 def _math_passed(fields: dict[str, Any]) -> bool:
     return math_reconciles(
         subtotal=_maybe_float(fields.get("subtotal")),
         tax=_maybe_float(fields.get("tax")),
         total=_maybe_float(fields.get("total")),
     )
-
 
 def _maybe_float(v: Any) -> float | None:
     if v is None:

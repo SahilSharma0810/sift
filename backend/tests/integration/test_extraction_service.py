@@ -13,7 +13,6 @@ from tests.conftest import patch_make_llm_client
 FIXTURES = Path(__file__).parents[1] / "fixtures"
 CLEAN_PDF = FIXTURES / "digital_invoice_clean.pdf"
 
-
 def _fake_llm_result() -> ExtractionResult:
     return ExtractionResult(
         fields={
@@ -39,23 +38,21 @@ def _fake_llm_result() -> ExtractionResult:
         },
     )
 
-
 class TestExtractFromPdf:
     def test_happy_path_creates_invoice_and_confident_extraction(
         self, db_session: Session, tmp_path: Path
     ) -> None:
-        # Copy the fixture into the test's temp dir so file_path is unique.
+
         test_pdf = tmp_path / "test.pdf"
         test_pdf.write_bytes(CLEAN_PDF.read_bytes())
 
         with patch_make_llm_client(header=_fake_llm_result()):
             result = extract_from_pdf(db_session, pdf_path=test_pdf)
 
-        # Returns the invoice + current extraction
         assert result.invoice.review_status == "pending"
         assert result.extraction.predicted_triage_state == "confident"
         assert result.extraction.is_current is True
-        # Composite confidence applied (history default 0.85 on cold-start vendor)
+
         assert result.extraction.confidence_per_field["total"] == 0.85
 
     def test_duplicate_file_returns_existing_invoice(
@@ -67,7 +64,7 @@ class TestExtractFromPdf:
         with patch_make_llm_client(header=_fake_llm_result()):
             r1 = extract_from_pdf(db_session, pdf_path=test_pdf)
             r2 = extract_from_pdf(db_session, pdf_path=test_pdf)
-        # Same file → same invoice (file_hash dedup).
+
         assert r1.invoice.id == r2.invoice.id
 
     def test_llm_reported_failure_produces_extraction_failed_reason(
@@ -75,7 +72,7 @@ class TestExtractFromPdf:
     ) -> None:
         """When the LLM sets extraction_failed=True, the service short-circuits
         domain logic and writes a single extraction_failed reason per ADR-0006."""
-        # Write distinct bytes so file_hash differs from other tests that use CLEAN_PDF.
+
         test_pdf = tmp_path / "fail.pdf"
         test_pdf.write_bytes(CLEAN_PDF.read_bytes() + b"\x00")
 
@@ -112,12 +109,10 @@ class TestExtractFromPdf:
         assert reasons[0]["type"] == "extraction_failed"
         assert reasons[0]["stage"] == "llm_call"
         assert "resume" in reasons[0]["detail"]
-        # No structural validation ran — empty fields:
+
         assert result.extraction.extracted_fields == {}
 
-
 SCAN_PDF = FIXTURES / "scan_invoice.pdf"
-
 
 class TestExtractFromPdfVisionPath:
     def test_vision_path_taken_for_scan(self, db_session: Session, tmp_path: Path) -> None:
@@ -189,10 +184,9 @@ class TestExtractFromPdfVisionPath:
 
         assert result.extraction.model == "claude-sonnet-4-6"
         assert result.extraction.predicted_triage_state == "confident"
-        # Vision path stored per-field bboxes
+
         v = result.extraction.extracted_fields["vendor_name"]
         assert v["bbox"] == [0.08, 0.06, 0.55, 0.10]
-
 
 class TestExtractFromPdfCascade:
     def test_low_haiku_confidence_triggers_sonnet(
@@ -203,7 +197,7 @@ class TestExtractFromPdfCascade:
         from app.adapters.llm_client import ExtractionResult
 
         test_pdf = tmp_path / "cascade.pdf"
-        # Use unique bytes to avoid file_hash collision with other committed tests.
+
         test_pdf.write_bytes(CLEAN_PDF.read_bytes() + b"\n%cascade-unique\n")
 
         haiku_result = ExtractionResult(
@@ -213,7 +207,7 @@ class TestExtractFromPdfCascade:
                 "invoice_date": "2026-05-13",
                 "subtotal": 1000.0,
                 "tax": 180.0,
-                "total": 1181.0,  # math fails!
+                "total": 1181.0,
                 "currency": "USD",
             },
             self_reported_confidence={"total": 0.85},
@@ -236,7 +230,7 @@ class TestExtractFromPdfCascade:
                 "invoice_date": "2026-05-13",
                 "subtotal": 1000.0,
                 "tax": 180.0,
-                "total": 1180.0,  # disagrees on total with haiku
+                "total": 1180.0,
                 "currency": "USD",
             },
             self_reported_confidence={"total": 0.97},
@@ -252,9 +246,7 @@ class TestExtractFromPdfCascade:
                 "cache_read_input_tokens": 0,
             },
         )
-        # total is a REQUIRED_FIELD that disputes between haiku and sonnet,
-        # so the cascade escalates to Opus. Provide an Opus result that agrees
-        # with Sonnet's value so the override is lifted.
+
         opus_result = ExtractionResult(
             fields={
                 "vendor_name": "Vega Logistics",
@@ -262,7 +254,7 @@ class TestExtractFromPdfCascade:
                 "invoice_date": "2026-05-13",
                 "subtotal": 1000.0,
                 "tax": 180.0,
-                "total": 1180.0,  # agrees with sonnet
+                "total": 1180.0,
                 "currency": "USD",
             },
             self_reported_confidence={"total": 0.99},
@@ -283,7 +275,6 @@ class TestExtractFromPdfCascade:
         ):
             result = extract_from_pdf(db_session, pdf_path=test_pdf)
 
-        # Sonnet's (and Opus's) total wins; math now reconciles
         assert result.extraction.extracted_fields["total"]["value"] == 1180.0
         trace = result.extraction.cascade_trace
         assert len(trace["tiers"]) == 3
@@ -299,12 +290,9 @@ class TestExtractFromPdfCascade:
         from app.adapters.llm_client import ExtractionResult
 
         test_pdf = tmp_path / "cascade_2tier.pdf"
-        # Unique bytes so file_hash differs from prior test runs
+
         test_pdf.write_bytes(CLEAN_PDF.read_bytes() + b"\n%cascade-2tier\n")
 
-        # Haiku result with a math failure (triggers cascade) but matching values
-        # on REQUIRED_FIELDS for both Haiku and Sonnet. Sonnet only disagrees
-        # on `subtotal` (which is NOT in REQUIRED_FIELDS) — so Opus must not fire.
         haiku_result = ExtractionResult(
             fields={
                 "vendor_name": "Vega Logistics",
@@ -312,7 +300,7 @@ class TestExtractFromPdfCascade:
                 "invoice_date": "2026-05-13",
                 "subtotal": 1000.0,
                 "tax": 180.0,
-                "total": 1181.0,  # math fails (off $1)
+                "total": 1181.0,
                 "currency": "USD",
             },
             self_reported_confidence={"total": 0.85},
@@ -328,10 +316,7 @@ class TestExtractFromPdfCascade:
                 "cache_read_input_tokens": 0,
             },
         )
-        # Sonnet: SAME values as Haiku for every REQUIRED_FIELD (vendor_name,
-        # invoice_number, invoice_date, total, currency), only `subtotal` differs.
-        # subtotal disagreement → cascade override on subtotal but NOT a
-        # REQUIRED-field dispute → Opus does NOT fire.
+
         sonnet_result = ExtractionResult(
             fields={
                 "vendor_name": "Vega Logistics",
@@ -339,7 +324,7 @@ class TestExtractFromPdfCascade:
                 "invoice_date": "2026-05-13",
                 "subtotal": 1001.0,
                 "tax": 180.0,
-                "total": 1181.0,  # only subtotal differs
+                "total": 1181.0,
                 "currency": "USD",
             },
             self_reported_confidence={"total": 0.95},
@@ -358,7 +343,6 @@ class TestExtractFromPdfCascade:
         with patch_make_llm_client(header_seq=[haiku_result, sonnet_result]):
             result = extract_from_pdf(db_session, pdf_path=test_pdf)
 
-        # Cascade trace has exactly 2 tiers — Opus did not fire.
         trace = result.extraction.cascade_trace
         assert len(trace["tiers"]) == 2, (
             f"Expected 2 tiers (no Opus escalation), got {len(trace['tiers'])}: "
@@ -367,22 +351,18 @@ class TestExtractFromPdfCascade:
         assert trace["tiers"][0]["model"] == "claude-haiku-4-5"
         assert trace["tiers"][1]["model"] == "claude-sonnet-4-6"
 
-
 class TestExtractFromPdfDuplicate:
     def test_second_near_identical_upload_flags_duplicate(
         self, db_session: Session, tmp_path: Path
     ) -> None:
         from app.adapters.llm_client import ExtractionResult
 
-        # Use SCAN_PDF as the base: its rendered image (phash) is visually distinct
-        # from CLEAN_PDF, so it won't collide with phashes committed by other tests.
         first = tmp_path / "dup-a.pdf"
         first.write_bytes(SCAN_PDF.read_bytes())
         second = tmp_path / "dup-b.pdf"
-        # Different bytes (so file_hash differs) but same rendered image → phash matches.
+
         second.write_bytes(SCAN_PDF.read_bytes() + b"\n%dup-second-trailer\n")
 
-        # Vision path: both PDFs have no embedded text.
         vision_good = ExtractionResult(
             fields={
                 "vendor_name": {
@@ -452,7 +432,6 @@ class TestExtractFromPdfDuplicate:
         ]
         assert len(dup_reasons) == 1
         assert dup_reasons[0]["invoice_id"] == str(r1.invoice.id)
-
 
 class TestExtractFromPdfLineItems:
     def test_line_items_returned_on_digital_path(self, db_session: Session, tmp_path: Path) -> None:
@@ -564,4 +543,4 @@ class TestExtractFromPdfLineItems:
         with patch_make_llm_client(vision=vision_result, line_items=line_items_result):
             result = extract_from_pdf(db_session, pdf_path=test_pdf)
 
-        assert result.extraction.line_items == []  # vision short-circuits
+        assert result.extraction.line_items == []

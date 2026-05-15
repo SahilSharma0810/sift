@@ -4,8 +4,6 @@ import type { InvoiceOut, VendorOut } from '@/types/generated/domain'
 
 import { api } from './api'
 
-// ---------- Search / NL→SQL ----------
-
 export interface FilterClause {
   field: string
   op: string
@@ -37,8 +35,7 @@ export function useTranslateMutation() {
 }
 
 export function useSearchQuery(query: StructuredQuery) {
-  // The cache key includes the serialized query so each distinct
-  // chip-set has its own entry — change a chip, re-render, refetch.
+
   return useQuery({
     queryKey: ['search', JSON.stringify(query)] as const,
     queryFn: () =>
@@ -59,7 +56,7 @@ export function useAppMetaQuery() {
   return useQuery({
     queryKey: ['meta'] as const,
     queryFn: () => api<AppMeta>('/api/meta'),
-    staleTime: Infinity, // doesn't change at runtime
+    staleTime: Infinity,
   })
 }
 

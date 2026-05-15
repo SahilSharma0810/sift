@@ -24,7 +24,6 @@ from app.domain.models import (
     VendorMemoryStats,
 )
 
-
 class TestExtractedField:
     def test_minimal_field(self) -> None:
         f = ExtractedField(value="Acme", confidence=0.92, source="pymupdf+haiku")
@@ -55,7 +54,6 @@ class TestExtractedField:
                 rogue_key="oops",
             )
 
-
 class TestTriageReasons:
     def test_math_fails(self) -> None:
         r = MathFailsReason(subtotal=1000.0, tax=180.0, total=1180.40, delta=0.40)
@@ -83,7 +81,6 @@ class TestTriageReasons:
         r = ExtractionFailedReason(stage="cascade_exhausted", detail="x")
         assert r.stage == "cascade_exhausted"
 
-
 class TestTriageReasonDiscriminator:
     """Discriminated union dispatch — drives the frontend ReasonCard map."""
 
@@ -104,7 +101,6 @@ class TestTriageReasonDiscriminator:
         adapter = TypeAdapter(TriageReason)
         with pytest.raises(ValidationError):
             adapter.validate_python({"type": "made_up", "field": "x"})
-
 
 class TestVendorMemory:
     def test_default_empty(self) -> None:

@@ -36,7 +36,6 @@ from sqlalchemy.orm import Session
 from app.db.session import engine, get_session
 from app.main import app
 
-
 @pytest.fixture
 def api_client() -> Generator[TestClient, None, None]:
     """TestClient bound to an isolated, rolled-back session.
@@ -53,9 +52,7 @@ def api_client() -> Generator[TestClient, None, None]:
     @event.listens_for(session, "after_transaction_end")
     def _restart_savepoint(_session: Session, transaction) -> None:
         nonlocal nested
-        # When the service-level transaction (the SAVEPOINT) ends and we're
-        # still inside the outer transaction, open a fresh SAVEPOINT so the
-        # session is usable for the next service call within the same test.
+
         if transaction.nested and not transaction._parent.nested:
             nested = connection.begin_nested()
 

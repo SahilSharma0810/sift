@@ -1,18 +1,3 @@
-/**
- * SearchScreen — /search route.
- *
- * Chips ARE the state (ADR-0004). The URL `?q=` param carries the
- * StructuredQuery as JSON so deep-link sharing preserves the exact
- * search verbatim — Anchor 1's "queryable" trust signal.
- *
- * NL box at the top translates user text via /api/search/translate,
- * then sets the URL state to the returned chips. Anything the LLM
- * couldn't translate surfaces verbatim in an amber notice above
- * results — never silently dropped (ADR-0004 partial-translation).
- *
- * Editing/removing a chip updates the URL, which re-renders the page
- * and re-fires /api/search via TanStack Query.
- */
 import { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 
@@ -63,7 +48,6 @@ async function downloadExport(query: StructuredQuery, format: 'csv' | 'json'): P
   URL.revokeObjectURL(url)
 }
 
-
 function chipLabel(c: FilterClause): string {
   const valueText = Array.isArray(c.value)
     ? c.value.join(' to ')
@@ -101,7 +85,6 @@ export function SearchScreen() {
   const translate = useTranslateMutation()
   const { data: results = [], isFetching, error } = useSearchQuery(query)
 
-  // Keep nl input mirrored from translation echo so the textbox doesn't drift.
   useEffect(() => {
     setNlInput('')
   }, [params])
@@ -135,7 +118,7 @@ export function SearchScreen() {
         untranslated_intent: translated.untranslated_intent ?? null,
       })
     } catch (e) {
-      // Validation failure path — keep the user's text + flag it.
+
       setQuery({
         ...EMPTY_QUERY,
         untranslated_intent: trimmed,
@@ -152,7 +135,7 @@ export function SearchScreen() {
           background: 'var(--paper)',
         }}
       >
-        {/* NL input */}
+
         <form
           onSubmit={(e) => {
             e.preventDefault()
@@ -207,7 +190,7 @@ export function SearchScreen() {
           )}
         </form>
 
-        {/* Chips */}
+        {}
         {query.filters.length > 0 && (
           <div
             style={{
@@ -239,7 +222,7 @@ export function SearchScreen() {
           </div>
         )}
 
-        {/* Untranslated intent — amber notice */}
+        {}
         {query.untranslated_intent && (
           <div
             style={{
@@ -264,7 +247,6 @@ export function SearchScreen() {
         )}
       </div>
 
-      {/* Results */}
       <div style={{ flex: 1, overflow: 'auto', padding: '12px 20px' }}>
         {error ? (
           <div style={{ color: 'var(--ink-60)', padding: 16 }}>

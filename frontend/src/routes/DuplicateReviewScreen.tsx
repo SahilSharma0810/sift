@@ -1,14 +1,3 @@
-/**
- * DuplicateReviewScreen — Q5/ADR-0006 locked UX.
- *
- * Three-pane layout: original PDF | new PDF | field diff panel.
- * Actions: "Confirm duplicate & dismiss" (sets review_status=unprocessable
- * on the new invoice) and "Not a duplicate" (persists a `not_a_duplicate`
- * marker via /dismiss-duplicate so the detector doesn't re-fire next month).
- *
- * Reached from ReasonCard `view_dup` action: navigate to
- *   /duplicate-review/<current_invoice_id>?against=<original_invoice_id>
- */
 import { useMemo } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 

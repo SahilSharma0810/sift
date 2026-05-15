@@ -29,7 +29,6 @@ CLEAN_FIELDS = {
     "currency": "USD",
 }
 
-
 class TestComputeConfidence:
     def test_cold_start_vendor_returns_history_default(self) -> None:
         """No vendor stats -> history component absent, composite floors
@@ -37,7 +36,7 @@ class TestComputeConfidence:
         report = compute_confidence(extracted_fields=CLEAN_FIELDS, vendor_stats=None)
         assert isinstance(report, ConfidenceReport)
         assert report.has_vendor_history is False
-        # Math reconciles, all fields present -> composite caps at 0.85 (history default).
+
         assert report.composite["total"] == 0.85
         assert report.fields["total"].history is None
         assert report.fields["total"].structural == 1.0
@@ -45,7 +44,7 @@ class TestComputeConfidence:
     def test_math_failure_pins_amounts_at_floor(self) -> None:
         """ADR-0003: math fail -> amount fields' structural score is 0.2.
         Composite must respect that floor even with perfect history."""
-        broken = {**CLEAN_FIELDS, "total": 1500.0}  # 1000 + 180 != 1500
+        broken = {**CLEAN_FIELDS, "total": 1500.0}
         report = compute_confidence(extracted_fields=broken, vendor_stats=None)
         assert report.math_passed is False
         assert report.composite["total"] == 0.2
@@ -58,12 +57,9 @@ class TestComputeConfidence:
             "avg_total": 1180.0,
             "std_total": 50.0,
         }
-        outlier = {**CLEAN_FIELDS, "total": 5000.0}  # |z| >> 3
+        outlier = {**CLEAN_FIELDS, "total": 5000.0}
         report = compute_confidence(extracted_fields=outlier, vendor_stats=stats)
         assert report.has_vendor_history is True
-        # Math still reconciles? 1000+180=1180 != 5000 -> math FAILS.
-        # So structural is 0.2 for total, history is 0.3, composite = min = 0.2.
-        # Use a different scenario for the history-only test.
 
     def test_vendor_history_governs_when_math_passes(self) -> None:
         """Math passes -> structural is 1.0 for total; vendor history outlier
@@ -73,13 +69,13 @@ class TestComputeConfidence:
             "avg_total": 1180.0,
             "std_total": 50.0,
         }
-        # Construct math-reconciling fields with an outlier total.
+
         outlier = {
             **CLEAN_FIELDS,
             "subtotal": 4500.0,
             "tax": 500.0,
             "total": 5000.0,
-        }  # 4500 + 500 == 5000, math OK. Total z-score >> 3 vs avg 1180.
+        }
         report = compute_confidence(extracted_fields=outlier, vendor_stats=stats)
         assert report.math_passed is True
         assert report.composite["total"] == 0.3
@@ -94,7 +90,7 @@ class TestComputeConfidence:
             vendor_stats=None,
             agreement_overrides=overrides,
         )
-        # Prior composite was 0.85 (cold-start) -> override 0.3 wins.
+
         assert report.composite["total"] == 0.3
         assert report.fields["total"].agreement_override == 0.3
 
@@ -113,11 +109,10 @@ class TestComputeConfidence:
         total = report.fields["total"]
         assert isinstance(total, FieldConfidence)
         assert total.structural == 1.0
-        assert total.history == 1.0  # within 1 std of mean
+        assert total.history == 1.0
         assert total.agreement_override is None
         vendor = report.fields["vendor_name"]
         assert vendor.agreement_override == 0.3
-
 
 class TestComputeHistoryScoresFromStats:
     def test_empty_stats_returns_empty(self) -> None:
@@ -139,19 +134,18 @@ class TestComputeHistoryScoresFromStats:
     def test_z_score_bucketing(self) -> None:
         stats = {"total_seen": 10, "avg_total": 1000.0, "std_total": 100.0}
 
-        # |z| = 0.5 -> 1.0
         assert compute_history_scores_from_stats(
             extracted_fields={"total": 1050.0}, vendor_stats=stats
         )["total"] == 1.0
-        # |z| = 1.5 -> 0.85
+
         assert compute_history_scores_from_stats(
             extracted_fields={"total": 1150.0}, vendor_stats=stats
         )["total"] == 0.85
-        # |z| = 2.5 -> 0.6
+
         assert compute_history_scores_from_stats(
             extracted_fields={"total": 1250.0}, vendor_stats=stats
         )["total"] == 0.6
-        # |z| = 5.0 -> 0.3
+
         assert compute_history_scores_from_stats(
             extracted_fields={"total": 1500.0}, vendor_stats=stats
         )["total"] == 0.3

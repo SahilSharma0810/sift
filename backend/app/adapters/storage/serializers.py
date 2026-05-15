@@ -25,7 +25,6 @@ from app.domain.models import (
     VendorOut,
 )
 
-
 def extraction_to_dto(extraction: Extraction) -> ExtractionOut:
     """Convert an ORM Extraction row to an ExtractionOut DTO."""
     return ExtractionOut.model_validate(
@@ -44,7 +43,6 @@ def extraction_to_dto(extraction: Extraction) -> ExtractionOut:
             "created_at": extraction.created_at,
         }
     )
-
 
 def invoice_to_dto(invoice: Invoice, session: Session) -> InvoiceOut:
     """Convert an ORM Invoice row (+ its current extraction) to an InvoiceOut DTO.
@@ -68,7 +66,6 @@ def invoice_to_dto(invoice: Invoice, session: Session) -> InvoiceOut:
         duplicate_dismissals=invoice.duplicate_dismissals or [],
         current_extraction=current_out,
     )
-
 
 def vendor_to_dto(vendor: Vendor) -> VendorOut:
     """Convert an ORM Vendor row to a VendorOut DTO (with VendorMemory)."""

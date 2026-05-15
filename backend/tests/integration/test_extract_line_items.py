@@ -16,7 +16,6 @@ from app.adapters.llm_client import (
     StubLLMClient,
 )
 
-
 def _fake_response(items: list[dict], model: str = "claude-haiku-4-5") -> MagicMock:
     response = MagicMock()
     block = MagicMock()
@@ -32,7 +31,6 @@ def _fake_response(items: list[dict], model: str = "claude-haiku-4-5") -> MagicM
     )
     response.model = model
     return response
-
 
 class TestAnthropicExtractLineItems:
     def test_happy_path_returns_items(self) -> None:
@@ -104,14 +102,13 @@ class TestAnthropicExtractLineItems:
             with pytest.raises(RuntimeError, match="tool call"):
                 client.call(EXTRACT_LINE_ITEMS, model="claude-haiku-4-5", text="x")
 
-
 class TestStubExtractLineItems:
     def test_default_scenario_returns_vega_freight(self) -> None:
         result = StubLLMClient().call(
             EXTRACT_LINE_ITEMS, model="claude-haiku-4-5", text="anything"
         )
         assert isinstance(result, LineItemsResult)
-        # Vega default scenario has 3 line items
+
         assert len(result.items) == 3
         descs = [i["description"] for i in result.items]
         assert any("Last-Mile Delivery" in d for d in descs)
@@ -128,7 +125,7 @@ class TestStubExtractLineItems:
             EXTRACT_LINE_ITEMS, model="claude-sonnet-4-6", text="Bramble Catering event 2026"
         )
         assert len(result.items) == 5
-        # Sum reconciles to scenario subtotal (635.59) within tolerance
+
         total = sum(i["line_total"] for i in result.items)
         assert abs(total - 635.59) < 0.05
 

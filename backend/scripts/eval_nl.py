@@ -26,20 +26,17 @@ from app.services.nl_translation_service import TranslationError, translate
 log = logging.getLogger("eval_nl")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s  %(message)s")
 
-
 @dataclass(frozen=True, slots=True)
 class NLCase:
     nl: str
     expected_filters: list[tuple[str, str, Any]] = field(default_factory=list)
-    # Whether `untranslated_intent` is expected to be set
+
     expect_untranslated: bool = False
-    # Optional note documenting why the expected output is what it is
+
     notes: str = ""
 
-
-# 22 hand-curated NL queries covering every translator code path
 CASES: list[NLCase] = [
-    # --- Triage state mappings ---
+
     NLCase("duplicates", [("triage_state", "eq", "likely_duplicate")]),
     NLCase("show me likely duplicates", [("triage_state", "eq", "likely_duplicate")]),
     NLCase(
@@ -69,12 +66,12 @@ CASES: list[NLCase] = [
         "failed to extract",
         [("review_status", "eq", "unprocessable")],
     ),
-    # --- Amount thresholds ---
+
     NLCase("over $5000", [("total", "gt", 5000.0)]),
     NLCase("invoices above $1,000", [("total", "gt", 1000.0)]),
     NLCase("under $200", [("total", "lt", 200.0)]),
     NLCase("less than 50", [("total", "lt", 50.0)]),
-    # --- Vendor extraction ---
+
     NLCase(
         "from Vega Logistics",
         [("vendor_name", "eq", "Vega Logistics")],
@@ -83,7 +80,7 @@ CASES: list[NLCase] = [
         "from Halcyon Software",
         [("vendor_name", "eq", "Halcyon Software")],
     ),
-    # --- Combined intents ---
+
     NLCase(
         "anomalies from Halcyon Software",
         [
@@ -100,10 +97,10 @@ CASES: list[NLCase] = [
         ],
         notes="Single-word vendor match — translator extracts 'Vega' without 'Logistics'",
     ),
-    # --- Empty / no-op ---
+
     NLCase("", expected_filters=[]),
     NLCase("show me", expected_filters=[]),
-    # --- Partial translation surfaces ---
+
     NLCase(
         "duplicates this month",
         [("triage_state", "eq", "likely_duplicate")],
@@ -118,21 +115,17 @@ CASES: list[NLCase] = [
     ),
 ]
 
-
 def _filters_set(filters: list) -> set[tuple[str, str, Any]]:
     return {(f.field, f.op, _norm(f.value)) for f in filters}
 
-
 def _expected_set(triples: list[tuple[str, str, Any]]) -> set[tuple[str, str, Any]]:
     return {(field_, op, _norm(value)) for field_, op, value in triples}
-
 
 def _norm(v: Any) -> Any:
     """Normalize values for equality comparison (lists → tuples)."""
     if isinstance(v, list):
         return tuple(v)
     return v
-
 
 @dataclass(slots=True)
 class CaseResult:
@@ -144,7 +137,6 @@ class CaseResult:
     expected: set
     actual: set
     error: str | None = None
-
 
 def _evaluate(case: NLCase) -> CaseResult:
     try:
@@ -187,7 +179,6 @@ def _evaluate(case: NLCase) -> CaseResult:
         actual=actual,
     )
 
-
 def _write_report(results: list[CaseResult], out_path: Path) -> None:
     total = len(results)
     exact_acc = sum(r.exact_match for r in results) / total
@@ -195,8 +186,6 @@ def _write_report(results: list[CaseResult], out_path: Path) -> None:
     avg_precision = sum(r.precision for r in results) / total
     avg_recall = sum(r.recall for r in results) / total
 
-    # Per-field translation accuracy: of the clauses we expected on a field,
-    # how many appeared in the translator output?
     per_field_expected: dict[str, int] = defaultdict(int)
     per_field_recalled: dict[str, int] = defaultdict(int)
     for r in results:
@@ -253,7 +242,6 @@ def _write_report(results: list[CaseResult], out_path: Path) -> None:
     out_path.write_text("\n".join(lines))
     log.info("report written to %s", out_path)
 
-
 def main() -> None:
     log.info("running %d NL cases", len(CASES))
     results = [_evaluate(c) for c in CASES]
@@ -263,7 +251,6 @@ def main() -> None:
 
     exact = sum(r.exact_match for r in results)
     log.info("exact-match: %d / %d (%.1f%%)", exact, len(results), 100.0 * exact / len(results))
-
 
 if __name__ == "__main__":
     main()

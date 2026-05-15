@@ -8,12 +8,10 @@ Stub — fills in on Day 5.
 
 from __future__ import annotations
 
-
 def main() -> None:
     raise NotImplementedError(
         "seed_eval.py is a Day-5 deliverable. See PLAN.md > Seed corpus."
     )
-
 
 if __name__ == "__main__":
     main()

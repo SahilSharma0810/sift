@@ -12,7 +12,6 @@ from app.db.models import Vendor
 _PUNCT_RE = re.compile(r"[^\w\s]+")
 _SPACES_RE = re.compile(r"\s+")
 
-
 def normalize_name(name: str) -> str:
     """Lowercase + strip punctuation + collapse whitespace.
 
@@ -23,7 +22,6 @@ def normalize_name(name: str) -> str:
     n = _PUNCT_RE.sub("", n)
     n = _SPACES_RE.sub(" ", n).strip()
     return n
-
 
 def upsert_by_normalized_name(session: Session, *, name: str, tax_id: str | None = None) -> Vendor:
     """Insert if absent, return existing otherwise. Match by normalized_name."""

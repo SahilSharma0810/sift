@@ -10,7 +10,6 @@ from uuid import uuid4
 
 from app.domain.triage import derive_triage
 
-
 class TestDeriveTriage:
     def _clean_fields(self) -> dict[str, object]:
         return {
@@ -44,7 +43,7 @@ class TestDeriveTriage:
 
     def test_math_failure_is_needs_review(self) -> None:
         fields = self._clean_fields()
-        fields["total"] = 1181.0  # off
+        fields["total"] = 1181.0
         state, reasons = derive_triage(
             extracted_fields=fields,
             confidence={"total": 0.2, "vendor_name": 0.85},
@@ -105,8 +104,7 @@ class TestDeriveTriage:
         assert missing["field"] == "currency"
 
     def test_unseen_vendor_attaches_reason_but_state_can_still_be_confident(self) -> None:
-        # Per Q3: unseen_vendor is a reason that surfaces but doesn't by itself
-        # demote a clean extraction to needs_review.
+
         state, reasons = derive_triage(
             extracted_fields=self._clean_fields(),
             confidence={

@@ -9,10 +9,7 @@ from __future__ import annotations
 from datetime import datetime
 from decimal import Decimal
 
-# Rounding tolerance for amount validators — accommodates 1-2 cent OCR drift
-# without permitting real reconciliation errors through.
 AMOUNT_TOLERANCE = Decimal("0.02")
-
 
 def math_reconciles(
     subtotal: float | None,
@@ -40,7 +37,6 @@ def math_reconciles(
         return False
     return abs((s + t) - tt) <= AMOUNT_TOLERANCE
 
-
 def tax_breakdown_sum_check(
     rows: list[dict] | tuple[dict, ...], header_tax: float | None
 ) -> tuple[bool, Decimal]:
@@ -63,7 +59,6 @@ def tax_breakdown_sum_check(
     head = Decimal(str(header_tax))
     delta = total - head
     return (abs(delta) <= AMOUNT_TOLERANCE, delta)
-
 
 def line_items_sum_check(
     line_items: list[dict] | tuple[dict, ...], subtotal: float | None
@@ -89,7 +84,6 @@ def line_items_sum_check(
     delta = total - sub
     return (abs(delta) <= AMOUNT_TOLERANCE, delta)
 
-
 DATE_FORMATS = (
     "%Y-%m-%d",
     "%m/%d/%Y",
@@ -99,21 +93,18 @@ DATE_FORMATS = (
     "%d.%m.%Y",
     "%B %d, %Y",
     "%d %B %Y",
-    # 2-digit-year variants commonly seen on US invoices
+
     "%m/%d/%y",
     "%d/%m/%y",
     "%m-%d-%y",
     "%d-%m-%y",
-    # Abbreviated month name (Jan, Feb, ...)
+
     "%b %d, %Y",
     "%d %b %Y",
     "%d-%b-%Y",
     "%d-%b-%y",
 )
 
-
-# Common invoice currencies — covers >95% of in-scope cases. Not the full
-# ISO 4217 set; not worth the dependency.
 COMMON_CURRENCIES = frozenset(
     {
         "USD",
@@ -136,13 +127,11 @@ COMMON_CURRENCIES = frozenset(
     }
 )
 
-
 def is_valid_currency_code(value: str | None) -> bool:
     """True if `value` looks like a valid ISO-style currency code."""
     if not value:
         return False
     return value.strip().upper() in COMMON_CURRENCIES
-
 
 def is_valid_date(value: str | None) -> bool:
     """True if `value` parses as a date in any common invoice format.
@@ -161,9 +150,6 @@ def is_valid_date(value: str | None) -> bool:
             continue
     return False
 
-
-# Required fields per the Day-1 happy-path extraction shape. Day-3 line-items
-# and Day-4 tax_breakdown extend this list at their respective milestones.
 REQUIRED_FIELDS = (
     "vendor_name",
     "invoice_number",
@@ -171,7 +157,6 @@ REQUIRED_FIELDS = (
     "total",
     "currency",
 )
-
 
 def find_missing_required(fields: dict[str, object]) -> list[str]:
     """Names of required fields that are missing, None, or empty-string."""
@@ -182,23 +167,14 @@ def find_missing_required(fields: dict[str, object]) -> list[str]:
             missing.append(name)
     return missing
 
-
-# Per ADR-0003: fields without a structural rule get a neutral 0.9 ceiling
-# so history_score governs them. Math-failing amount fields drop to 0.2.
 NEUTRAL_SCORE = 0.9
 MATH_FAIL_FLOOR = 0.2
 MISSING_OR_INVALID = 0.0
 HIGH_SCORE = 1.0
-# Present-but-structurally-unrecognized floor. Used when a field has a
-# value but our format validator doesn't recognize it (e.g. a date in
-# a format outside DATE_FORMATS, or a currency string that isn't an
-# ISO code). Drops composite below CASCADE_THRESHOLD so triage flags
-# low_confidence, but stays non-zero so the inbox confidence badge
-# doesn't display the misleading "Confident 0%".
+
 PRESENT_BUT_INVALID = 0.3
 
 AMOUNT_FIELDS = ("subtotal", "tax", "total")
-
 
 def compute_structural_scores(fields: dict[str, object]) -> dict[str, float]:
     """Map each known field to a structural_score per ADR-0003.
@@ -207,12 +183,8 @@ def compute_structural_scores(fields: dict[str, object]) -> dict[str, float]:
     """
     scores: dict[str, float] = {}
 
-    # Missing fields → 0.0
     missing = set(find_missing_required(fields))
 
-    # Math reconciliation check — drives amount-field scores.
-    # Pass None through (not coerced to 0) so the vacuous-on-null behaviour
-    # in math_reconciles kicks in for invoices that only show a Total line.
     def _maybe_float(v: object) -> float | None:
         if v is None:
             return None
@@ -230,19 +202,13 @@ def compute_structural_scores(fields: dict[str, object]) -> dict[str, float]:
     for field in AMOUNT_FIELDS:
         value_present = fields.get(field) is not None
         if not value_present:
-            # The field genuinely isn't on this invoice — neutral score.
-            # Differs from MISSING_OR_INVALID (0.0) so triage doesn't flag
-            # low_confidence on a field that's simply absent.
+
             scores[field] = NEUTRAL_SCORE
         elif math_ok:
             scores[field] = HIGH_SCORE
         else:
             scores[field] = MATH_FAIL_FLOOR
 
-    # Date — format-validate. Present-but-unrecognized formats get
-    # PRESENT_BUT_INVALID (0.3), not 0.0, so the inbox badge doesn't
-    # display 0% on otherwise-valid extractions just because the date
-    # string used a format outside our DATE_FORMATS tuple.
     if "invoice_date" in missing:
         scores["invoice_date"] = MISSING_OR_INVALID
     elif is_valid_date(str(fields.get("invoice_date"))):
@@ -250,9 +216,6 @@ def compute_structural_scores(fields: dict[str, object]) -> dict[str, float]:
     else:
         scores["invoice_date"] = PRESENT_BUT_INVALID
 
-    # Currency — code-validate. Same PRESENT_BUT_INVALID semantics: an
-    # unrecognized but present currency string (e.g. a non-ISO symbol)
-    # isn't the same as absent.
     if "currency" in missing:
         scores["currency"] = MISSING_OR_INVALID
     elif is_valid_currency_code(str(fields.get("currency"))):
@@ -260,8 +223,6 @@ def compute_structural_scores(fields: dict[str, object]) -> dict[str, float]:
     else:
         scores["currency"] = PRESENT_BUT_INVALID
 
-    # Fields without a structural rule (vendor_name, invoice_number) get the
-    # neutral 0.9 ceiling per ADR-0003 unless missing.
     for field in ("vendor_name", "invoice_number"):
         scores[field] = MISSING_OR_INVALID if field in missing else NEUTRAL_SCORE
 

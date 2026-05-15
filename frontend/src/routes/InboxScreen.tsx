@@ -1,13 +1,3 @@
-/**
- * InboxScreen — design ported from Claude Design bundle.
- *
- * Dropzone + filter-tabs + table + keyboard-hint footer. Triage variants
- * derived from `current_extraction.predicted_triage_state` + `review_status`.
- * Why column uses typed WhyChip dispatch on the discriminated reason union.
- *
- * Day-1 implements: dropzone, table, filter tabs (client-side), WhyChip.
- * Day-2 adds: J/K nav, bulk-confirm with undo, real triage actions.
- */
 import { useCallback, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { toast } from 'sonner'
@@ -63,10 +53,7 @@ export function InboxScreen() {
         action: {
           label: 'Undo',
           onClick: () => {
-            // Day-2 limitation: mutations dispatched immediately; "undo" is
-            // informational only. A queue-with-delay version is cleaner but
-            // adds state machinery. Reflected here so the bulk-confirm moment
-            // still lands in the demo.
+
             toast.dismiss(toastId)
             toast.info('Undo applied — pending confirmations cancelled.')
           },

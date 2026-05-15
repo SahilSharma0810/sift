@@ -17,7 +17,6 @@ from tests.conftest import patch_make_llm_client
 FIXTURES = Path(__file__).parents[1] / "fixtures"
 CLEAN_PDF = FIXTURES / "digital_invoice_clean.pdf"
 
-
 def _fake_llm_result() -> ExtractionResult:
     return ExtractionResult(
         fields={
@@ -42,7 +41,6 @@ def _fake_llm_result() -> ExtractionResult:
             "cache_read_input_tokens": 0,
         },
     )
-
 
 class TestUploadInvoice:
     def test_upload_returns_invoice_with_extraction(self, api_client: TestClient) -> None:

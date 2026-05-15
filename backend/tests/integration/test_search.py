@@ -16,7 +16,6 @@ from tests.conftest import patch_make_llm_client
 FIXTURES = Path(__file__).parents[1] / "fixtures"
 CLEAN_PDF = FIXTURES / "digital_invoice_clean.pdf"
 
-
 def _llm_result(vendor: str, number: str, total: float, currency: str = "USD") -> ExtractionResult:
     return ExtractionResult(
         fields={
@@ -42,7 +41,6 @@ def _llm_result(vendor: str, number: str, total: float, currency: str = "USD") -
         },
     )
 
-
 def _upload(
     client: TestClient, marker: str, vendor: str, total: float, currency: str = "USD"
 ) -> str:
@@ -54,7 +52,6 @@ def _upload(
         )
     assert res.status_code == 201, res.text
     return res.json()["id"]
-
 
 class TestSearchByVendor:
     def test_vendor_eq(self, api_client: TestClient) -> None:
@@ -78,14 +75,12 @@ class TestSearchByVendor:
             == "QA SearchVendor Vega Logistics"
         )
 
-
 class TestSearchByTotal:
     def test_total_gt(self, api_client: TestClient) -> None:
         _upload(api_client, "low", "QA SearchVendor Vega Logistics", 500.0)
         _upload(api_client, "mid", "QA SearchVendor Vega Logistics", 5000.0)
         _upload(api_client, "high", "QA SearchVendor Vega Logistics", 50000.0)
 
-        # Combine with vendor filter so pre-existing seed rows don't pollute the count
         res = api_client.post(
             "/api/search",
             json={
@@ -122,10 +117,9 @@ class TestSearchByTotal:
         assert len(body) == 1
         assert float(body[0]["current_extraction"]["extracted_fields"]["total"]["value"]) == 5000.0
 
-
 class TestSearchByTriage:
     def test_likely_duplicate(self, api_client: TestClient) -> None:
-        # Upload same content twice → second flags likely_duplicate
+
         _upload(api_client, "dup-a", "Vendor A", 100.0)
         _upload(api_client, "dup-b", "Vendor B", 100.0)
 
@@ -136,18 +130,14 @@ class TestSearchByTriage:
                 "limit": 50,
             },
         )
-        # The dup-b upload sees dup-a's perceptual hash → flagged. We just
-        # verify the search endpoint correctly filters by triage_state.
+
         body = res.json()
         for inv in body:
             assert inv["current_extraction"]["predicted_triage_state"] == "likely_duplicate"
 
-
 class TestSearchFTS:
     def test_fts_matches_vendor_name(self, api_client: TestClient) -> None:
-        # Use a unique test-only vendor token that won't collide with any
-        # demo-seed data sitting in the dev DB (SAVEPOINT isolation prevents
-        # the test from polluting forward, not backward).
+
         _upload(api_client, "fts-1", "QA SearchVendor VegaToken", 1180.0)
         _upload(api_client, "fts-2", "QA SearchVendor HalcyonToken", 34062.50)
 
@@ -168,7 +158,7 @@ class TestSearchFTS:
 
     def test_fts_contains_substring(self, api_client: TestClient) -> None:
         """`contains` falls back to ILIKE for substring matching."""
-        # Use unique tokens that won't collide with demo/eval seed data
+
         _upload(api_client, "fts-c-1", "QA SearchFTS UniqXyzpdq", 100.0)
         _upload(api_client, "fts-c-2", "QA SearchFTS OtherLmnopq", 100.0)
 
@@ -186,7 +176,6 @@ class TestSearchFTS:
             == "QA SearchFTS UniqXyzpdq"
         )
 
-
 class TestSearchMalformedQuery:
     def test_missing_field_in_clause_422(self, api_client: TestClient) -> None:
         """Body validation by FastAPI/Pydantic — missing required field
@@ -194,7 +183,7 @@ class TestSearchMalformedQuery:
         res = api_client.post(
             "/api/search",
             json={
-                "filters": [{"op": "eq", "value": "x"}],  # no `field`
+                "filters": [{"op": "eq", "value": "x"}],
                 "limit": 50,
             },
         )
@@ -211,7 +200,6 @@ class TestSearchMalformedQuery:
         )
         assert res.status_code == 422
 
-
 class TestSearchExport:
     def test_csv_export_includes_audit_header_and_rows(self, api_client: TestClient) -> None:
         _upload(api_client, "exp-csv-1", "QA Export Vega", 1180.0)
@@ -225,14 +213,14 @@ class TestSearchExport:
         )
         assert res.status_code == 200
         text = res.text
-        # Audit comment lines for round-trip provenance
+
         assert text.startswith("# Sift export")
         assert "# Query:" in text
-        # CSV header row
+
         assert "invoice_id,vendor_name" in text
-        # The single matching row
+
         assert "QA Export Vega" in text
-        # Filename attachment
+
         assert res.headers["content-disposition"].startswith("attachment;")
         assert res.headers["content-type"].startswith("text/csv")
 
@@ -253,7 +241,6 @@ class TestSearchExport:
         assert body["row_count"] == len(body["rows"]) == 1
         assert body["query"]["filters"][0]["field"] == "vendor_name"
         assert body["rows"][0]["vendor_name"] == "QA Export JsonVendor"
-
 
 class TestSearchEmptyQuery:
     def test_empty_filters_returns_everything(self, api_client: TestClient) -> None:

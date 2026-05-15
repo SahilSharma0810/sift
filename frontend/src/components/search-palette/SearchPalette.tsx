@@ -1,16 +1,3 @@
-/**
- * SearchPalette — opens on ⌘K. NL → typed chips → results.
- *
- * Day-4: both translation and result filtering go through the backend
- * (/api/search/translate + /api/search). This keeps a single source of
- * truth — the palette can't disagree with the full /search page on what
- * translates or what matches.
- *
- * "Chips ARE the state" (ADR-0004). Untranslated intent surfaces above
- * results — never silently dropped. Result rows navigate to /invoice/:id;
- * the "Open in full search" footer link deep-links the same chip set
- * into /search?q=... for further refinement.
- */
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
@@ -58,7 +45,6 @@ export function SearchPalette({
     inputRef.current?.select()
   }, [])
 
-  // Debounce typing so we don't translate on every keystroke.
   useEffect(() => {
     const id = setTimeout(() => setDebounced(q.trim()), 240)
     return () => clearTimeout(id)
@@ -97,8 +83,6 @@ export function SearchPalette({
     return { ...translation, filters }
   }, [translation, removedChips])
 
-  // Don't hit /api/search until we have at least one chip — palette doesn't
-  // need to show "everything" on empty input (the inbox screen does that).
   const shouldSearch = effectiveQuery.filters.length > 0
   const { data: results = [], isFetching } = useSearchQuery(
     shouldSearch ? effectiveQuery : { filters: [], limit: 0, untranslated_intent: null },

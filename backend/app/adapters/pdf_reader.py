@@ -10,24 +10,21 @@ import io
 from dataclasses import dataclass
 from pathlib import Path
 
-import fitz  # PyMuPDF
+import fitz
 import imagehash
 from pdf2image import convert_from_path
-
 
 @dataclass(frozen=True, slots=True)
 class WordBox:
     text: str
-    bbox: tuple[float, float, float, float]  # x0, y0, x1, y1
+    bbox: tuple[float, float, float, float]
     page: int
-
 
 @dataclass(frozen=True, slots=True)
 class DigitalRead:
     full_text: str
     words: tuple[WordBox, ...]
     page_count: int
-
 
 def has_text(pdf_path: Path) -> bool:
     """True if the PDF has any extractable text on any page.
@@ -39,7 +36,6 @@ def has_text(pdf_path: Path) -> bool:
             if page.get_text("text").strip():
                 return True
     return False
-
 
 def read_digital(pdf_path: Path) -> DigitalRead:
     """Extract full text + per-word bboxes from a digital PDF.
@@ -71,7 +67,6 @@ def read_digital(pdf_path: Path) -> DigitalRead:
         page_count=page_count,
     )
 
-
 def resolve_bboxes(
     *,
     words: list[WordBox] | tuple[WordBox, ...],
@@ -87,7 +82,6 @@ def resolve_bboxes(
     if not words or page_count <= 0:
         return {}
 
-    # Build a per-page word list and a page-size map (max coords).
     page_words: dict[int, list[WordBox]] = {}
     page_dims: dict[int, tuple[float, float]] = {}
     for w in words:
@@ -113,7 +107,7 @@ def resolve_bboxes(
         y0 = min(w.bbox[1] for w in matched) / dim[1]
         x1 = max(w.bbox[2] for w in matched) / dim[0]
         y1 = max(w.bbox[3] for w in matched) / dim[1]
-        # Clamp to [0, 1] as a safety net against rounding drift.
+
         out[field] = (
             max(0.0, min(1.0, x0)),
             max(0.0, min(1.0, y0)),
@@ -121,7 +115,6 @@ def resolve_bboxes(
             max(0.0, min(1.0, y1)),
         )
     return out
-
 
 def _find_token_run(
     page_words: dict[int, list[WordBox]],
@@ -141,10 +134,8 @@ def _find_token_run(
                 return page_idx, plist[i : i + len(norm_target)]
     return None
 
-
 def _normalize_token(s: str) -> str:
     return s.strip().rstrip(".,:;").lower()
-
 
 def compute_perceptual_hash(pdf_path: Path) -> str:
     """64-bit phash of the first page rendered to a small image.
@@ -155,7 +146,6 @@ def compute_perceptual_hash(pdf_path: Path) -> str:
     if not images:
         raise ValueError(f"no pages rendered from {pdf_path}")
     return str(imagehash.phash(images[0]))
-
 
 def render_page_pngs(pdf_path: Path, *, scale: float = 1.2) -> list[bytes]:
     """Render each page to a PNG byte string. Used by the vision LLM path.

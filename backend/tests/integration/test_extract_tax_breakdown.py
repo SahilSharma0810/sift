@@ -17,7 +17,6 @@ from app.adapters.llm_client import (
     TaxBreakdownResult,
 )
 
-
 def _fake_response(rows: list[dict], model: str = "claude-haiku-4-5") -> MagicMock:
     response = MagicMock()
     block = MagicMock()
@@ -33,7 +32,6 @@ def _fake_response(rows: list[dict], model: str = "claude-haiku-4-5") -> MagicMo
     )
     response.model = model
     return response
-
 
 class TestAnthropicExtractTaxBreakdown:
     def test_happy_path_returns_rows(self) -> None:
@@ -91,7 +89,6 @@ class TestAnthropicExtractTaxBreakdown:
             client = AnthropicLLMClient(api_key="test")
             with pytest.raises(RuntimeError, match="tool call"):
                 client.call(EXTRACT_TAX_BREAKDOWN, model="claude-haiku-4-5", text="x")
-
 
 class TestStubExtractTaxBreakdown:
     def test_default_scenario_returns_vega_two_rows(self) -> None:

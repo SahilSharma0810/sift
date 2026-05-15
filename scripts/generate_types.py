@@ -21,7 +21,6 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "frontend" / "src" / "types" / "generated" / "domain.ts"
 
-
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -33,8 +32,6 @@ def main() -> int:
 
     OUT.parent.mkdir(parents=True, exist_ok=True)
 
-    # We use the `pydantic2ts` CLI which generates a single .ts file from a
-    # Python module path. The module imports all our public domain types.
     cmd = [
         "pydantic2ts",
         "--module",
@@ -44,7 +41,7 @@ def main() -> int:
     ]
 
     if args.check:
-        # Run to a temp file, diff against OUT, exit 1 on diff.
+
         tmp = OUT.with_suffix(".ts.check")
         cmd[-1] = str(tmp)
         subprocess.run(cmd, check=True, cwd=ROOT)
@@ -58,7 +55,6 @@ def main() -> int:
     subprocess.run(cmd, check=True, cwd=ROOT)
     print(f"Wrote {OUT.relative_to(ROOT)}")
     return 0
-
 
 if __name__ == "__main__":
     sys.exit(main())

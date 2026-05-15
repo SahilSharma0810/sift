@@ -29,7 +29,6 @@ import httpx
 DOCILE_ROOT = Path("/Users/lscypher/Workspace/docile/data/docile")
 BASE_URL = "http://localhost:8000"
 
-# Same mapping the smoke script uses
 DOCILE_TO_SIFT = {
     "vendor_name": "vendor_name",
     "document_id": "invoice_number",
@@ -40,7 +39,6 @@ DOCILE_TO_SIFT = {
     "currency_code_amount_due": "currency",
 }
 
-
 def _load_groundtruth(doc_id: str) -> dict[str, str]:
     ann = json.loads((DOCILE_ROOT / "annotations" / f"{doc_id}.json").read_text())
     fields: dict[str, str] = {}
@@ -50,7 +48,6 @@ def _load_groundtruth(doc_id: str) -> dict[str, str]:
             fields.setdefault(DOCILE_TO_SIFT[ft], fe.get("text", ""))
     return fields
 
-
 def _extract_pdf_text(doc_id: str, max_chars: int = 2000) -> str:
     """Pull text from the DocILE OCR (much faster than re-running PyMuPDF)."""
     ocr_path = DOCILE_ROOT / "ocr" / f"{doc_id}.json"
@@ -58,7 +55,7 @@ def _extract_pdf_text(doc_id: str, max_chars: int = 2000) -> str:
         return f"[no ocr file: {ocr_path}]"
     ocr = json.loads(ocr_path.read_text())
     chunks: list[str] = []
-    # DocILE OCR JSON shape: { "pages": [ { "blocks": [ {"text": ...} ] } ] }
+
     for page in ocr.get("pages", []):
         for block in page.get("blocks", []):
             t = block.get("text") or ""
@@ -66,7 +63,6 @@ def _extract_pdf_text(doc_id: str, max_chars: int = 2000) -> str:
                 chunks.append(t.strip())
     joined = " ".join(chunks)
     return joined[:max_chars] + ("..." if len(joined) > max_chars else "")
-
 
 def _find_invoice_by_file_hash(file_hash: str) -> dict[str, Any] | None:
     """Look up an invoice by file hash in the inbox list."""
@@ -76,14 +72,12 @@ def _find_invoice_by_file_hash(file_hash: str) -> dict[str, Any] | None:
             return inv
     return None
 
-
 def _file_hash_for_pdf(doc_id: str) -> str:
     """Compute SHA-256 of the DocILE PDF — same hash the backend uses for dedup."""
     import hashlib
 
     pdf = DOCILE_ROOT / "pdfs" / f"{doc_id}.pdf"
     return hashlib.sha256(pdf.read_bytes()).hexdigest()
-
 
 def _print_invoice_diag(doc_id: str) -> None:
     print("=" * 78)
@@ -151,7 +145,6 @@ def _print_invoice_diag(doc_id: str) -> None:
         print(f"  {match_marker} {sift_field:<18} gt={gt_text!r}")
         print(f"    {'':<18}   got={actual_s!r}")
 
-
 def main() -> int:
     p = argparse.ArgumentParser()
     p.add_argument(
@@ -162,8 +155,8 @@ def main() -> int:
     args = p.parse_args()
 
     failing = [
-        "450aa854ecb548ba956d5707",  # vendor + date errors
-        "04345516ddca4de2a96a22b5",  # total error
+        "450aa854ecb548ba956d5707",
+        "04345516ddca4de2a96a22b5",
     ]
     doc_ids = args.doc_id or failing
 
@@ -172,7 +165,6 @@ def main() -> int:
         print()
 
     return 0
-
 
 if __name__ == "__main__":
     sys.exit(main())

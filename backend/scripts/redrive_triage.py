@@ -33,28 +33,23 @@ from app.domain.triage import derive_triage
 from app.domain.validators import compute_structural_scores
 from app.services.vendor_memory_service import compute_history_scores
 
-
 def _flat_value(field_data):
     """Pull the bare value out of an ExtractedField-shaped dict."""
     if isinstance(field_data, dict) and "value" in field_data:
         return field_data["value"]
     return field_data
 
-
 def _flat_fields(stored_fields: dict) -> dict:
     return {k: _flat_value(v) for k, v in (stored_fields or {}).items()}
 
-
 def _confidence_map(stored: dict) -> dict[str, float]:
     return {k: float(v) for k, v in (stored or {}).items()}
-
 
 def _was_duplicate(reasons: list) -> dict | None:
     for r in reasons or []:
         if r.get("type") == "duplicate_of":
             return r
     return None
-
 
 def _math_passed_from_fields(flat_fields: dict) -> bool:
     from app.domain.validators import math_reconciles
@@ -72,7 +67,6 @@ def _math_passed_from_fields(flat_fields: dict) -> bool:
         tax=_f(flat_fields.get("tax")),
         total=_f(flat_fields.get("total")),
     )
-
 
 def main() -> int:
     p = argparse.ArgumentParser()
@@ -119,10 +113,6 @@ def main() -> int:
                 or not (vendor.memory or {}).get("stats", {}).get("total_seen", 0)
             )
 
-            # Recompute composite confidence from scratch — the stored value
-            # in confidence_per_field was computed with the old structural
-            # scorer (which mishandled null subtotal/tax). We need fresh
-            # scores to see the effect of the calibration fix.
             structural = compute_structural_scores(flat)
             history = compute_history_scores(vendor=vendor, fields=flat)
             confidence = compute_composite_confidence(structural, history=history)
@@ -169,7 +159,6 @@ def main() -> int:
         session.close()
 
     return 0
-
 
 if __name__ == "__main__":
     sys.exit(main())

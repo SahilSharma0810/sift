@@ -1,11 +1,3 @@
-/**
- * ReasonCard — generic dispatch component that renders any TriageReason
- * through the REASON_SPECS registry.
- *
- * The card body (icon + title + detail) and the clerk action buttons all
- * come from one registry entry per reason type. Adding a new reason type
- * is one entry in registry.tsx — no edits here.
- */
 import { Btn } from '@/components/primitives/Btn'
 import type { TriageReason } from '@/types/generated/domain'
 
@@ -19,9 +11,7 @@ export function ReasonCard({
   reason: TriageReason
   ctx: ReasonActionContext
 }) {
-  // The registry is keyed by reason.type; the cast is the dispatch step
-  // that swaps the union for the narrowed variant. Inside the spec body
-  // everything is fully typed.
+
   const spec = REASON_SPECS[reason.type] as unknown as ReasonSpec<TriageReason>
   if (!spec) return null
 

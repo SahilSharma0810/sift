@@ -65,12 +65,10 @@ from app.services import cascade
 
 log = structlog.get_logger(__name__)
 
-
 @dataclass(frozen=True, slots=True)
 class ExtractResult:
     invoice: Invoice
     extraction: Extraction
-
 
 def _hash_file(path: Path) -> str:
     """SHA-256 of file bytes — chunked 64KB to avoid memory spikes on large scans."""
@@ -80,18 +78,15 @@ def _hash_file(path: Path) -> str:
             h.update(chunk)
     return h.hexdigest()
 
-
 def _normalize_value(field_value: Any) -> Any:
     """Vision-path values come as {"value": ..., "bbox": ...}; text-path values are bare."""
     if isinstance(field_value, dict) and "value" in field_value:
         return field_value["value"]
     return field_value
 
-
 def _flat_fields(raw: dict[str, Any]) -> dict[str, Any]:
     """Strip out the wrapper dicts to get a flat field-name → value mapping."""
     return {k: _normalize_value(v) for k, v in raw.items()}
-
 
 def _get_or_create_invoice(
     session: Session,
@@ -111,7 +106,6 @@ def _get_or_create_invoice(
         vendor_id=vendor_id,
         perceptual_hash=perceptual_hash,
     )
-
 
 def _extract_line_items_if_digital(
     *,
@@ -151,7 +145,6 @@ def _extract_line_items_if_digital(
         )
     return items
 
-
 def _extract_tax_breakdown_if_digital(
     *,
     llm: LLMClient,
@@ -190,7 +183,6 @@ def _extract_tax_breakdown_if_digital(
         )
     return rows
 
-
 def _build_extracted_fields_shape(
     *,
     fields: dict[str, Any],
@@ -224,7 +216,6 @@ def _build_extracted_fields_shape(
         }
     return out
 
-
 def _tier_for_model(model: str, settings) -> str:
     """Map a model name to the logical cascade tier label.
 
@@ -242,7 +233,6 @@ def _tier_for_model(model: str, settings) -> str:
         return "opus"
     return "haiku"
 
-
 def _detect_duplicate(
     session: Session,
     *,
@@ -258,7 +248,7 @@ def _detect_duplicate(
     content_match_id = None
     content_match_phash_dist: int | None = None
     for cand in candidates:
-        # Skip the invoice being processed — self-match is not a duplicate.
+
         if exclude_invoice_id is not None and cand.id == exclude_invoice_id:
             continue
         is_content_match = cand.file_hash == file_hash
@@ -271,10 +261,7 @@ def _detect_duplicate(
         except Exception:
             continue
         if is_content_match:
-            # Track the phash distance ONLY against the content-match candidate.
-            # Sharing best_dist (computed against any candidate) would misclassify
-            # "both" when the visually-closest candidate is a different invoice
-            # than the file_hash match.
+
             content_match_phash_dist = dist
         if best_dist is None or dist < best_dist:
             best_dist = dist
@@ -306,7 +293,6 @@ def _detect_duplicate(
 
     return None
 
-
 def extract_from_pdf(
     session: Session,
     *,
@@ -326,7 +312,6 @@ def extract_from_pdf(
                 log.info("extraction.dedup_hit", invoice_id=str(existing.id))
                 return ExtractResult(invoice=existing, extraction=current)
 
-    # Path branch
     use_vision = not has_text(pdf_path)
     llm: LLMClient = make_llm_client(settings)
 
@@ -343,12 +328,9 @@ def extract_from_pdf(
         invoice_text = digital.full_text
         initial_model = force_tier or settings.model_tier_1
         initial_result = llm.call(EXTRACT_HEADER, model=initial_model, text=invoice_text)
-    # `initial_tier` is the LOGICAL label that the cascade module reads
-    # to decide what to escalate to. We derive it from the actual model
-    # used so a clerk-forced tier flows correctly into cascade routing.
+
     initial_tier = _tier_for_model(initial_model, settings)
 
-    # Extraction_failed short-circuit
     if initial_result.extraction_failed:
         log.warning(
             "extraction.llm_reported_failure",
@@ -398,8 +380,6 @@ def extract_from_pdf(
         session.commit()
         return ExtractResult(invoice=invoice, extraction=extraction)
 
-    # Pre-cascade signal: one call to the Composite Confidence module
-    # gives composite + math_passed + per-field provenance trace.
     fields_flat = _flat_fields(initial_result.fields)
     vendor_name = fields_flat.get("vendor_name") or "Unknown"
     vendor = vendor_repo.upsert_by_normalized_name(session, name=str(vendor_name))
@@ -410,10 +390,6 @@ def extract_from_pdf(
     )
     is_unseen = bool(vendor.memory == {} or not vendor.memory.get("stats", {}).get("total_seen", 0))
 
-    # Cascade. `force_escalate=True` when the clerk explicitly forced a
-    # tier (Cmd+K) — cascade still runs the discipline above that tier
-    # rather than bypassing it, per ADR-0006's "cascade is real and
-    # controllable" depth signal.
     cascade_result = cascade.run_cascade(
         llm=llm,
         initial=initial_result,
@@ -431,8 +407,6 @@ def extract_from_pdf(
     cascade_trace_tiers = cascade_result.trace_tiers_dicts
     per_field_source = cascade_result.per_field_source
 
-    # Recompute confidence on cascade-final fields with agreement overrides
-    # folded in. No-op cost when no escalation happened.
     report = confidence.compute_confidence(
         extracted_fields=final_fields,
         vendor_stats=vendor_stats,
@@ -441,7 +415,6 @@ def extract_from_pdf(
     composite = report.composite
     math_ok = report.math_passed
 
-    # Bboxes
     bboxes_resolved: dict[str, tuple[float, float, float, float]] = {}
     if not use_vision and digital is not None:
         bboxes_resolved = resolve_bboxes(
@@ -458,7 +431,6 @@ def extract_from_pdf(
         per_field_source=per_field_source,
     )
 
-    # Perceptual hash + duplicate detection
     try:
         phash = compute_perceptual_hash(pdf_path)
     except Exception:
@@ -482,7 +454,6 @@ def extract_from_pdf(
             exclude_invoice_id=invoice.id,
         )
 
-    # Anomaly detection (skipped if duplicate)
     anomalies: list[dict[str, Any]] = []
     if duplicate_of is None:
         stats = (vendor.memory or {}).get("stats", {}) or {}
@@ -497,10 +468,6 @@ def extract_from_pdf(
         anomalies=anomalies,
     )
 
-    # Line items + tax breakdown — Days 3 / 4. Both quality-gated: sum
-    # mismatches are logged but do NOT alter triage. Vision path returns []
-    # for both. Cascade-final model tier is used so the most-capable model
-    # the cascade reached drives both extractions.
     final_model_tier = cascade_trace_tiers[-1]["model"]
     line_items_raw = _extract_line_items_if_digital(
         llm=llm,
@@ -538,7 +505,6 @@ def extract_from_pdf(
         n_tiers=len(cascade_trace_tiers),
     )
     return ExtractResult(invoice=invoice, extraction=extraction)
-
 
 """Pipeline ends here. Clerk-initiated Triage State transitions
 (`confirm_invoice`, `dismiss_duplicate`, `mark_unprocessable`,

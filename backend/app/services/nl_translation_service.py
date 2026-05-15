@@ -26,7 +26,6 @@ if TYPE_CHECKING:
 
 log = structlog.get_logger(__name__)
 
-
 class TranslationError(ValueError):
     """Raised when the LLM emits a payload that doesn't validate as a
     StructuredQuery. Carries the raw payload + the validation error so the
@@ -37,7 +36,6 @@ class TranslationError(ValueError):
         super().__init__(message)
         self.raw_payload = raw_payload
         self.errors = errors
-
 
 def translate(
     *,

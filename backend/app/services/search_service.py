@@ -40,14 +40,9 @@ from app.domain.nl_schema import FilterClause, StructuredQuery
 
 log = structlog.get_logger(__name__)
 
-
-# ---------- Per-field SQLAlchemy expression builders ----------
-
-
 def _ef_value(field_name: str):
     """JSONB path: extracted_fields -> field_name ->> value (text)."""
     return Extraction.extracted_fields[field_name]["value"].astext
-
 
 def _build_numeric_clause(field_json_key: str, op: str, value: Any) -> ColumnElement[bool]:
     """Cast the JSONB text value to NUMERIC for amount comparisons."""
@@ -71,7 +66,6 @@ def _build_numeric_clause(field_json_key: str, op: str, value: Any) -> ColumnEle
         return and_(casted >= lo, casted <= hi)
     raise ValueError(f"unsupported numeric op: {op}")
 
-
 def _build_text_clause(json_key: str, op: str, value: Any) -> ColumnElement[bool]:
     col = _ef_value(json_key)
     if op == "eq":
@@ -84,14 +78,12 @@ def _build_text_clause(json_key: str, op: str, value: Any) -> ColumnElement[bool
         return col.ilike(f"%{value}%")
     raise ValueError(f"unsupported text op: {op}")
 
-
 def _parse_date(v: Any) -> date:
     if isinstance(v, date):
         return v
     if isinstance(v, str):
         return datetime.fromisoformat(v).date()
     raise ValueError(f"cannot parse date from {v!r}")
-
 
 def _build_date_clause(json_key: str, op: str, value: Any) -> ColumnElement[bool]:
     """invoice_date is stored as a string per the extraction shape; we cast it
@@ -118,20 +110,17 @@ def _build_date_clause(json_key: str, op: str, value: Any) -> ColumnElement[bool
         return and_(casted >= _parse_date(lo), casted <= _parse_date(hi))
     raise ValueError(f"unsupported date op: {op}")
 
-
 def _build_has_anomaly_clause(value: Any) -> ColumnElement[bool]:
     """Anomaly triage reason — JSONB contains check."""
     truthy = bool(value)
     expr = Extraction.predicted_triage_reasons.contains([{"type": "anomaly"}])
     return expr if truthy else ~expr
 
-
 def _build_is_duplicate_clause(value: Any) -> ColumnElement[bool]:
     truthy = bool(value)
     if truthy:
         return Extraction.predicted_triage_state == "likely_duplicate"
     return Extraction.predicted_triage_state != "likely_duplicate"
-
 
 def _build_raw_text_clause(op: str, value: Any) -> ColumnElement[bool]:
     """FTS via the generated tsvector column. `fts_matches` uses
@@ -144,7 +133,6 @@ def _build_raw_text_clause(op: str, value: Any) -> ColumnElement[bool]:
     if op == "contains":
         return Extraction.raw_text.ilike(f"%{value}%")
     raise ValueError(f"unsupported raw_text op: {op}")
-
 
 def _build_clause(clause: FilterClause) -> ColumnElement[bool]:
     f = clause.field
@@ -203,7 +191,6 @@ def _build_clause(clause: FilterClause) -> ColumnElement[bool]:
 
     raise ValueError(f"unsupported field/op combination: {f}/{op}")
 
-
 def _sortable_column(name: str):
     if name == "vendor_name":
         return Vendor.name
@@ -222,10 +209,6 @@ def _sortable_column(name: str):
 
         return cast(_ef_value("tax"), Numeric)
     raise ValueError(f"not a sortable column: {name}")
-
-
-# ---------- Public API ----------
-
 
 def run_query(session: Session, *, query: StructuredQuery) -> list[InvoiceOut]:
     """Execute a validated StructuredQuery and return matching InvoiceOut DTOs.
@@ -248,7 +231,6 @@ def run_query(session: Session, *, query: StructuredQuery) -> list[InvoiceOut]:
     if where_clauses:
         stmt = stmt.where(and_(*where_clauses))
 
-    # Sort
     if query.sort is not None:
         col = _sortable_column(query.sort[0])
         stmt = stmt.order_by(col.asc() if query.sort[1] == "asc" else col.desc())

@@ -22,7 +22,6 @@ from app.adapters.pdf_reader import (
 FIXTURES = Path(__file__).parents[1] / "fixtures"
 CLEAN_PDF = FIXTURES / "digital_invoice_clean.pdf"
 
-
 @pytest.mark.skipif(not CLEAN_PDF.exists(), reason="run generate_clean.py first")
 class TestPdfReader:
     def test_has_text_on_digital(self) -> None:
@@ -37,14 +36,13 @@ class TestPdfReader:
 
     def test_read_digital_returns_word_boxes(self) -> None:
         result = read_digital(CLEAN_PDF)
-        # At least one word box for "Vega"
+
         vega_boxes = [w for w in result.words if w.text == "Vega"]
         assert len(vega_boxes) >= 1
         box = vega_boxes[0]
-        assert box.bbox[0] < box.bbox[2]  # x0 < x1
-        assert box.bbox[1] < box.bbox[3]  # y0 < y1
+        assert box.bbox[0] < box.bbox[2]
+        assert box.bbox[1] < box.bbox[3]
         assert box.page == 0
-
 
 @pytest.mark.skipif(not CLEAN_PDF.exists(), reason="run generate_clean.py first")
 class TestResolveBboxes:
@@ -57,7 +55,7 @@ class TestResolveBboxes:
         )
         assert "vendor_name" in bboxes
         x0, y0, x1, y1 = bboxes["vendor_name"]
-        # Normalized 0-1
+
         assert 0.0 <= x0 < x1 <= 1.0
         assert 0.0 <= y0 < y1 <= 1.0
 
@@ -77,22 +75,20 @@ class TestResolveBboxes:
             page_count=result.page_count,
             extracted={"vendor_name": "Vega Logistics", "invoice_number": "INV-2026-0042"},
         )
-        # Both fields should resolve
+
         assert "vendor_name" in bboxes
         assert "invoice_number" in bboxes
-
 
 def test_has_text_on_image_only(tmp_path: Path) -> None:
     """Branch logic for path selection — image-only PDF must return False."""
     import fitz
 
     doc = fitz.open()
-    doc.new_page()  # blank page, no text layer
+    doc.new_page()
     out = tmp_path / "blank.pdf"
     doc.save(str(out))
     doc.close()
     assert has_text(out) is False
-
 
 @pytest.mark.skipif(not CLEAN_PDF.exists(), reason="run generate_clean.py first")
 class TestPerceptualHash:
@@ -100,16 +96,15 @@ class TestPerceptualHash:
         h = compute_perceptual_hash(CLEAN_PDF)
         assert isinstance(h, str)
         assert len(h) == 16
-        int(h, 16)  # parses as hex
+        int(h, 16)
 
     def test_same_pdf_same_hash(self) -> None:
         assert compute_perceptual_hash(CLEAN_PDF) == compute_perceptual_hash(CLEAN_PDF)
-
 
 @pytest.mark.skipif(not CLEAN_PDF.exists(), reason="run generate_clean.py first")
 class TestRenderPagePngs:
     def test_renders_at_least_one_page(self, tmp_path) -> None:
         pages = render_page_pngs(CLEAN_PDF, scale=1.2)
         assert len(pages) >= 1
-        # Each entry is raw PNG bytes
+
         assert pages[0][:8] == b"\x89PNG\r\n\x1a\n"

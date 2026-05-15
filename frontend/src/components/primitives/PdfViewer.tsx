@@ -1,25 +1,15 @@
 import { useEffect, useRef } from 'react'
 import * as pdfjs from 'pdfjs-dist'
 
-// Configure worker URL — Vite resolves the module URL at build time.
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
 
 pdfjs.GlobalWorkerOptions.workerSrc = workerUrl
 
 export type BboxRect = {
   name: string
-  bbox: [number, number, number, number] // normalized 0-1
+  bbox: [number, number, number, number]
 }
 
-/**
- * PdfViewer — renders page 1 of a PDF on a canvas, with optional bbox overlay
- * rectangles positioned in normalized 0-1 space relative to the canvas itself
- * (NOT the parent — that was the Day-1 misalignment).
- *
- * Day-2: bboxes render as a sibling absolute overlay div sized to wrap the
- * canvas exactly. The overlay's pointer-events allow hover-to-highlight via
- * the `data-active` attribute (CSS in styles/sift.css handles the look).
- */
 export function PdfViewer({
   src,
   bboxes = [],
@@ -36,8 +26,7 @@ export function PdfViewer({
   useEffect(() => {
     if (!stageRef.current) return
     const stage = stageRef.current
-    // Remove any prior canvas — overlay div is recreated each render so we
-    // only clear the canvas, not the overlay (which React manages).
+
     stage.querySelectorAll('canvas').forEach((c) => c.remove())
     let cancelled = false
 

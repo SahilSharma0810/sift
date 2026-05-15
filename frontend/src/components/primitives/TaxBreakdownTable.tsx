@@ -1,15 +1,3 @@
-/**
- * TaxBreakdownTable — read-mode table of per-jurisdiction tax rows.
- *
- * Day-4 ships display-only, mirroring LineItemsTable. Editing + bbox-hover
- * return only if the Day-5 anthropic-mode eval shows the extraction is
- * reliable enough to keep in the demo (PLAN.md Day-4 gate).
- *
- * Empty state covers three cases identically for now:
- *   - Invoice has only a header-level tax line (no breakdown to show)
- *   - Vision path (Day-4 returns [] on vision)
- *   - Extraction failed at the document level
- */
 import type { TaxBreakdownLine } from '@/types/generated/domain'
 import { formatNumber } from '@/utils/format'
 

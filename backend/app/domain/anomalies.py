@@ -8,17 +8,11 @@ from __future__ import annotations
 
 from typing import Any
 
-# Field set checked for anomalies in Day 2. `subtotal` and `tax` are not
-# checked because they're typically scale-coupled to `total` — a 3-sigma total
-# anomaly already implies anomalous subtotal/tax. Day-3+ may extend.
 ANOMALY_FIELDS = ("total",)
 
-# Need at least this many prior extractions before Z-score is meaningful.
 MIN_VENDOR_HISTORY = 3
 
-# Trigger threshold — values outside ±Z_THRESHOLD sigma are anomalies.
 Z_THRESHOLD = 3.0
-
 
 def detect_anomalies(
     *,

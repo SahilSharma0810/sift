@@ -31,7 +31,6 @@ SessionLocal = sessionmaker(
     class_=Session,
 )
 
-
 def get_session() -> Generator[Session, None, None]:
     """FastAPI-friendly session dependency."""
     db = SessionLocal()

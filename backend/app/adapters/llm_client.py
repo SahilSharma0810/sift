@@ -53,10 +53,6 @@ from app.prompts import LoadedPrompt, load
 
 log = structlog.get_logger(__name__)
 
-
-# ---------- Result dataclasses -----------------------------------------------
-
-
 @dataclass(frozen=True, slots=True)
 class ExtractionResult:
     fields: dict[str, Any]
@@ -67,7 +63,6 @@ class ExtractionResult:
     prompt_hash: str
     schema_hash: str
     usage: dict[str, int]
-
 
 @dataclass(frozen=True, slots=True)
 class LineItemsResult:
@@ -83,7 +78,6 @@ class LineItemsResult:
     prompt_hash: str
     schema_hash: str
     usage: dict[str, int]
-
 
 @dataclass(frozen=True, slots=True)
 class StructuredQueryResult:
@@ -102,7 +96,6 @@ class StructuredQueryResult:
     schema_hash: str
     usage: dict[str, int]
 
-
 @dataclass(frozen=True, slots=True)
 class TaxBreakdownResult:
     """Output of the tax-breakdown spec — list of raw per-jurisdiction rows.
@@ -117,16 +110,9 @@ class TaxBreakdownResult:
     schema_hash: str
     usage: dict[str, int]
 
-
-# ---------- ExtractionSpec ---------------------------------------------------
-
-
 T = TypeVar("T")
 
-# Default token budget for a single extraction. Header / line-items / tax
-# rows all fit. Bump on a per-spec basis when a future schema needs more.
 _DEFAULT_MAX_TOKENS = 1024
-
 
 @dataclass(frozen=True, slots=True)
 class _CallContext:
@@ -136,7 +122,6 @@ class _CallContext:
     prompt_hash: str
     schema_hash: str
     usage: dict[str, int]
-
 
 @dataclass(frozen=True, slots=True)
 class ExtractionSpec(Generic[T]):
@@ -153,10 +138,6 @@ class ExtractionSpec(Generic[T]):
     parser: Callable[[dict[str, Any], _CallContext], T]
     max_tokens: int = _DEFAULT_MAX_TOKENS
 
-
-# ---------- Result parsers ---------------------------------------------------
-
-
 def _parse_header_text(tool_input: dict[str, Any], ctx: _CallContext) -> ExtractionResult:
     """Text-path header: confidence + extraction_failed are top-level keys."""
     confidence = tool_input.pop("confidence", {}) or {}
@@ -172,7 +153,6 @@ def _parse_header_text(tool_input: dict[str, Any], ctx: _CallContext) -> Extract
         schema_hash=ctx.schema_hash,
         usage=ctx.usage,
     )
-
 
 def _parse_header_vision(tool_input: dict[str, Any], ctx: _CallContext) -> ExtractionResult:
     """Vision-path header: per-field {value, bbox, page, confidence} dicts.
@@ -199,7 +179,6 @@ def _parse_header_vision(tool_input: dict[str, Any], ctx: _CallContext) -> Extra
         usage=ctx.usage,
     )
 
-
 def _parse_line_items(tool_input: dict[str, Any], ctx: _CallContext) -> LineItemsResult:
     return LineItemsResult(
         items=list(tool_input.get("items") or []),
@@ -209,7 +188,6 @@ def _parse_line_items(tool_input: dict[str, Any], ctx: _CallContext) -> LineItem
         usage=ctx.usage,
     )
 
-
 def _parse_tax_breakdown(tool_input: dict[str, Any], ctx: _CallContext) -> TaxBreakdownResult:
     return TaxBreakdownResult(
         rows=list(tool_input.get("rows") or []),
@@ -218,7 +196,6 @@ def _parse_tax_breakdown(tool_input: dict[str, Any], ctx: _CallContext) -> TaxBr
         schema_hash=ctx.schema_hash,
         usage=ctx.usage,
     )
-
 
 def _parse_structured_query(
     tool_input: dict[str, Any], ctx: _CallContext
@@ -230,10 +207,6 @@ def _parse_structured_query(
         schema_hash=ctx.schema_hash,
         usage=ctx.usage,
     )
-
-
-# ---------- Spec constants ---------------------------------------------------
-
 
 EXTRACT_HEADER: ExtractionSpec[ExtractionResult] = ExtractionSpec(
     name="header",
@@ -270,10 +243,6 @@ EXTRACT_STRUCTURED_QUERY: ExtractionSpec[StructuredQueryResult] = ExtractionSpec
     parser=_parse_structured_query,
 )
 
-
-# ---------- LLMClient Protocol -----------------------------------------------
-
-
 class LLMClient(Protocol):
     """Single-method seam: dispatch on ExtractionSpec for any extraction."""
 
@@ -286,10 +255,6 @@ class LLMClient(Protocol):
         page_pngs: list[bytes] | None = None,
     ) -> T: ...
 
-
-# ---------- Anthropic implementation -----------------------------------------
-
-
 def _is_transient_error(exc: BaseException) -> bool:
     """True for retryable Anthropic errors per ADR-0006: timeout, 429, 5xx."""
     if isinstance(exc, (APITimeoutError, APIConnectionError, RateLimitError)):
@@ -298,14 +263,12 @@ def _is_transient_error(exc: BaseException) -> bool:
         return 500 <= exc.status_code < 600
     return False
 
-
 _retry_decorator = retry(
     retry=retry_if_exception(_is_transient_error),
     stop=stop_after_attempt(3),
     wait=wait_exponential(multiplier=1, min=1, max=8),
     reraise=True,
 )
-
 
 class AnthropicLLMClient:
     """Anthropic SDK-backed implementation of LLMClient.
@@ -386,7 +349,7 @@ class AnthropicLLMClient:
         tool_input: dict[str, Any] | None = None
         for block in response.content:
             if getattr(block, "type", None) == "tool_use" and block.name == tool["name"]:
-                tool_input = dict(block.input)  # detach from SDK before mutation
+                tool_input = dict(block.input)
                 break
         if tool_input is None:
             raise RuntimeError(f"LLM did not emit the {tool['name']} tool call")
@@ -413,7 +376,6 @@ class AnthropicLLMClient:
         )
         return spec.parser(tool_input, ctx)
 
-
 def _build_vision_user_content(page_pngs: list[bytes]) -> list[dict[str, Any]]:
     """Vision content: one image block per PNG plus a trailing instruction."""
     blocks: list[dict[str, Any]] = []
@@ -431,14 +393,9 @@ def _build_vision_user_content(page_pngs: list[bytes]) -> list[dict[str, Any]]:
     blocks.append({"type": "text", "text": "Extract the header fields."})
     return blocks
 
-
-# ---------- Stub implementation (offline / demo) -----------------------------
-
-
 _SEED_VENDOR_RE = re.compile(r"\[seed-vendor:([^\]]+)\]")
 _SEED_TOTAL_RE = re.compile(r"\[seed-total:([\d.]+)\]")
 _SEED_NUMBER_RE = re.compile(r"\[seed-number:([^\]]+)\]")
-
 
 class StubLLMClient:
     """Deterministic offline LLM stub.
@@ -605,8 +562,6 @@ class StubLLMClient:
             return self._stub_structured_query(natural_language=text, model=model)  # type: ignore[return-value]
         raise ValueError(f"StubLLMClient: unknown spec name {spec.name!r}")
 
-    # ---- scripted scenario producers ----
-
     def _stub_header(self, *, text: str, model: str) -> ExtractionResult:
         if self._is_failure_trigger(text):
             return self._failure_result(model=model, vision=False)
@@ -731,8 +686,6 @@ class StubLLMClient:
             usage=_stub_usage(),
         )
 
-    # ---- helpers ----
-
     @staticmethod
     def _is_failure_trigger(text: str) -> bool:
         lower = text.lower()
@@ -767,10 +720,7 @@ class StubLLMClient:
 
     @staticmethod
     def _build_fields(scenario: dict[str, Any], *, model: str, seed: str) -> dict[str, Any]:
-        # Tier-1 (haiku) returns a total off by $1 vs tier-2+. The cascade
-        # then triggers (math doesn't reconcile), sonnet/opus return the
-        # correct total, agreement_score moves the disputed field to 0.3,
-        # and the demo gets a real cascade trace + agreement-override.
+
         is_tier_1 = "haiku" in model.lower()
         total = scenario["total_tier1"] if is_tier_1 else scenario["total_tier2"]
         return {
@@ -782,7 +732,6 @@ class StubLLMClient:
             "total": total,
             "currency": scenario["currency"],
         }
-
 
 def _apply_seed_overrides(fields: dict[str, Any], invoice_text: str, *, model: str) -> None:
     """Apply seed-script markers found in invoice_text in-place.
@@ -806,7 +755,6 @@ def _apply_seed_overrides(fields: dict[str, Any], invoice_text: str, *, model: s
         fields["subtotal"] = round(base * 0.85, 2)
         fields["tax"] = round(base - base * 0.85, 2)
 
-
 _NL_AMOUNT_RE = re.compile(
     r"(?:over|above|greater than|more than|>=|>)\s*\$?\s*([\d,]+(?:\.\d+)?)",
     re.IGNORECASE,
@@ -819,7 +767,6 @@ _NL_VENDOR_RE = re.compile(
     r"\bfrom\s+(?:vendor\s+)?([A-Z][\w&.'\- ]{2,30})",
     re.IGNORECASE,
 )
-
 
 def _stub_translate_nl(natural_language: str) -> dict[str, Any]:
     """Deterministic NL -> StructuredQuery payload for the stub provider.
@@ -926,7 +873,6 @@ def _stub_translate_nl(natural_language: str) -> dict[str, Any]:
         "untranslated_intent": cleaned or None,
     }
 
-
 def _stub_usage() -> dict[str, int]:
     return {
         "input_tokens": 0,
@@ -934,10 +880,6 @@ def _stub_usage() -> dict[str, int]:
         "cache_creation_input_tokens": 0,
         "cache_read_input_tokens": 0,
     }
-
-
-# ---------- Factory ----------------------------------------------------------
-
 
 def make_llm_client(settings: Settings) -> LLMClient:
     """Pick the LLMClient impl based on Settings.llm_provider.

@@ -21,7 +21,6 @@ from app.adapters.llm_client import ExtractionResult
 from app.config import Settings
 from app.services.cascade import CascadeResult, run_cascade
 
-
 def _result(
     *,
     fields: dict[str, Any] | None = None,
@@ -45,7 +44,6 @@ def _result(
         },
     )
 
-
 CONFIDENT_FIELDS = {
     "vendor_name": "Vega Logistics",
     "invoice_number": "INV-2026-0042",
@@ -56,16 +54,13 @@ CONFIDENT_FIELDS = {
     "currency": "USD",
 }
 
-
 @pytest.fixture
 def settings() -> Settings:
     return Settings()
 
-
 @pytest.fixture
 def stub_llm() -> MagicMock:
     return MagicMock()
-
 
 class TestNoFire:
     def test_no_fire_returns_single_tier_result(
@@ -94,7 +89,6 @@ class TestNoFire:
         assert all(s == "haiku" for s in result.per_field_source.values())
         stub_llm.call.assert_not_called()
 
-
 class TestHaikuToSonnet:
     def test_agreement_no_escalation_to_opus(
         self, stub_llm: MagicMock, settings: Settings
@@ -111,7 +105,7 @@ class TestHaikuToSonnet:
             invoice_text="invoice text...",
             page_pngs=None,
             settings=settings,
-            composite_confidence={"total": 0.5},  # forces trigger
+            composite_confidence={"total": 0.5},
             math_passed=True,
             is_unseen_vendor=False,
         )
@@ -119,7 +113,7 @@ class TestHaikuToSonnet:
         assert result.cascade_fired is True
         assert len(result.tier_traces) == 2
         assert result.tier_traces[1].model == "claude-sonnet-4-6"
-        # All agreement scores 1.0 -> no field disputed, source stays Haiku.
+
         assert all(s == 1.0 for s in result.agreement_overrides.values())
         assert all(src == "haiku" for src in result.per_field_source.values())
         stub_llm.call.assert_called_once()
@@ -151,9 +145,8 @@ class TestHaikuToSonnet:
         assert len(result.tier_traces) == 3
         assert result.final_fields["total"] == 1200.0
         assert result.per_field_source["total"] == "opus"
-        # Two-of-three consensus: Sonnet's value matched Opus -> dispute lifted to 1.0.
-        assert result.agreement_overrides["total"] == 1.0
 
+        assert result.agreement_overrides["total"] == 1.0
 
 class TestSameErrorBlindSpot:
     def test_math_fail_after_sonnet_forces_total_to_opus(
@@ -161,11 +154,11 @@ class TestSameErrorBlindSpot:
     ) -> None:
         """Both Haiku and Sonnet agree on `total` but math doesn't reconcile.
         ADR-0003 same-error blind spot: force `total` to Opus."""
-        # Haiku and Sonnet both say total=$1200 but subtotal+tax=$1180. Math fails.
-        broken_math = {**CONFIDENT_FIELDS, "total": 1200.0}  # 1000 + 180 != 1200
+
+        broken_math = {**CONFIDENT_FIELDS, "total": 1200.0}
         haiku = _result(fields=broken_math, model="claude-haiku-4-5")
         sonnet = _result(fields=broken_math, model="claude-sonnet-4-6")
-        # Opus catches the right total ($1180).
+
         opus_fields = {**CONFIDENT_FIELDS, "total": 1180.0}
         opus = _result(fields=opus_fields, model="claude-opus-4-7")
         stub_llm.call.side_effect = [sonnet, opus]
@@ -178,15 +171,14 @@ class TestSameErrorBlindSpot:
             page_pngs=None,
             settings=settings,
             composite_confidence={"total": 0.5},
-            math_passed=False,  # Haiku already failed math
+            math_passed=False,
             is_unseen_vendor=False,
         )
 
         assert result.cascade_fired is True
-        assert len(result.tier_traces) == 3  # Opus ran despite Haiku=Sonnet agreement
+        assert len(result.tier_traces) == 3
         assert result.final_fields["total"] == 1180.0
         assert result.per_field_source["total"] == "opus"
-
 
 class TestVisionPath:
     def test_vision_no_inner_trigger_skips_opus(
@@ -209,7 +201,7 @@ class TestVisionPath:
             settings=settings,
             composite_confidence={"total": 0.85},
             math_passed=True,
-            is_unseen_vendor=True,  # outer trigger ON
+            is_unseen_vendor=True,
         )
 
         assert result.cascade_fired is False
@@ -244,7 +236,6 @@ class TestVisionPath:
         assert len(result.tier_traces) == 2
         stub_llm.call.assert_called_once()
 
-
 class TestForceEscalate:
     def test_force_escalate_on_confident_initial_still_runs_cascade(
         self, stub_llm: MagicMock, settings: Settings
@@ -252,8 +243,7 @@ class TestForceEscalate:
         """Clerk forces Sonnet on a digital invoice the auto-pipeline would
         consider confident. Cascade module runs anyway and adds Opus
         agreement-scoring discipline - same quality posture as auto-cascade."""
-        # initial_tier="sonnet" means the initial extraction was already at Sonnet
-        # (force_tier="sonnet" on the digital path). Cascade now compares to Opus.
+
         sonnet_initial = _result(fields=CONFIDENT_FIELDS, model="claude-sonnet-4-6")
         opus = _result(fields=CONFIDENT_FIELDS, model="claude-opus-4-7")
         stub_llm.call.return_value = opus
@@ -262,10 +252,10 @@ class TestForceEscalate:
             llm=stub_llm,
             initial=sonnet_initial,
             initial_tier="sonnet",
-            invoice_text="...",  # digital path
+            invoice_text="...",
             page_pngs=None,
             settings=settings,
-            composite_confidence={"total": 0.95},  # would NOT fire auto-trigger
+            composite_confidence={"total": 0.95},
             math_passed=True,
             is_unseen_vendor=False,
             force_escalate=True,
@@ -297,7 +287,6 @@ class TestForceEscalate:
         assert result.cascade_fired is False
         assert len(result.tier_traces) == 1
         stub_llm.call.assert_not_called()
-
 
 class TestCascadeResultShape:
     def test_trace_tiers_dicts_round_trip(

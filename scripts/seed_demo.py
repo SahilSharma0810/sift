@@ -11,13 +11,11 @@ Day 5 expands it to the full 25-slot table.
 
 from __future__ import annotations
 
-
 def main() -> None:
     raise NotImplementedError(
         "The runnable seed lives at backend/scripts/seed_demo.py. "
         "Run `make seed-demo`."
     )
-
 
 if __name__ == "__main__":
     main()

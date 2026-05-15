@@ -1,10 +1,17 @@
-/* Sift styles — entry point loads:
-   1. The design system (sift.css) — ported verbatim from the Claude Design export
-   2. Tailwind utilities (used sparingly for layout-only utilities)
-
-   @import must come before @tailwind per CSS spec.
-*/
-
 @import './styles/sift.css';
 
 @tailwind utilities;
+
+*,
+::before,
+::after {
+  --tw-translate-x: 0;
+  --tw-translate-y: 0;
+  --tw-rotate: 0;
+  --tw-skew-x: 0;
+  --tw-skew-y: 0;
+  --tw-scale-x: 1;
+  --tw-scale-y: 1;
+  border-width: 0;
+  border-style: solid;
+}

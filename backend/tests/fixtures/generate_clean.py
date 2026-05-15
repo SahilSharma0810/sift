@@ -9,7 +9,6 @@ from reportlab.pdfgen import canvas
 
 OUT = Path(__file__).with_name("digital_invoice_clean.pdf")
 
-
 def main() -> None:
     c = canvas.Canvas(str(OUT), pagesize=letter)
     c.setFont("Helvetica-Bold", 16)
@@ -24,7 +23,6 @@ def main() -> None:
     c.drawString(72, 500, "Total: USD 1,180.00")
     c.save()
     print(f"Wrote {OUT}")
-
 
 if __name__ == "__main__":
     main()

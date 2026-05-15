@@ -23,7 +23,6 @@ from sqlalchemy.orm import Session
 
 from app.db.session import engine
 
-
 @pytest.fixture
 def db_session() -> Generator[Session, None, None]:
     """Per-test session bound to a SAVEPOINT inside an outer transaction.
@@ -53,7 +52,6 @@ def db_session() -> Generator[Session, None, None]:
         if outer_txn.is_active:
             outer_txn.rollback()
         connection.close()
-
 
 def make_llm_mock(
     *,
@@ -123,7 +121,6 @@ def make_llm_mock(
     mock = MagicMock()
     mock.call.side_effect = _dispatch
     return mock
-
 
 @contextmanager
 def patch_make_llm_client(

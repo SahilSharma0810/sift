@@ -35,9 +35,6 @@ from typing import Any
 
 import httpx
 
-
-# ---------- DocILE → Sift field-type mapping ----------
-
 DOCILE_TO_SIFT: dict[str, str] = {
     "vendor_name": "vendor_name",
     "document_id": "invoice_number",
@@ -48,12 +45,10 @@ DOCILE_TO_SIFT: dict[str, str] = {
     "currency_code_amount_due": "currency",
 }
 
-
 @dataclass
 class GroundTruth:
     doc_id: str
-    fields: dict[str, str]  # Sift field name → ground-truth text
-
+    fields: dict[str, str]
 
 def _load_ground_truth(docile_root: Path, doc_id: str) -> GroundTruth:
     """Parse a DocILE annotation JSON into Sift-shape ground truth.
@@ -69,11 +64,9 @@ def _load_ground_truth(docile_root: Path, doc_id: str) -> GroundTruth:
         ft = fe.get("fieldtype")
         if ft in DOCILE_TO_SIFT:
             sift_field = DOCILE_TO_SIFT[ft]
-            # If multiple boxes share a fieldtype, keep the first.
-            # Real eval would dedupe / aggregate; for smoke that's fine.
+
             fields.setdefault(sift_field, fe.get("text", ""))
     return GroundTruth(doc_id=doc_id, fields=fields)
-
 
 def _post_invoice(base_url: str, pdf_path: Path) -> dict[str, Any]:
     with pdf_path.open("rb") as fh:
@@ -86,13 +79,11 @@ def _post_invoice(base_url: str, pdf_path: Path) -> dict[str, Any]:
         raise RuntimeError(f"upload failed for {pdf_path.name}: {r.status_code} {r.text[:200]}")
     return r.json()
 
-
 def _extracted_value(invoice_json: dict[str, Any], field: str) -> Any:
     ext = invoice_json.get("current_extraction") or {}
     fields = ext.get("extracted_fields") or {}
     f = fields.get(field)
     return f.get("value") if isinstance(f, dict) else None
-
 
 def _numeric_close(a: Any, b: Any, tol_frac: float = 0.01) -> bool:
     try:
@@ -104,7 +95,6 @@ def _numeric_close(a: Any, b: Any, tol_frac: float = 0.01) -> bool:
     except (TypeError, ValueError):
         return False
 
-
 def _compare_field(field: str, gt_text: str, actual: Any) -> tuple[bool, str]:
     """Return (match, note). Soft comparisons per field type."""
     if actual is None:
@@ -114,9 +104,7 @@ def _compare_field(field: str, gt_text: str, actual: Any) -> tuple[bool, str]:
     gt_s = str(gt_text).strip()
 
     if field in ("subtotal", "tax", "total"):
-        # Strip currency symbols, ISO codes, and thousands separators before
-        # comparing — DocILE annotates raw text-as-seen ("$879.00 USD"); Sift
-        # normalizes to a bare number. Both shapes should compare equal.
+
         import re as _re
 
         gt_n = _re.sub(r"[,$\s]|USD|EUR|GBP|INR", "", gt_s)
@@ -126,35 +114,25 @@ def _compare_field(field: str, gt_text: str, actual: Any) -> tuple[bool, str]:
             return False, f"bad-number gt={gt_s!r} got={actual_s!r}"
 
     if field == "currency":
-        # DocILE annotates the on-document symbol ("$", "€", "£");
-        # Sift normalizes to ISO codes per the prompt instruction.
-        # Both representations are correct — accept either side.
+
         _SYMBOL_TO_ISO = {"$": "USD", "€": "EUR", "£": "GBP", "₹": "INR", "¥": "JPY"}
         gt_norm = _SYMBOL_TO_ISO.get(gt_s, gt_s.upper())
         return actual_s.upper() == gt_norm, f"gt={gt_s!r}→{gt_norm!r} got={actual_s!r}"
 
     if field == "invoice_date":
-        # Sift returns the original date string; DocILE annotation has the
-        # text-as-seen too. Loose substring compare across both directions
-        # tolerates formatting drift (DD/MM/YY vs YYYY-MM-DD).
+
         return (
             actual_s in gt_s or gt_s in actual_s,
             f"gt={gt_s!r} got={actual_s!r}",
         )
 
-    # vendor_name, invoice_number — case-insensitive substring either way
     a_lower = actual_s.lower()
     g_lower = gt_s.lower()
     match = a_lower == g_lower or a_lower in g_lower or g_lower in a_lower
     return match, f"gt={gt_s!r} got={actual_s!r}"
 
-
-# ---------- pretty printing ----------
-
-
 def _print(line: str = "") -> None:
     print(line, flush=True)
-
 
 def _try_rich():
     try:
@@ -164,7 +142,6 @@ def _try_rich():
         return Console(), Table
     except ImportError:
         return None, None
-
 
 def _run(*, docile_root: Path, base_url: str, doc_ids: list[str]) -> dict[str, Any]:
     console, RichTable = _try_rich()
@@ -257,7 +234,6 @@ def _run(*, docile_root: Path, base_url: str, doc_ids: list[str]) -> dict[str, A
         "failures": failures,
     }
 
-
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument(
@@ -282,7 +258,6 @@ def main() -> int:
         _print(f"ERROR: {root}/pdfs not found")
         return 1
 
-    # Sanity: is the backend up + in anthropic mode?
     try:
         meta = httpx.get(f"{args.base_url}/api/meta", timeout=3.0).json()
     except Exception as e:
@@ -305,7 +280,6 @@ def main() -> int:
     _print(f"Testing {len(doc_ids)} invoice(s) from {args.split} split (seed={args.seed})")
     summary = _run(docile_root=root, base_url=args.base_url, doc_ids=doc_ids)
     return 0 if summary["total_correct"] == summary["total_attempts"] else 0
-
 
 if __name__ == "__main__":
     sys.exit(main())

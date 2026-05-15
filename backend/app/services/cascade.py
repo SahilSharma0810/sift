@@ -48,14 +48,9 @@ from app.domain.validators import REQUIRED_FIELDS, math_reconciles
 
 log = structlog.get_logger(__name__)
 
-# Fields the cascade compares for agreement. REQUIRED_FIELDS plus the
-# arithmetic dependents math_reconciles cares about.
 CASCADE_FIELDS: tuple[str, ...] = (*REQUIRED_FIELDS, "subtotal", "tax")
 
-# Agreement-score threshold below which a field is considered disputed.
-# Two-bucket scoring (1.0 / 0.3) per ADR-0003 makes 0.3 the boundary.
 DISPUTE_THRESHOLD = 0.3
-
 
 @dataclass(frozen=True, slots=True)
 class TierTrace:
@@ -91,7 +86,6 @@ class TierTrace:
             "llm_self_confidence": self.llm_self_confidence,
         }
 
-
 @dataclass(frozen=True, slots=True)
 class CascadeResult:
     """Cascade output: final field values plus full per-field provenance.
@@ -115,7 +109,6 @@ class CascadeResult:
     def trace_tiers_dicts(self) -> list[dict[str, Any]]:
         """Persistable form of tier_traces for the JSONB cascade_trace column."""
         return [t.to_dict() for t in self.tier_traces]
-
 
 def run_cascade(
     *,
@@ -183,10 +176,6 @@ def run_cascade(
         )
     return base
 
-
-# ---------- Private helpers --------------------------------------------------
-
-
 def _make_base_result(
     fields: dict[str, Any],
     initial: ExtractionResult,
@@ -200,7 +189,6 @@ def _make_base_result(
         per_field_source={k: tier for k in fields},
         raw_initial_fields=raw_initial,
     )
-
 
 def _haiku_to_sonnet_to_opus(
     *,
@@ -237,8 +225,6 @@ def _haiku_to_sonnet_to_opus(
             fields[field_name] = s_val
             per_field_source[field_name] = "sonnet"
 
-    # Same-error agreement blind spot per ADR-0003 commentary: math is
-    # independent ground truth that agreement can't catch.
     if not _math_ok(fields) and "total" not in disputed:
         disputed.append("total")
 
@@ -272,8 +258,7 @@ def _haiku_to_sonnet_to_opus(
     opus_flat = _flat_fields(opus_result.fields)
     for field_name in required_disputes:
         opus_val = opus_flat.get(field_name)
-        # Two-of-three consensus: if Opus agrees with the current
-        # (Sonnet-or-Haiku) value, lift the dispute override to 1.0.
+
         if agreement_score(opus_val, fields.get(field_name), field_name) == 1.0:
             overrides[field_name] = 1.0
         fields[field_name] = opus_val
@@ -286,7 +271,6 @@ def _haiku_to_sonnet_to_opus(
         per_field_source=per_field_source,
         raw_initial_fields=base.raw_initial_fields,
     )
-
 
 def _sonnet_to_opus(
     *,
@@ -342,7 +326,6 @@ def _sonnet_to_opus(
         raw_initial_fields=base.raw_initial_fields,
     )
 
-
 def _call_at_tier(
     *,
     llm: LLMClient,
@@ -358,23 +341,19 @@ def _call_at_tier(
         return llm.call(EXTRACT_HEADER_VISION, model=model, page_pngs=page_pngs)
     return None
 
-
 def _vision_should_escalate(initial: ExtractionResult, fields: dict[str, Any]) -> bool:
     """Vision-path inner trigger: math fail OR low self-confidence on REQUIRED."""
     if not _math_ok(fields):
         return True
     return any(initial.self_reported_confidence.get(f, 1.0) < 0.7 for f in REQUIRED_FIELDS)
 
-
 def _flat_fields(raw: dict[str, Any]) -> dict[str, Any]:
     return {k: _normalize_value(v) for k, v in raw.items()}
-
 
 def _normalize_value(v: Any) -> Any:
     if isinstance(v, dict) and "value" in v:
         return v["value"]
     return v
-
 
 def _math_ok(fields: dict[str, Any]) -> bool:
     return math_reconciles(
@@ -382,7 +361,6 @@ def _math_ok(fields: dict[str, Any]) -> bool:
         tax=_maybe_float(fields.get("tax")),
         total=_maybe_float(fields.get("total")),
     )
-
 
 def _maybe_float(v: Any) -> float | None:
     if v is None:

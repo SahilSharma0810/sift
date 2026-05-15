@@ -16,13 +16,9 @@ from decimal import Decimal
 
 from app.domain.validators import AMOUNT_FIELDS
 
-# Cold-start default per ADR-0003 — "slightly hedged" so structural_score
-# dominates when no per-vendor history exists.
 DEFAULT_HISTORY_SCORE = 0.85
 
-# Cascade trigger threshold per ADR-0003.
 CASCADE_THRESHOLD = 0.7
-
 
 def compute_composite_confidence(
     structural: dict[str, float],
@@ -38,7 +34,6 @@ def compute_composite_confidence(
         h_score = history.get(field, DEFAULT_HISTORY_SCORE)
         out[field] = min(s_score, h_score)
     return out
-
 
 def should_trigger_cascade(
     confidence: dict[str, float],
@@ -59,17 +54,10 @@ def should_trigger_cascade(
     if is_unseen_vendor:
         return True
     if not confidence:
-        return True  # failsafe: missing signal = cascade
+        return True
     return min(confidence.values()) < CASCADE_THRESHOLD
 
-
-# 1-cent tolerance for cross-model agreement — stricter than the 2-cent
-# AMOUNT_TOLERANCE in validators.py because two models seeing the same
-# input have no reason to diverge by more than a rounding artifact.
-# The 2-cent math-reconciliation budget absorbs OCR drift before agreement
-# is even checked.
 NUMERIC_AGREEMENT_TOLERANCE = Decimal("0.01")
-
 
 def agreement_score(left: object, right: object, field: str) -> float:
     """Two-bucket cascade-agreement score per ADR-0003.
@@ -88,7 +76,6 @@ def agreement_score(left: object, right: object, field: str) -> float:
         except Exception:
             return 0.3
     return 1.0 if str(left).strip() == str(right).strip() else 0.3
-
 
 def apply_agreement_overrides(
     composite: dict[str, float],

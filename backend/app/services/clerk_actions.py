@@ -35,7 +35,6 @@ from app.db.models import Invoice, Vendor
 from app.services.extraction_service import ExtractResult, extract_from_pdf
 from app.services.vendor_memory_service import update_stats_from_extraction
 
-
 def retry_extraction(
     session: Session, *, invoice_id, force_tier: str | None = None
 ) -> ExtractResult:
@@ -53,7 +52,6 @@ def retry_extraction(
     return extract_from_pdf(
         session, pdf_path=Path(inv.file_path), force_tier=force_tier, skip_dedup=True
     )
-
 
 def confirm_invoice(session: Session, *, invoice_id) -> Invoice:
     """Mark Invoice confirmed; update Vendor stats from its current Extraction.
@@ -76,7 +74,6 @@ def confirm_invoice(session: Session, *, invoice_id) -> Invoice:
     session.commit()
     return invoice
 
-
 def dismiss_duplicate(session: Session, *, invoice_id, against_id) -> Invoice:
     """Persist that this Invoice was reviewed and is NOT a duplicate of `against_id`.
 
@@ -91,7 +88,6 @@ def dismiss_duplicate(session: Session, *, invoice_id, against_id) -> Invoice:
     if invoice is None:
         raise LookupError(f"invoice {invoice_id} not found")
     return invoice
-
 
 def mark_unprocessable(session: Session, *, invoice_id) -> Invoice:
     """Set `review_status=unprocessable`. Failure-mode UX per ADR-0006."""

@@ -14,7 +14,6 @@ import pytest
 from app.domain.models import TaxBreakdownLine
 from app.domain.validators import AMOUNT_TOLERANCE, tax_breakdown_sum_check
 
-
 class TestTaxBreakdownLineModel:
     def test_minimal_row(self) -> None:
         row = TaxBreakdownLine(jurisdiction="CA Sales Tax", amount=72.50)
@@ -47,7 +46,6 @@ class TestTaxBreakdownLineModel:
     def test_confidence_bounds(self) -> None:
         with pytest.raises(ValueError):
             TaxBreakdownLine(jurisdiction="x", amount=1.0, confidence=1.5)
-
 
 class TestTaxBreakdownSumCheck:
     def test_empty_is_vacuously_true(self) -> None:

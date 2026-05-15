@@ -15,10 +15,9 @@ export function Shell() {
   const { data: meta } = useAppMetaQuery()
   const navigate = useNavigate()
 
-  // ⌘K opens palette · ? opens help · Esc closes
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      // Don't intercept keys typed into form fields
+
       const target = e.target as HTMLElement | null
       const isEditable =
         target &&

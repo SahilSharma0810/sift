@@ -11,8 +11,9 @@ The vendor is the legal entity that **issued the invoice and is owed payment**. 
 - Look at the **letterhead** at the top of the page — the issuer's name and logo usually sit there.
 - Look for explicit labels: **`From:`**, **`Invoice From:`**, **`Bill From:`**, **`Remit To:`**, **`Issued By:`**, **`Vendor:`**, **`Supplier:`**.
 - The **`Bill To:` / `Customer:` / `Sold To:` / `Buyer:`** address is the *opposite* — never extract that as vendor_name.
-- If the invoice references multiple companies (e.g., agency invoices that name an advertising client + a TV station), the vendor is the one **sending the invoice**, not the one whose services are being billed for.
-- If the issuer is a sole proprietor or individual, use the personal-name form as written (e.g., `Amy Mills, LUC-Canal Partners`).
+- If the invoice references multiple companies (e.g., a TV station billing an advertising agency, a manufacturer billing through a broker, a local subsidiary billing on parent letterhead), the vendor is the **specific entity that owns the letterhead and would receive the cheque via `Remit To` / `Pay To`** — not the agency, broker, advertising client, parent corporation, or named contact person in a buyer / sales-rep field.
+- Prefer the **most specific local issuer named on the letterhead** over a parent / network / holding name (e.g., a station's call letters over the network parent).
+- If the issuer truly *is* a sole proprietor or individual (the personal name appears on the letterhead / `Remit To` line), use the personal-name form as written. But an individual's name appearing in a `Buyer`, `Contact`, `Sales Rep`, or `Agency` field is **not** the vendor.
 - Do **not** include the address; just the entity name.
 
 ### `invoice_number` — the issuer's identifier for this document
@@ -21,9 +22,9 @@ Look for labels: `Invoice #`, `Invoice No.`, `Invoice Number`, `Document ID`, `D
 
 ### `invoice_date` — the date the invoice was ISSUED
 
-Use the **issue date** of the invoice document itself. **Not** the delivery date, service date, due date, air date, or any line-item date.
+Use the **issue date** of the invoice document itself. **Not** the delivery date, service date, due date, air date, line-item date, **billing-period start/end**, or **statement-period** date.
 
-Look for labels: `Invoice Date`, `Date Issued`, `Date`, `Bill Date`. When multiple dates appear, prefer the one labeled as the document/invoice date.
+Look for labels: `Invoice Date`, `Date Issued`, `Date`, `Bill Date`. When multiple dates appear, prefer the one in the **header block alongside the invoice number** — this is almost always the issue date. A bare month-year like `Feb-99` or a range like `Period: Jan 1 – Jan 31` in the body is a billing window, not the issue date. If a header date and a body date disagree, the header date wins.
 
 Return the date string **exactly as it appears in the source** — do not reformat.
 
@@ -31,7 +32,8 @@ Return the date string **exactly as it appears in the source** — do not reform
 
 - `subtotal` = the sum before tax (sometimes labeled `Subtotal`, `Net`, `Net Amount`, `Sub-Total`).
 - `tax` = total tax (labeled `Tax`, `Sales Tax`, `VAT`, `GST`, `HST`, or per-jurisdiction sum).
-- `total` = **the gross amount billed** to the recipient (the amount the buyer is invoiced for). Look for `Total`, `Grand Total`, `Amount Due`, `Total Due`, `Pay This Amount`, `Total Amount`, `Gross Amount`, `Total Billed`.
+- `total` = **the gross amount billed** to the recipient (the amount the buyer is invoiced for). Look for `Total`, `Grand Total`, `Amount Due`, `Total Due`, `Balance Due`, `Pay This Amount`, `Total Amount`, `Gross Amount`, `Total Billed`, `Total After Tax`.
+- **The `total` is what an AP clerk would pay.** When two candidates are similar in magnitude (e.g., `Net: $1560.60` and `Total: $1836.00`), the smaller number is the subtotal/net — `total` is always the **larger, payment-instruction-labeled** number.
 - **When an invoice shows BOTH `Gross Amount` and `Net Amount`** (common in agency-billing and broadcast invoices where commission/discounts are itemized), `total` is the **Gross Amount** — the amount BILLED, not the amount the seller nets after commission. The Net Amount belongs in a separate downstream-payment context, not the invoice total.
 
 **The total is almost always larger than the subtotal** (it includes tax). If the candidate for "total" is *smaller* than the candidate for "subtotal", you have them flipped — re-examine.
@@ -58,6 +60,7 @@ For each field, output a 0.0–1.0 estimate of your certainty. The system **logs
 ## Self-check before emitting the tool call
 
 Before responding, verify mentally:
-1. Is the `vendor_name` the entity **issuing** the invoice (not the customer)?
-2. Is the `invoice_date` the **document issue date** (not delivery, service, or due date)?
-3. Does `subtotal + tax ≈ total`? If not, you have at least one number wrong — re-examine.
+1. Is the `vendor_name` the entity **issuing** the invoice — the one on the letterhead / `Remit To` line who would receive payment? Not the customer, agency, broker, parent corporation, or buyer.
+2. Is the `invoice_date` the **document issue date** in the header block (not delivery, service, due, air, statement-period, or billing-window date)?
+3. Is `total` the **larger** payment-amount candidate (Gross / Amount Due / Balance Due) — not the pre-tax / pre-commission subtotal?
+4. Does `subtotal + tax ≈ total`? If not, you have at least one number wrong — re-examine.

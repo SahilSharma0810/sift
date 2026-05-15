@@ -18,7 +18,6 @@ from fastapi.staticfiles import StaticFiles
 from app import __version__
 from app.config import get_settings
 
-
 def configure_logging(level: str, fmt: str) -> None:
     """Structured JSON logging to stdout — per PLAN.md pre-grilled non-decision."""
     logging.basicConfig(
@@ -45,7 +44,6 @@ def configure_logging(level: str, fmt: str) -> None:
         logger_factory=structlog.PrintLoggerFactory(),
         cache_logger_on_first_use=True,
     )
-
 
 def create_app() -> FastAPI:
     settings = get_settings()
@@ -80,8 +78,6 @@ def create_app() -> FastAPI:
     app.include_router(invoices.router, prefix="/api/invoices", tags=["invoices"])
     app.include_router(search.router, prefix="/api/search", tags=["search"])
 
-    # SPA serving — in prod the Vite-built bundle lives at /app/frontend/dist
-    # (see Dockerfile). In dev, Vite serves the SPA itself on :5173.
     spa_dist = Path("/app/frontend/dist")
     if spa_dist.exists():
         app.mount("/assets", StaticFiles(directory=spa_dist / "assets"), name="assets")
@@ -92,6 +88,5 @@ def create_app() -> FastAPI:
             return FileResponse(spa_dist / "index.html")
 
     return app
-
 
 app = create_app()

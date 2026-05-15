@@ -1,7 +1,3 @@
-/**
- * Base fetch wrapper. Throws `ApiError` on non-2xx; JSON-decodes the body.
- */
-
 export class ApiError extends Error {
   constructor(
     public readonly status: number,
