@@ -370,6 +370,22 @@ no comments. Add only when the *why* is non-obvious — e.g. the
 the chosen tolerance is a design decision a future reader would
 question. Most other code has self-documenting names; don't narrate.
 
+## Code style — imports
+
+Alias / absolute only. No relative imports anywhere:
+
+- Frontend TS: `import { Btn } from '@/components/primitives/Btn'`,
+  **not** `import { Btn } from '../../components/primitives/Btn'`.
+- Backend Python: `from app.adapters.storage.anomaly_repo import create_ack`,
+  **not** `from ..adapters.storage.anomaly_repo import create_ack` and
+  **not** `from .anomaly_repo import create_ack`.
+
+A repo-wide check both before and after this feature lands:
+```bash
+grep -rn "from '\.\." frontend/src    # must be empty
+grep -rn "^from \." backend/app       # must be empty
+```
+
 ## Testing
 
 ### Unit (`tests/unit/`)
