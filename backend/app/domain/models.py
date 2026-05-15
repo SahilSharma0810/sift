@@ -204,3 +204,6 @@ class FieldCorrectionOut(BaseModel):
     original_value: str | None
     corrected_value: str
     corrected_at: datetime
+
+
+from app.domain.auth import ClerkOut, LoginIn  # noqa: F401, E402

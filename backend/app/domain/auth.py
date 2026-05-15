@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import uuid
+from uuid import UUID
 
 from argon2 import PasswordHasher
 from argon2.exceptions import VerificationError
 from itsdangerous import BadSignature, URLSafeSerializer
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 _HASHER = PasswordHasher()
 _COOKIE_SALT = "sift.auth.session"
@@ -40,3 +42,19 @@ def unsign_session_id(value: str, *, secret: str) -> uuid.UUID | None:
         return uuid.UUID(raw)
     except (ValueError, TypeError):
         return None
+
+
+class LoginIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    email: EmailStr
+    password: str = Field(min_length=1)
+    remember: bool = False
+
+
+class ClerkOut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: UUID
+    email: str
+    display_name: str | None = None

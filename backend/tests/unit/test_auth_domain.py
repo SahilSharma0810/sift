@@ -62,3 +62,40 @@ class TestCookieSigning:
 
         assert unsign_session_id("not-a-real-cookie", secret=self.SECRET) is None
         assert unsign_session_id("", secret=self.SECRET) is None
+
+
+import uuid as _uuid
+
+from pydantic import ValidationError
+
+
+class TestDTOs:
+    def test_login_in_accepts_valid(self) -> None:
+        from app.domain.auth import LoginIn
+
+        body = LoginIn(email="ap-clerk@sift.demo", password="secret", remember=True)
+        assert body.email == "ap-clerk@sift.demo"
+        assert body.password == "secret"
+        assert body.remember is True
+
+    def test_login_in_rejects_bad_email(self) -> None:
+        from app.domain.auth import LoginIn
+
+        with pytest.raises(ValidationError):
+            LoginIn(email="not-an-email", password="secret", remember=False)
+
+    def test_login_in_rejects_empty_password(self) -> None:
+        from app.domain.auth import LoginIn
+
+        with pytest.raises(ValidationError):
+            LoginIn(email="ap-clerk@sift.demo", password="", remember=False)
+
+    def test_clerk_out_shape(self) -> None:
+        from app.domain.auth import ClerkOut
+
+        out = ClerkOut(
+            id=_uuid.uuid4(),
+            email="ap-clerk@sift.demo",
+            display_name=None,
+        )
+        assert out.display_name is None
