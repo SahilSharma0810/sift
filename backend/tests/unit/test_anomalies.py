@@ -90,3 +90,34 @@ class TestDetectAnomalies:
             )
             == []
         )
+
+
+class TestDetectAnomaliesWithAcks:
+    def test_acked_value_within_tolerance_skips_anomaly(self) -> None:
+        anomalies = detect_anomalies(
+            fields={"total": 34062.50},
+            stats={"total_seen": 10, "avg_total": 7900.0, "std_total": 1500.0},
+            acknowledged_outliers={
+                "total": [{"value": 33500.00, "acked_at": "2026-05-15T00:00:00Z"}]
+            },
+        )
+        assert anomalies == []
+
+    def test_acked_value_outside_tolerance_still_emits_anomaly(self) -> None:
+        anomalies = detect_anomalies(
+            fields={"total": 50000.00},
+            stats={"total_seen": 10, "avg_total": 7900.0, "std_total": 1500.0},
+            acknowledged_outliers={
+                "total": [{"value": 34000.00, "acked_at": "2026-05-15T00:00:00Z"}]
+            },
+        )
+        assert len(anomalies) == 1
+        assert anomalies[0]["z_score"] > 3.0
+
+    def test_empty_acknowledged_outliers_preserves_prior_behavior(self) -> None:
+        anomalies = detect_anomalies(
+            fields={"total": 14231.0},
+            stats={"total_seen": 10, "avg_total": 1180.0, "std_total": 100.0},
+            acknowledged_outliers={},
+        )
+        assert len(anomalies) == 1
