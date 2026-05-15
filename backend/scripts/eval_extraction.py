@@ -29,7 +29,7 @@ from typing import Any
 from uuid import UUID
 
 from app.db.session import SessionLocal
-from app.services.extraction_service import get_invoice_dto
+from app.services.invoice_queries import get_invoice_dto
 
 log = logging.getLogger("eval_extraction")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s  %(message)s")

@@ -11,6 +11,8 @@ from __future__ import annotations
 import pytest
 
 from app.adapters.llm_client import (
+    EXTRACT_HEADER,
+    EXTRACT_HEADER_VISION,
     AnthropicLLMClient,
     ExtractionResult,
     LLMClient,
@@ -23,7 +25,7 @@ from app.config import Settings
 class TestStubExtractHeader:
     def test_returns_extraction_result(self) -> None:
         stub = StubLLMClient()
-        result = stub.extract_header(invoice_text="anything", model="claude-haiku-4-5")
+        result = stub.call(EXTRACT_HEADER, model="claude-haiku-4-5", text="anything")
         assert isinstance(result, ExtractionResult)
         assert result.extraction_failed is False
         # All seven header fields are present
@@ -42,8 +44,8 @@ class TestStubExtractHeader:
         """The stub seeds the cascade flow: tier-1 returns a total off by $1
         from tier-2 so math doesn't reconcile on the first try."""
         stub = StubLLMClient()
-        haiku = stub.extract_header(invoice_text="text", model="claude-haiku-4-5")
-        sonnet = stub.extract_header(invoice_text="text", model="claude-sonnet-4-6")
+        haiku = stub.call(EXTRACT_HEADER, model="claude-haiku-4-5", text="text")
+        sonnet = stub.call(EXTRACT_HEADER, model="claude-sonnet-4-6", text="text")
         assert haiku.fields["total"] == sonnet.fields["total"] + 1.0
         # Subtotal + tax = sonnet's total (math reconciles after cascade)
         assert haiku.fields["subtotal"] + haiku.fields["tax"] == sonnet.fields["total"]
@@ -52,37 +54,37 @@ class TestStubExtractHeader:
         """Different invoice text → different invoice numbers, so multiple
         uploads in stub mode show as distinct invoices."""
         stub = StubLLMClient()
-        a = stub.extract_header(invoice_text="alpha document", model="claude-haiku-4-5")
-        b = stub.extract_header(invoice_text="beta document", model="claude-haiku-4-5")
+        a = stub.call(EXTRACT_HEADER, model="claude-haiku-4-5", text="alpha document")
+        b = stub.call(EXTRACT_HEADER, model="claude-haiku-4-5", text="beta document")
         assert a.fields["invoice_number"] != b.fields["invoice_number"]
 
     def test_halcyon_scenario(self) -> None:
         stub = StubLLMClient()
-        result = stub.extract_header(
-            invoice_text="Halcyon Software services rendered", model="claude-sonnet-4-6"
+        result = stub.call(
+            EXTRACT_HEADER, model="claude-sonnet-4-6", text="Halcyon Software services rendered"
         )
         assert result.fields["vendor_name"] == "Halcyon Software"
         assert result.fields["total"] == 34_062.50
 
     def test_bramble_scenario(self) -> None:
         stub = StubLLMClient()
-        result = stub.extract_header(
-            invoice_text="Bramble Catering — event 2026", model="claude-sonnet-4-6"
+        result = stub.call(
+            EXTRACT_HEADER, model="claude-sonnet-4-6", text="Bramble Catering — event 2026"
         )
         assert result.fields["vendor_name"] == "Bramble Catering"
         assert result.fields["total"] == 750.00
 
     def test_default_scenario_falls_back_to_vega(self) -> None:
         stub = StubLLMClient()
-        result = stub.extract_header(
-            invoice_text="some unmapped invoice text", model="claude-sonnet-4-6"
+        result = stub.call(
+            EXTRACT_HEADER, model="claude-sonnet-4-6", text="some unmapped invoice text"
         )
         assert result.fields["vendor_name"] == "Vega Logistics"
 
     def test_failure_keyword_triggers_extraction_failed(self) -> None:
         stub = StubLLMClient()
-        result = stub.extract_header(
-            invoice_text="[stub:fail] cannot parse", model="claude-haiku-4-5"
+        result = stub.call(
+            EXTRACT_HEADER, model="claude-haiku-4-5", text="[stub:fail] cannot parse"
         )
         assert result.extraction_failed is True
         assert "stub" in (result.extraction_failure_reason or "")
@@ -90,9 +92,10 @@ class TestStubExtractHeader:
 
     def test_encrypted_keyword_triggers_extraction_failed(self) -> None:
         stub = StubLLMClient()
-        result = stub.extract_header(
-            invoice_text="Encrypted document — password required",
+        result = stub.call(
+            EXTRACT_HEADER,
             model="claude-haiku-4-5",
+            text="Encrypted document — password required",
         )
         assert result.extraction_failed is True
 
@@ -101,7 +104,7 @@ class TestStubExtractHeaderVision:
     def test_returns_per_field_dict_shape(self) -> None:
         stub = StubLLMClient()
         png = b"\x89PNG\r\n\x1a\nfakebytes"
-        result = stub.extract_header_vision(page_pngs=[png], model="claude-sonnet-4-6")
+        result = stub.call(EXTRACT_HEADER_VISION, model="claude-sonnet-4-6", page_pngs=[png])
         # Vision shape: each field is {value, bbox, page, confidence}
         v = result.fields["vendor_name"]
         assert isinstance(v, dict)
@@ -116,8 +119,8 @@ class TestStubExtractHeaderVision:
 
     def test_vision_invoice_number_varies_by_png_bytes(self) -> None:
         stub = StubLLMClient()
-        a = stub.extract_header_vision(page_pngs=[b"\x89PNG\r\n\x1a\nA"], model="claude-sonnet-4-6")
-        b = stub.extract_header_vision(page_pngs=[b"\x89PNG\r\n\x1a\nB"], model="claude-sonnet-4-6")
+        a = stub.call(EXTRACT_HEADER_VISION, model="claude-sonnet-4-6", page_pngs=[b"\x89PNG\r\n\x1a\nA"])
+        b = stub.call(EXTRACT_HEADER_VISION, model="claude-sonnet-4-6", page_pngs=[b"\x89PNG\r\n\x1a\nB"])
         assert a.fields["invoice_number"]["value"] != b.fields["invoice_number"]["value"]
 
 
@@ -151,7 +154,6 @@ class TestFactory:
             make_llm_client(settings)
 
     def test_protocol_is_satisfied_by_both_impls(self) -> None:
-        # Structural typing — no runtime isinstance check, just method presence.
+        # Structural typing — Protocol surface is one method: `call`.
         stub: LLMClient = StubLLMClient()
-        assert callable(stub.extract_header)
-        assert callable(stub.extract_header_vision)
+        assert callable(stub.call)

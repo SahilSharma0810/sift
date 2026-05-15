@@ -17,7 +17,8 @@ import { LineItemsTable } from '@/components/primitives/LineItemsTable'
 import { TaxBreakdownTable } from '@/components/primitives/TaxBreakdownTable'
 import { Icons } from '@/components/primitives/Icons'
 import { PdfViewer } from '@/components/primitives/PdfViewer'
-import { ReasonCard, type ReasonAction } from '@/components/primitives/ReasonCard'
+import { ReasonCard } from '@/components/reason-cards/ReasonCard'
+import type { ReasonActionContext } from '@/components/reason-cards/types'
 import { TriagePill } from '@/components/primitives/TriagePill'
 import { VendorMemoryCard } from '@/components/primitives/VendorMemoryCard'
 import {
@@ -149,37 +150,17 @@ export function ReviewScreen() {
   const tiers = cascadeTiers(invoice)
   const isUnprocessable = invoice.review_status === 'unprocessable'
 
-  const handleReason = (action: ReasonAction, payload?: string) => {
-    if (action === 'edit_total') setEditingField('total')
-    if (action === 'edit_field' && payload) setEditingField(payload)
-    if (action === 'add_field' && payload) setEditingField(payload)
-    if (action === 'manual_entry') setManualMode(true)
-    if (action === 'view_dup' && payload) {
-      navigate(`/duplicate-review/${invoice!.id}?against=${payload}`)
-    }
-    if (action === 'dismiss_dup') {
-      const dupReason = reasons.find((r) => r.type === 'duplicate_of')
-      if (dupReason) {
-        const againstId = (dupReason as { invoice_id: string }).invoice_id
-        dismissDup.mutate({ id: invoice!.id, againstId })
-      }
-    }
-    if (action === 'not_dup') {
-      const dupReason = reasons.find((r) => r.type === 'duplicate_of')
-      if (dupReason) {
-        const againstId = (dupReason as { invoice_id: string }).invoice_id
-        dismissDup.mutate({ id: invoice!.id, againstId })
-      }
-    }
-    if (action === 'mark_unprocessable') {
-      markUnp.mutate(invoice!.id)
-    }
-    if (action === 'retry') {
-      retry.mutate({ id: invoice!.id })
-    }
-    if (action === 'force_opus') {
-      retry.mutate({ id: invoice!.id, forceTier: 'claude-opus-4-7' })
-    }
+  const reasonCtx: ReasonActionContext = {
+    invoiceId: invoice.id,
+    reasons,
+    byId,
+    confirm: () => confirm.mutate(invoice.id),
+    dismissDup: (againstId) => dismissDup.mutate({ id: invoice.id, againstId }),
+    markUnp: () => markUnp.mutate(invoice.id),
+    retry: (opts) => retry.mutate({ id: invoice.id, ...(opts ?? {}) }),
+    setEditingField,
+    setManualMode,
+    navigate: (to) => navigate(to),
   }
 
   const commitField = (name: string, value: string) => {
@@ -309,7 +290,7 @@ export function ReviewScreen() {
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {reasons.map((r, i) => (
-                <ReasonCard key={i} reason={r} byId={byId} onAction={handleReason} />
+                <ReasonCard key={i} reason={r} ctx={reasonCtx} />
               ))}
             </div>
           </div>

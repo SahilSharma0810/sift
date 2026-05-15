@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING
 import structlog
 from pydantic import ValidationError
 
-from app.adapters.llm_client import make_llm_client
+from app.adapters.llm_client import EXTRACT_STRUCTURED_QUERY, make_llm_client
 from app.config import get_settings
 from app.domain.nl_schema import StructuredQuery
 
@@ -58,8 +58,8 @@ def translate(
     if not natural_language or not natural_language.strip():
         return StructuredQuery(filters=[], untranslated_intent=None)
 
-    result = llm.extract_structured_query(
-        natural_language=natural_language, model=settings.model_tier_2
+    result = llm.call(
+        EXTRACT_STRUCTURED_QUERY, model=settings.model_tier_2, text=natural_language
     )
 
     try:

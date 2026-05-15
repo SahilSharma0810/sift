@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
-from app.domain.scoring import compute_composite_confidence, should_trigger_cascade
+from app.domain.scoring import (
+    apply_agreement_overrides,
+    compute_composite_confidence,
+    should_trigger_cascade,
+)
 
 
 class TestCompositeConfidence:
@@ -106,3 +110,40 @@ class TestCascadeTrigger:
             )
             is True
         )
+
+
+class TestApplyAgreementOverrides:
+    def test_empty_overrides_returns_copy(self) -> None:
+        composite = {"total": 0.85, "vendor_name": 0.9}
+        out = apply_agreement_overrides(composite, {})
+        assert out == composite
+        assert out is not composite  # defensive copy
+
+    def test_dispute_override_lowers_confidence(self) -> None:
+        composite = {"total": 0.85}
+        overrides = {"total": 0.3}
+        out = apply_agreement_overrides(composite, overrides)
+        assert out["total"] == 0.3
+
+    def test_agreement_override_never_lifts_low_floor(self) -> None:
+        """Math failed -> structural pinned `total` at 0.2. Even if both
+        tiers agreed (override=1.0), the 0.2 floor must hold."""
+        composite = {"total": 0.2}
+        overrides = {"total": 1.0}
+        out = apply_agreement_overrides(composite, overrides)
+        assert out["total"] == 0.2
+
+    def test_override_for_field_missing_from_composite_uses_neutral_default(self) -> None:
+        """An override for a field that wasn't in the composite (e.g.
+        `subtotal` on an invoice that didn't surface one) is min'd
+        against 1.0 - the override score becomes the final confidence."""
+        composite: dict[str, float] = {}
+        overrides = {"subtotal": 0.3}
+        out = apply_agreement_overrides(composite, overrides)
+        assert out["subtotal"] == 0.3
+
+    def test_non_overridden_fields_pass_through(self) -> None:
+        composite = {"total": 0.85, "vendor_name": 0.9}
+        overrides = {"total": 0.3}
+        out = apply_agreement_overrides(composite, overrides)
+        assert out["vendor_name"] == 0.9

@@ -24,16 +24,18 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.db.session import get_session
 from app.domain.models import InvoiceOut, VendorOut
-from app.services.extraction_service import (
+from app.services.clerk_actions import (
     confirm_invoice,
     dismiss_duplicate,
+    mark_unprocessable,
+    retry_extraction,
+)
+from app.services.invoice_queries import (
     extract_and_serialize,
     get_invoice_dto,
     get_invoice_file_path,
     get_vendor_for_invoice,
     list_invoice_dtos,
-    mark_unprocessable,
-    retry_extraction,
 )
 
 router = APIRouter()

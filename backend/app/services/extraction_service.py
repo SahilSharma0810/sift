@@ -28,12 +28,19 @@ import hashlib
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
-from uuid import UUID
 
 import structlog
 from sqlalchemy.orm import Session
 
-from app.adapters.llm_client import ExtractionResult, LLMClient, make_llm_client
+from app.adapters.llm_client import (
+    EXTRACT_HEADER,
+    EXTRACT_HEADER_VISION,
+    EXTRACT_LINE_ITEMS,
+    EXTRACT_TAX_BREAKDOWN,
+    ExtractionResult,
+    LLMClient,
+    make_llm_client,
+)
 from app.adapters.pdf_reader import (
     DigitalRead,
     compute_perceptual_hash,
@@ -45,23 +52,16 @@ from app.adapters.pdf_reader import (
 from app.adapters.storage import extraction_repo, invoice_repo, vendor_repo
 from app.config import get_settings
 from app.db.models import Extraction, Invoice
+from app.domain import confidence
 from app.domain.anomalies import detect_anomalies
 from app.domain.duplicates import classify_duplicate, hamming_distance
-from app.domain.models import ExtractionOut, InvoiceOut, VendorMemory, VendorMemoryStats, VendorOut
-from app.domain.scoring import (
-    agreement_score,
-    compute_composite_confidence,
-    should_trigger_cascade,
-)
 from app.domain.triage import derive_triage
 from app.domain.validators import (
     REQUIRED_FIELDS,
-    compute_structural_scores,
     line_items_sum_check,
-    math_reconciles,
     tax_breakdown_sum_check,
 )
-from app.services.vendor_memory_service import compute_history_scores
+from app.services import cascade
 
 log = structlog.get_logger(__name__)
 
@@ -79,31 +79,6 @@ def _hash_file(path: Path) -> str:
         for chunk in iter(lambda: f.read(65536), b""):
             h.update(chunk)
     return h.hexdigest()
-
-
-def _maybe_float(v: Any) -> float | None:
-    """Coerce a field value to float or pass through None.
-
-    Crucial: preserves the "field genuinely absent" signal so
-    math_reconciles can be vacuous on incomplete breakdowns. Old behaviour
-    (`float(v or 0)`) coerced None → 0.0 which broke math reconciliation
-    on real invoices that lack a subtotal/tax breakdown.
-    """
-    if v is None:
-        return None
-    try:
-        return float(v)
-    except (TypeError, ValueError):
-        return None
-
-
-def _math_ok(fields: dict[str, Any]) -> bool:
-    """Run math_reconciles on the fields dict, treating absent values as None."""
-    return math_reconciles(
-        subtotal=_maybe_float(fields.get("subtotal")),
-        tax=_maybe_float(fields.get("tax")),
-        total=_maybe_float(fields.get("total")),
-    )
 
 
 def _normalize_value(field_value: Any) -> Any:
@@ -155,7 +130,7 @@ def _extract_line_items_if_digital(
     if use_vision or invoice_text is None:
         return []
     try:
-        result = llm.extract_line_items(invoice_text=invoice_text, model=final_model)
+        result = llm.call(EXTRACT_LINE_ITEMS, model=final_model, text=invoice_text)
     except Exception as exc:
         log.warning("extraction.line_items.failed", error=str(exc), model=final_model)
         return []
@@ -194,7 +169,7 @@ def _extract_tax_breakdown_if_digital(
     if use_vision or invoice_text is None:
         return []
     try:
-        result = llm.extract_tax_breakdown(invoice_text=invoice_text, model=final_model)
+        result = llm.call(EXTRACT_TAX_BREAKDOWN, model=final_model, text=invoice_text)
     except Exception as exc:
         log.warning("extraction.tax_breakdown.failed", error=str(exc), model=final_model)
         return []
@@ -250,160 +225,22 @@ def _build_extracted_fields_shape(
     return out
 
 
-def _should_escalate_to_opus_from_single_tier(
-    initial: ExtractionResult, flat_fields: dict[str, Any]
-) -> bool:
-    """Vision-path escalation decision.
+def _tier_for_model(model: str, settings) -> str:
+    """Map a model name to the logical cascade tier label.
 
-    Returns True if the initial Sonnet result on the vision path looks
-    risky enough to deserve an Opus second opinion. Two triggers:
-    math doesn't reconcile, or the model self-reported low confidence
-    on any REQUIRED field. (Self-reported confidence is logged but not
-    *trusted* for composite scoring — it IS used here as a routing
-    signal because false-positive escalations only cost money, not
-    correctness.)
+    The cascade module needs the LOGICAL tier (haiku / sonnet / opus)
+    to decide what to escalate to. Mapping happens here at the service
+    boundary so the cascade module stays free of the model-name coupling.
+    Unrecognised models fall back to "haiku" so an out-of-band tier
+    string never causes the cascade to silently skip escalation.
     """
-    math_ok = _math_ok(flat_fields)
-    if not math_ok:
-        return True
-    self_conf = initial.self_reported_confidence
-    return any(self_conf.get(f, 1.0) < 0.7 for f in REQUIRED_FIELDS)
-
-
-def _run_cascade(
-    *,
-    llm: LLMClient,
-    initial: ExtractionResult,
-    initial_tier: str,
-    invoice_text: str | None,
-    page_pngs: list[bytes] | None,
-    settings,
-) -> tuple[dict[str, Any], dict[str, float], list[dict[str, Any]], dict[str, str]]:
-    """Run cascade tiers + agreement-score override.
-
-    Returns (final_fields, agreement_overrides, trace_tiers, per_field_source).
-    """
-    fields = _flat_fields(initial.fields)
-    overrides: dict[str, float] = {}
-    per_field_source: dict[str, str] = {k: initial_tier for k in fields}
-    trace_tiers: list[dict[str, Any]] = [
-        {
-            "model": initial.model,
-            "prompt_hash": initial.prompt_hash,
-            "schema_hash": initial.schema_hash,
-            "usage": initial.usage,
-            "llm_self_confidence": initial.self_reported_confidence,
-        }
-    ]
-
-    # Tier 2: Sonnet (digital path only — vision starts at Sonnet)
-    sonnet_result: ExtractionResult | None = None
-    if invoice_text is not None:
-        sonnet_result = llm.extract_header(invoice_text=invoice_text, model=settings.model_tier_2)
-    elif page_pngs is not None and initial_tier != "sonnet":
-        sonnet_result = llm.extract_header_vision(page_pngs=page_pngs, model=settings.model_tier_2)
-
-    # Vision path special case: initial tier is already Sonnet (tier 2).
-    # The original code returned here without ever escalating to Opus, which
-    # meant scanned invoices ran exactly one LLM call regardless of confidence
-    # or math. Now we check the same conditions a digital cascade would use
-    # after Sonnet runs, and escalate Sonnet → Opus on vision when warranted.
-    if sonnet_result is None and initial_tier == "sonnet" and page_pngs is not None:
-        if _should_escalate_to_opus_from_single_tier(initial, fields):
-            opus_vision = llm.extract_header_vision(
-                page_pngs=page_pngs, model=settings.model_tier_3
-            )
-            opus_flat = _flat_fields(opus_vision.fields)
-            trace_tiers.append(
-                {
-                    "model": opus_vision.model,
-                    "prompt_hash": opus_vision.prompt_hash,
-                    "schema_hash": opus_vision.schema_hash,
-                    "usage": opus_vision.usage,
-                    "llm_self_confidence": opus_vision.self_reported_confidence,
-                }
-            )
-            # Compare Sonnet (initial) vs Opus per field. On disagreement,
-            # prefer Opus's value — it's the more capable model on the harder
-            # cases that triggered escalation in the first place.
-            for field in (*REQUIRED_FIELDS, "subtotal", "tax"):
-                s_val = fields.get(field)
-                o_val = opus_flat.get(field)
-                score = agreement_score(s_val, o_val, field)
-                overrides[field] = score
-                if score <= 0.3:
-                    fields[field] = o_val
-                    per_field_source[field] = "opus"
-        return fields, overrides, trace_tiers, per_field_source
-
-    if sonnet_result is None:
-        return fields, overrides, trace_tiers, per_field_source
-
-    sonnet_flat = _flat_fields(sonnet_result.fields)
-    trace_tiers.append(
-        {
-            "model": sonnet_result.model,
-            "prompt_hash": sonnet_result.prompt_hash,
-            "schema_hash": sonnet_result.schema_hash,
-            "usage": sonnet_result.usage,
-            "llm_self_confidence": sonnet_result.self_reported_confidence,
-        }
-    )
-
-    disputed: list[str] = []
-    for field in (*REQUIRED_FIELDS, "subtotal", "tax"):
-        h_val = fields.get(field)
-        s_val = sonnet_flat.get(field)
-        score = agreement_score(h_val, s_val, field)
-        overrides[field] = score
-        if score <= 0.3:
-            disputed.append(field)
-            # Prefer Sonnet's value on dispute.
-            fields[field] = s_val
-            per_field_source[field] = "sonnet"
-
-    # Force-escalate to Opus if math doesn't reconcile on the post-Sonnet
-    # values, even when Haiku and Sonnet agreed. Same-error agreement is
-    # the cascade's known blind spot — math is an independent ground truth
-    # the agreement score can't catch (see DocILE smoke-test case
-    # 04345516, where both tiers picked the wrong line for `total`).
-    post_sonnet_math_ok = _math_ok(fields)
-    if not post_sonnet_math_ok and "total" not in disputed:
-        disputed.append("total")
-
-    # Tier 3: Opus — only if disputed REQUIRED fields remain at low agreement.
-    required_disputes = [f for f in disputed if f in REQUIRED_FIELDS]
-    if not required_disputes:
-        return fields, overrides, trace_tiers, per_field_source
-
-    opus_result: ExtractionResult | None = None
-    if invoice_text is not None:
-        opus_result = llm.extract_header(invoice_text=invoice_text, model=settings.model_tier_3)
-    elif page_pngs is not None:
-        opus_result = llm.extract_header_vision(page_pngs=page_pngs, model=settings.model_tier_3)
-
-    if opus_result is None:
-        return fields, overrides, trace_tiers, per_field_source
-
-    opus_flat = _flat_fields(opus_result.fields)
-    trace_tiers.append(
-        {
-            "model": opus_result.model,
-            "prompt_hash": opus_result.prompt_hash,
-            "schema_hash": opus_result.schema_hash,
-            "usage": opus_result.usage,
-            "llm_self_confidence": opus_result.self_reported_confidence,
-        }
-    )
-    for field in required_disputes:
-        o_val = opus_flat.get(field)
-        # If Opus agrees with either prior tier, lift the override score.
-        if agreement_score(o_val, fields.get(field), field) == 1.0:
-            overrides[field] = 1.0
-        fields[field] = o_val
-        per_field_source[field] = "opus"
-
-    return fields, overrides, trace_tiers, per_field_source
+    if model == settings.model_tier_1:
+        return "haiku"
+    if model == settings.model_tier_2:
+        return "sonnet"
+    if model == settings.model_tier_3:
+        return "opus"
+    return "haiku"
 
 
 def _detect_duplicate(
@@ -495,21 +332,21 @@ def extract_from_pdf(
 
     invoice_text: str | None = None
     page_pngs: list[bytes] | None = None
-    initial_tier = "haiku"
     digital: DigitalRead | None = None
 
     if use_vision:
         page_pngs = render_page_pngs(pdf_path, scale=1.2)
-        initial_tier = "sonnet"
-        initial_result = llm.extract_header_vision(
-            page_pngs=page_pngs, model=force_tier or settings.model_tier_2
-        )
+        initial_model = force_tier or settings.model_tier_2
+        initial_result = llm.call(EXTRACT_HEADER_VISION, model=initial_model, page_pngs=page_pngs)
     else:
         digital = read_digital(pdf_path)
         invoice_text = digital.full_text
-        initial_result = llm.extract_header(
-            invoice_text=invoice_text, model=force_tier or settings.model_tier_1
-        )
+        initial_model = force_tier or settings.model_tier_1
+        initial_result = llm.call(EXTRACT_HEADER, model=initial_model, text=invoice_text)
+    # `initial_tier` is the LOGICAL label that the cascade module reads
+    # to decide what to escalate to. We derive it from the actual model
+    # used so a clerk-forced tier flows correctly into cascade routing.
+    initial_tier = _tier_for_model(initial_model, settings)
 
     # Extraction_failed short-circuit
     if initial_result.extraction_failed:
@@ -561,49 +398,48 @@ def extract_from_pdf(
         session.commit()
         return ExtractResult(invoice=invoice, extraction=extraction)
 
-    # Validate + score on initial result (before cascade decision)
+    # Pre-cascade signal: one call to the Composite Confidence module
+    # gives composite + math_passed + per-field provenance trace.
     fields_flat = _flat_fields(initial_result.fields)
-    structural = compute_structural_scores(fields_flat)
-    math_ok = _math_ok(fields_flat)
     vendor_name = fields_flat.get("vendor_name") or "Unknown"
     vendor = vendor_repo.upsert_by_normalized_name(session, name=str(vendor_name))
-    history_scores = compute_history_scores(vendor=vendor, fields=fields_flat)
-    composite = compute_composite_confidence(structural, history=history_scores)
+    vendor_stats = (vendor.memory or {}).get("stats") or None
+    pre_report = confidence.compute_confidence(
+        extracted_fields=fields_flat,
+        vendor_stats=vendor_stats,
+    )
     is_unseen = bool(vendor.memory == {} or not vendor.memory.get("stats", {}).get("total_seen", 0))
 
-    # Cascade decision
-    final_fields = fields_flat
-    raw_vision_fields = initial_result.fields if use_vision else None
-    cascade_trace_tiers: list[dict[str, Any]] = [
-        {
-            "model": initial_result.model,
-            "prompt_hash": initial_result.prompt_hash,
-            "schema_hash": initial_result.schema_hash,
-            "usage": initial_result.usage,
-            "llm_self_confidence": initial_result.self_reported_confidence,
-        }
-    ]
-    per_field_source: dict[str, str] = {k: initial_tier for k in fields_flat}
-    overrides: dict[str, float] = {}
+    # Cascade. `force_escalate=True` when the clerk explicitly forced a
+    # tier (Cmd+K) — cascade still runs the discipline above that tier
+    # rather than bypassing it, per ADR-0006's "cascade is real and
+    # controllable" depth signal.
+    cascade_result = cascade.run_cascade(
+        llm=llm,
+        initial=initial_result,
+        initial_tier=initial_tier,
+        invoice_text=invoice_text,
+        page_pngs=page_pngs,
+        settings=settings,
+        composite_confidence=pre_report.composite,
+        math_passed=pre_report.math_passed,
+        is_unseen_vendor=is_unseen,
+        force_escalate=bool(force_tier),
+    )
+    final_fields = cascade_result.final_fields
+    raw_vision_fields = cascade_result.raw_initial_fields
+    cascade_trace_tiers = cascade_result.trace_tiers_dicts
+    per_field_source = cascade_result.per_field_source
 
-    if not force_tier and should_trigger_cascade(
-        composite, math_passed=math_ok, is_unseen_vendor=is_unseen
-    ):
-        final_fields, overrides, cascade_trace_tiers, per_field_source = _run_cascade(
-            llm=llm,
-            initial=initial_result,
-            initial_tier=initial_tier,
-            invoice_text=invoice_text,
-            page_pngs=page_pngs,
-            settings=settings,
-        )
-        # Re-validate after cascade replacement
-        structural = compute_structural_scores(final_fields)
-        math_ok = _math_ok(final_fields)
-        composite = compute_composite_confidence(structural, history=history_scores)
-        # Apply agreement overrides on disputed fields
-        for field, override_score in overrides.items():
-            composite[field] = min(composite.get(field, 1.0), override_score)
+    # Recompute confidence on cascade-final fields with agreement overrides
+    # folded in. No-op cost when no escalation happened.
+    report = confidence.compute_confidence(
+        extracted_fields=final_fields,
+        vendor_stats=vendor_stats,
+        agreement_overrides=cascade_result.agreement_overrides,
+    )
+    composite = report.composite
+    math_ok = report.math_passed
 
     # Bboxes
     bboxes_resolved: dict[str, tuple[float, float, float, float]] = {}
@@ -704,163 +540,7 @@ def extract_from_pdf(
     return ExtractResult(invoice=invoice, extraction=extraction)
 
 
-def retry_extraction(
-    session: Session, *, invoice_id, force_tier: str | None = None
-) -> ExtractResult:
-    """Re-run extraction for an existing invoice, skipping the file_hash dedup."""
-    inv = invoice_repo.get_invoice(session, invoice_id)
-    if inv is None:
-        raise LookupError(f"invoice {invoice_id} not found")
-    return extract_from_pdf(
-        session, pdf_path=Path(inv.file_path), force_tier=force_tier, skip_dedup=True
-    )
-
-
-from app.db.models import Vendor as _VendorModel  # noqa: E402
-from app.services.vendor_memory_service import update_stats_from_extraction  # noqa: E402
-
-
-def confirm_invoice(session: Session, *, invoice_id) -> Invoice:
-    """Mark invoice confirmed; update vendor stats from its current extraction.
-
-    Stats are updated ONLY on confirm (not on every extraction) so that
-    unconfirmed / wrong values never pollute the vendor history that drives
-    history_score and anomaly detection.
-    """
-    invoice = invoice_repo.get_invoice(session, invoice_id)
-    if invoice is None:
-        raise LookupError(f"invoice {invoice_id} not found")
-    invoice = invoice_repo.update_review_status(
-        session, invoice_id=invoice_id, review_status="confirmed"
-    )
-    current = extraction_repo.get_current_extraction(session, invoice_id=invoice_id)
-    if current is not None and invoice.vendor_id is not None:
-        vendor = session.get(_VendorModel, invoice.vendor_id)
-        if vendor is not None:
-            update_stats_from_extraction(session, vendor=vendor, extraction=current)
-    session.commit()
-    return invoice
-
-
-def dismiss_duplicate(session: Session, *, invoice_id, against_id) -> Invoice:
-    """Persist that this invoice was reviewed and is NOT a duplicate of `against_id`.
-
-    The pair is added to invoices.duplicate_dismissals so the duplicate
-    detector skips this combination on subsequent re-extractions.
-    """
-    invoice_repo.record_duplicate_dismissal(
-        session, invoice_id=invoice_id, dismissed_against_id=against_id
-    )
-    session.commit()
-    invoice = invoice_repo.get_invoice(session, invoice_id)
-    if invoice is None:
-        raise LookupError(f"invoice {invoice_id} not found")
-    return invoice
-
-
-def mark_unprocessable(session: Session, *, invoice_id) -> Invoice:
-    """Set review_status=unprocessable. Used for failure-mode UX."""
-    inv = invoice_repo.update_review_status(
-        session, invoice_id=invoice_id, review_status="unprocessable"
-    )
-    session.commit()
-    return inv
-
-
-# ---------- DTO helpers — used by the api layer ----------
-
-
-def _orm_extraction_to_dto(extraction: Extraction) -> ExtractionOut:
-    """Convert an ORM Extraction row to an ExtractionOut DTO."""
-    return ExtractionOut.model_validate(
-        {
-            "id": extraction.id,
-            "invoice_id": extraction.invoice_id,
-            "model": extraction.model,
-            "cascade_trace": extraction.cascade_trace,
-            "extracted_fields": extraction.extracted_fields,
-            "confidence_per_field": extraction.confidence_per_field,
-            "predicted_triage_state": extraction.predicted_triage_state,
-            "predicted_triage_reasons": extraction.predicted_triage_reasons,
-            "line_items": extraction.line_items or [],
-            "tax_breakdown": extraction.tax_breakdown or [],
-            "is_current": extraction.is_current,
-            "created_at": extraction.created_at,
-        }
-    )
-
-
-def _orm_invoice_to_dto(invoice: Invoice, session: Session) -> InvoiceOut:
-    """Convert an ORM Invoice row (+ its current extraction) to an InvoiceOut DTO."""
-    current = extraction_repo.get_current_extraction(session, invoice_id=invoice.id)
-    current_out: ExtractionOut | None = (
-        _orm_extraction_to_dto(current) if current is not None else None
-    )
-    return InvoiceOut(
-        id=invoice.id,
-        file_path=invoice.file_path,
-        file_hash=invoice.file_hash,
-        perceptual_hash=invoice.perceptual_hash,
-        vendor_id=invoice.vendor_id,
-        uploaded_at=invoice.uploaded_at,
-        review_status=invoice.review_status,  # type: ignore[arg-type]
-        duplicate_dismissals=invoice.duplicate_dismissals or [],
-        current_extraction=current_out,
-    )
-
-
-def extract_and_serialize(session: Session, *, pdf_path: Path) -> InvoiceOut:
-    """Run the full extraction pipeline and return a serialized DTO."""
-    result = extract_from_pdf(session, pdf_path=pdf_path)
-    return _orm_invoice_to_dto(result.invoice, session)
-
-
-def list_invoice_dtos(session: Session, *, limit: int = 200) -> list[InvoiceOut]:
-    """Return newest-first list of InvoiceOut DTOs."""
-    invoices = invoice_repo.list_invoices(session, limit=limit)
-    return [_orm_invoice_to_dto(inv, session) for inv in invoices]
-
-
-def get_invoice_dto(session: Session, invoice_id: UUID) -> InvoiceOut | None:
-    """Return an InvoiceOut DTO for the given invoice_id, or None."""
-    inv = invoice_repo.get_invoice(session, invoice_id)
-    if inv is None:
-        return None
-    return _orm_invoice_to_dto(inv, session)
-
-
-def get_invoice_file_path(session: Session, invoice_id: UUID) -> Path | None:
-    """Return the file path for an invoice, or None if not found."""
-    inv = invoice_repo.get_invoice(session, invoice_id)
-    if inv is None:
-        return None
-    return Path(inv.file_path)
-
-
-def get_vendor_for_invoice(session: Session, *, invoice_id) -> VendorOut | None:
-    """Return the vendor (with memory) associated with an invoice, or None."""
-    from app.db.models import Vendor as VendorModel
-
-    inv = invoice_repo.get_invoice(session, invoice_id)
-    if inv is None or inv.vendor_id is None:
-        return None
-    v = session.get(VendorModel, inv.vendor_id)
-    if v is None:
-        return None
-    memory_dict = v.memory or {}
-    memory = VendorMemory(
-        rules=memory_dict.get("rules", []) or [],
-        stats=VendorMemoryStats(
-            total_seen=int(memory_dict.get("stats", {}).get("total_seen", 0) or 0),
-            avg_total=float(memory_dict.get("stats", {}).get("avg_total", 0.0) or 0.0),
-            std_total=float(memory_dict.get("stats", {}).get("std_total", 0.0) or 0.0),
-        ),
-    )
-    return VendorOut(
-        id=v.id,
-        name=v.name,
-        tax_id=v.tax_id,
-        normalized_name=v.normalized_name,
-        first_seen_at=v.first_seen_at,
-        memory=memory,
-    )
+"""Pipeline ends here. Clerk-initiated Triage State transitions
+(`confirm_invoice`, `dismiss_duplicate`, `mark_unprocessable`,
+`retry_extraction`) live in `services/clerk_actions.py`. DTO-returning
+queries used by the API layer live in `services/invoice_queries.py`."""

@@ -1,16 +1,27 @@
-"""LLM provider adapter — Protocol + concrete impls + factory.
+"""LLM provider adapter -- ExtractionSpec-driven, single-method seam.
 
 ADR-0005: services depend on the `LLMClient` Protocol, never on a concrete
-implementation. The factory picks the impl based on `Settings.llm_provider`.
+implementation. The Protocol exposes ONE method, `call(spec, ...)`, that
+dispatches per `ExtractionSpec`. Adding a new extraction (a sixth prompt /
+schema / parser combination) is one new spec constant -- no new method on
+the Protocol, no new method on either implementation.
+
+Each ExtractionSpec carries:
+  - `name`         -- short identifier for logs and stub dispatch
+  - `prompt_name`  -- the versioned prompt file to load (ADR-0005 single
+                     source of truth: prompt body + schema hashes are
+                     logged per call)
+  - `input_shape`  -- "text" or "vision"; the seam between the two
+                     content-block shapes
+  - `parser`       -- typed extractor from tool_use dict -> Result[T]
+  - `max_tokens`   -- per-spec budget; defaults to header-sized
 
 Implementations:
-- `AnthropicLLMClient` — real provider. Tool-use + prompt-cache + tenacity
-  retries on transient errors.
-- `StubLLMClient` — deterministic offline stub for demos / interview review.
-  Returns canned ExtractionResults that vary slightly by input hash and
-  model tier so cascade traces look realistic without any API calls.
-
-One method per use case per ADR-0005. Never a generic `call_claude`.
+  - `AnthropicLLMClient` -- real provider. Tool-use + prompt-cached system
+    block + tenacity retries on transient errors per ADR-0006.
+  - `StubLLMClient`      -- deterministic offline stub for demos / interview
+    review. Same single-method shape; spec.name dispatches to scripted
+    scenario producers.
 """
 
 from __future__ import annotations
@@ -18,8 +29,9 @@ from __future__ import annotations
 import base64
 import hashlib
 import re
-from dataclasses import dataclass
-from typing import Any, ClassVar, Protocol
+from collections.abc import Callable
+from dataclasses import dataclass, field
+from typing import Any, ClassVar, Generic, Literal, Protocol, TypeVar
 
 import structlog
 from anthropic import (
@@ -41,12 +53,8 @@ from app.prompts import LoadedPrompt, load
 
 log = structlog.get_logger(__name__)
 
-# Header extraction fits comfortably under 1024 tokens. When extract_line_items
-# lands, lift this per-method (line items can be 500-1000 tokens by themselves).
-_HEADER_MAX_TOKENS = 1024
 
-
-# ---------- Public surface ---------------------------------------------------
+# ---------- Result dataclasses -----------------------------------------------
 
 
 @dataclass(frozen=True, slots=True)
@@ -63,9 +71,9 @@ class ExtractionResult:
 
 @dataclass(frozen=True, slots=True)
 class LineItemsResult:
-    """Output of extract_line_items — list of raw line-item dicts.
+    """Output of the line-items spec — list of raw line-item dicts.
 
-    Each dict matches the schema in prompts/schemas/extraction_line_items_schema.json:
+    Each dict matches `prompts/schemas/extraction_line_items_schema.json`:
     {description, quantity?, unit_price?, line_total, confidence?}.
     Service-layer code wraps these into domain.LineItem before persisting.
     """
@@ -79,13 +87,13 @@ class LineItemsResult:
 
 @dataclass(frozen=True, slots=True)
 class StructuredQueryResult:
-    """Output of extract_structured_query — raw payload matching the
+    """Output of the structured-query spec — raw payload matching the
     StructuredQuery schema (filters/sort/limit/untranslated_intent).
 
     Service-layer code validates the payload against the Pydantic
-    StructuredQuery model (FIELD_OP_COMPATIBILITY enforced there) before
-    handing it to the search builder. Malformed LLM output is rejected
-    via ValueError, never silently passed through to SQL.
+    StructuredQuery model (FIELD_OP_COMPATIBILITY) before handing it to
+    the search builder. Malformed LLM output is rejected via ValueError,
+    never silently passed through to SQL.
     """
 
     payload: dict[str, Any]
@@ -97,9 +105,9 @@ class StructuredQueryResult:
 
 @dataclass(frozen=True, slots=True)
 class TaxBreakdownResult:
-    """Output of extract_tax_breakdown — list of raw per-jurisdiction rows.
+    """Output of the tax-breakdown spec — list of raw per-jurisdiction rows.
 
-    Each dict matches the schema in prompts/schemas/extraction_tax_breakdown_schema.json:
+    Each dict matches `prompts/schemas/extraction_tax_breakdown_schema.json`:
     {jurisdiction, rate?, amount, confidence?}.
     """
 
@@ -110,48 +118,173 @@ class TaxBreakdownResult:
     usage: dict[str, int]
 
 
+# ---------- ExtractionSpec ---------------------------------------------------
+
+
+T = TypeVar("T")
+
+# Default token budget for a single extraction. Header / line-items / tax
+# rows all fit. Bump on a per-spec basis when a future schema needs more.
+_DEFAULT_MAX_TOKENS = 1024
+
+
+@dataclass(frozen=True, slots=True)
+class _CallContext:
+    """Plumbing data the result parser may need."""
+
+    model: str
+    prompt_hash: str
+    schema_hash: str
+    usage: dict[str, int]
+
+
+@dataclass(frozen=True, slots=True)
+class ExtractionSpec(Generic[T]):
+    """One LLM extraction operation: prompt + input shape + result parser.
+
+    Adding a new extraction is one new module-level constant of this
+    type. The `parser` callable converts the raw tool_use input dict
+    plus per-call context into the typed Result[T] the caller expects.
+    """
+
+    name: str
+    prompt_name: str
+    input_shape: Literal["text", "vision"]
+    parser: Callable[[dict[str, Any], _CallContext], T]
+    max_tokens: int = _DEFAULT_MAX_TOKENS
+
+
+# ---------- Result parsers ---------------------------------------------------
+
+
+def _parse_header_text(tool_input: dict[str, Any], ctx: _CallContext) -> ExtractionResult:
+    """Text-path header: confidence + extraction_failed are top-level keys."""
+    confidence = tool_input.pop("confidence", {}) or {}
+    failed = bool(tool_input.pop("extraction_failed", False))
+    failure_reason = tool_input.pop("extraction_failure_reason", None)
+    return ExtractionResult(
+        fields=tool_input,
+        self_reported_confidence=confidence,
+        extraction_failed=failed,
+        extraction_failure_reason=failure_reason,
+        model=ctx.model,
+        prompt_hash=ctx.prompt_hash,
+        schema_hash=ctx.schema_hash,
+        usage=ctx.usage,
+    )
+
+
+def _parse_header_vision(tool_input: dict[str, Any], ctx: _CallContext) -> ExtractionResult:
+    """Vision-path header: per-field {value, bbox, page, confidence} dicts.
+
+    Self-reported confidence is pulled from each field's `confidence` key
+    rather than from a top-level dict. The vision schema (ADR-0001) puts
+    bboxes alongside values, so the field shape is richer than the text path.
+    """
+    failed = bool(tool_input.pop("extraction_failed", False))
+    failure_reason = tool_input.pop("extraction_failure_reason", None)
+    self_conf = {
+        k: float(v.get("confidence", 0.0))
+        for k, v in tool_input.items()
+        if isinstance(v, dict)
+    }
+    return ExtractionResult(
+        fields=tool_input,
+        self_reported_confidence=self_conf,
+        extraction_failed=failed,
+        extraction_failure_reason=failure_reason,
+        model=ctx.model,
+        prompt_hash=ctx.prompt_hash,
+        schema_hash=ctx.schema_hash,
+        usage=ctx.usage,
+    )
+
+
+def _parse_line_items(tool_input: dict[str, Any], ctx: _CallContext) -> LineItemsResult:
+    return LineItemsResult(
+        items=list(tool_input.get("items") or []),
+        model=ctx.model,
+        prompt_hash=ctx.prompt_hash,
+        schema_hash=ctx.schema_hash,
+        usage=ctx.usage,
+    )
+
+
+def _parse_tax_breakdown(tool_input: dict[str, Any], ctx: _CallContext) -> TaxBreakdownResult:
+    return TaxBreakdownResult(
+        rows=list(tool_input.get("rows") or []),
+        model=ctx.model,
+        prompt_hash=ctx.prompt_hash,
+        schema_hash=ctx.schema_hash,
+        usage=ctx.usage,
+    )
+
+
+def _parse_structured_query(
+    tool_input: dict[str, Any], ctx: _CallContext
+) -> StructuredQueryResult:
+    return StructuredQueryResult(
+        payload=tool_input,
+        model=ctx.model,
+        prompt_hash=ctx.prompt_hash,
+        schema_hash=ctx.schema_hash,
+        usage=ctx.usage,
+    )
+
+
+# ---------- Spec constants ---------------------------------------------------
+
+
+EXTRACT_HEADER: ExtractionSpec[ExtractionResult] = ExtractionSpec(
+    name="header",
+    prompt_name="extraction_header_v2",
+    input_shape="text",
+    parser=_parse_header_text,
+)
+
+EXTRACT_HEADER_VISION: ExtractionSpec[ExtractionResult] = ExtractionSpec(
+    name="header_vision",
+    prompt_name="extraction_header_vision_v2",
+    input_shape="vision",
+    parser=_parse_header_vision,
+)
+
+EXTRACT_LINE_ITEMS: ExtractionSpec[LineItemsResult] = ExtractionSpec(
+    name="line_items",
+    prompt_name="extraction_line_items_v1",
+    input_shape="text",
+    parser=_parse_line_items,
+)
+
+EXTRACT_TAX_BREAKDOWN: ExtractionSpec[TaxBreakdownResult] = ExtractionSpec(
+    name="tax_breakdown",
+    prompt_name="extraction_tax_breakdown_v1",
+    input_shape="text",
+    parser=_parse_tax_breakdown,
+)
+
+EXTRACT_STRUCTURED_QUERY: ExtractionSpec[StructuredQueryResult] = ExtractionSpec(
+    name="structured_query",
+    prompt_name="nl_to_structured_query_v1",
+    input_shape="text",
+    parser=_parse_structured_query,
+)
+
+
+# ---------- LLMClient Protocol -----------------------------------------------
+
+
 class LLMClient(Protocol):
-    """Structural interface for LLM adapters. Services depend on this Protocol."""
+    """Single-method seam: dispatch on ExtractionSpec for any extraction."""
 
-    def extract_header(
+    def call(
         self,
+        spec: ExtractionSpec[T],
         *,
-        invoice_text: str,
         model: str,
-        prompt_name: str = "extraction_header_v2",
-    ) -> ExtractionResult: ...
-
-    def extract_header_vision(
-        self,
-        *,
-        page_pngs: list[bytes],
-        model: str,
-        prompt_name: str = "extraction_header_vision_v2",
-    ) -> ExtractionResult: ...
-
-    def extract_line_items(
-        self,
-        *,
-        invoice_text: str,
-        model: str,
-        prompt_name: str = "extraction_line_items_v1",
-    ) -> LineItemsResult: ...
-
-    def extract_tax_breakdown(
-        self,
-        *,
-        invoice_text: str,
-        model: str,
-        prompt_name: str = "extraction_tax_breakdown_v1",
-    ) -> TaxBreakdownResult: ...
-
-    def extract_structured_query(
-        self,
-        *,
-        natural_language: str,
-        model: str,
-        prompt_name: str = "nl_to_structured_query_v1",
-    ) -> StructuredQueryResult: ...
+        text: str | None = None,
+        page_pngs: list[bytes] | None = None,
+    ) -> T: ...
 
 
 # ---------- Anthropic implementation -----------------------------------------
@@ -178,9 +311,9 @@ class AnthropicLLMClient:
     """Anthropic SDK-backed implementation of LLMClient.
 
     Tool-use schema + prompt-cached system block per ADR-0001. Tenacity
-    retries on transient errors per ADR-0006 (timeout / 429 / 5xx, 3 attempts,
-    exponential backoff). Auth errors (401/403) and 4xx schema errors
-    fast-fail without retry.
+    retries on transient errors per ADR-0006 (timeout / 429 / 5xx, 3
+    attempts, exponential backoff). Auth errors (401/403) and 4xx schema
+    errors fast-fail without retry.
     """
 
     def __init__(self, api_key: str) -> None:
@@ -192,101 +325,34 @@ class AnthropicLLMClient:
         self._client = Anthropic(api_key=api_key)
 
     @_retry_decorator
-    def extract_header(
+    def call(
         self,
+        spec: ExtractionSpec[T],
         *,
-        invoice_text: str,
         model: str,
-        prompt_name: str = "extraction_header_v2",
-    ) -> ExtractionResult:
-        """Extract header fields via tool-use. Prompt-cached system block."""
-        prompt: LoadedPrompt = load(prompt_name)
-
-        system = [
-            {
-                "type": "text",
-                "text": prompt.body,
-                "cache_control": {"type": "ephemeral"},  # prompt-cache the system block
-            }
-        ]
-
-        tool = {
-            "name": prompt.schema["name"],
-            "description": prompt.schema["description"],
-            "input_schema": prompt.schema["input_schema"],
-        }
-
-        log.info(
-            "llm.extract_header.start",
-            model=model,
-            prompt_hash=prompt.body_hash,
-            schema_hash=prompt.schema_hash,
-            input_chars=len(invoice_text),
-        )
-
-        response = self._client.messages.create(
-            model=model,
-            max_tokens=_HEADER_MAX_TOKENS,
-            system=system,
-            tools=[tool],
-            tool_choice={"type": "tool", "name": tool["name"]},
-            messages=[{"role": "user", "content": invoice_text}],
-        )
-
-        tool_input: dict[str, Any] | None = None
-        for block in response.content:
-            if getattr(block, "type", None) == "tool_use" and block.name == tool["name"]:
-                tool_input = dict(block.input)  # detach from SDK before mutation
-                break
-
-        if tool_input is None:
-            raise RuntimeError(f"LLM did not emit the {tool['name']} tool call")
-
-        confidence = tool_input.pop("confidence", {}) or {}
-        failed = bool(tool_input.pop("extraction_failed", False))
-        failure_reason = tool_input.pop("extraction_failure_reason", None)
-
-        usage_obj = getattr(response, "usage", None)
-        usage = {
-            "input_tokens": getattr(usage_obj, "input_tokens", 0),
-            "output_tokens": getattr(usage_obj, "output_tokens", 0),
-            "cache_creation_input_tokens": getattr(usage_obj, "cache_creation_input_tokens", 0),
-            "cache_read_input_tokens": getattr(usage_obj, "cache_read_input_tokens", 0),
-        }
-
-        log.info(
-            "llm.extract_header.done",
-            model=model,
-            prompt_hash=prompt.body_hash,
-            usage=usage,
-            extraction_failed=failed,
-        )
-
-        return ExtractionResult(
-            fields=tool_input,
-            self_reported_confidence=confidence,
-            extraction_failed=failed,
-            extraction_failure_reason=failure_reason,
-            model=response.model,
-            prompt_hash=prompt.body_hash,
-            schema_hash=prompt.schema_hash,
-            usage=usage,
-        )
-
-    @_retry_decorator
-    def extract_line_items(
-        self,
-        *,
-        invoice_text: str,
-        model: str,
-        prompt_name: str = "extraction_line_items_v1",
-    ) -> LineItemsResult:
-        """Extract every line item via tool-use. Day-3.
-
-        Same prompt-cache + tenacity-retry shape as extract_header. Returns
-        a LineItemsResult; service-layer converts the raw dicts to LineItem.
+        text: str | None = None,
+        page_pngs: list[bytes] | None = None,
+    ) -> T:
+        """Run an extraction. The spec's `input_shape` decides whether the
+        request carries text or vision content blocks; the spec's `parser`
+        converts the tool_use output to the typed Result[T].
         """
-        prompt: LoadedPrompt = load(prompt_name)
+        if spec.input_shape == "text":
+            if text is None:
+                raise ValueError(
+                    f"spec {spec.name!r} requires text=..., got None"
+                )
+            user_content: str | list[dict[str, Any]] = text
+            input_size = len(text)
+        else:
+            if not page_pngs:
+                raise ValueError(
+                    f"spec {spec.name!r} requires page_pngs=..., got empty/None"
+                )
+            user_content = _build_vision_user_content(page_pngs)
+            input_size = len(page_pngs)
+
+        prompt: LoadedPrompt = load(spec.prompt_name)
         system = [
             {
                 "type": "text",
@@ -301,263 +367,23 @@ class AnthropicLLMClient:
         }
 
         log.info(
-            "llm.extract_line_items.start",
+            f"llm.{spec.name}.start",
             model=model,
-            prompt_hash=prompt.body_hash,
-            input_chars=len(invoice_text),
-        )
-
-        response = self._client.messages.create(
-            model=model,
-            max_tokens=_HEADER_MAX_TOKENS,
-            system=system,
-            tools=[tool],
-            tool_choice={"type": "tool", "name": tool["name"]},
-            messages=[{"role": "user", "content": invoice_text}],
-        )
-
-        tool_input: dict[str, Any] | None = None
-        for block in response.content:
-            if getattr(block, "type", None) == "tool_use" and block.name == tool["name"]:
-                tool_input = dict(block.input)
-                break
-
-        if tool_input is None:
-            raise RuntimeError(f"LLM did not emit the {tool['name']} tool call")
-
-        items = list(tool_input.get("items") or [])
-        usage_obj = getattr(response, "usage", None)
-        usage = {
-            "input_tokens": getattr(usage_obj, "input_tokens", 0),
-            "output_tokens": getattr(usage_obj, "output_tokens", 0),
-            "cache_creation_input_tokens": getattr(usage_obj, "cache_creation_input_tokens", 0),
-            "cache_read_input_tokens": getattr(usage_obj, "cache_read_input_tokens", 0),
-        }
-
-        log.info(
-            "llm.extract_line_items.done",
-            model=model,
-            prompt_hash=prompt.body_hash,
-            n_items=len(items),
-            usage=usage,
-        )
-
-        return LineItemsResult(
-            items=items,
-            model=response.model,
             prompt_hash=prompt.body_hash,
             schema_hash=prompt.schema_hash,
-            usage=usage,
-        )
-
-    @_retry_decorator
-    def extract_tax_breakdown(
-        self,
-        *,
-        invoice_text: str,
-        model: str,
-        prompt_name: str = "extraction_tax_breakdown_v1",
-    ) -> TaxBreakdownResult:
-        """Extract per-jurisdiction tax rows via tool-use. Day-4.
-
-        Same prompt-cache + tenacity-retry shape as extract_header /
-        extract_line_items. Service-layer wraps the raw dicts into
-        domain.TaxBreakdownLine before persisting.
-        """
-        prompt: LoadedPrompt = load(prompt_name)
-        system = [
-            {
-                "type": "text",
-                "text": prompt.body,
-                "cache_control": {"type": "ephemeral"},
-            }
-        ]
-        tool = {
-            "name": prompt.schema["name"],
-            "description": prompt.schema["description"],
-            "input_schema": prompt.schema["input_schema"],
-        }
-
-        log.info(
-            "llm.extract_tax_breakdown.start",
-            model=model,
-            prompt_hash=prompt.body_hash,
-            input_chars=len(invoice_text),
+            input_size=input_size,
         )
 
         response = self._client.messages.create(
             model=model,
-            max_tokens=_HEADER_MAX_TOKENS,
-            system=system,
-            tools=[tool],
-            tool_choice={"type": "tool", "name": tool["name"]},
-            messages=[{"role": "user", "content": invoice_text}],
-        )
-
-        tool_input: dict[str, Any] | None = None
-        for block in response.content:
-            if getattr(block, "type", None) == "tool_use" and block.name == tool["name"]:
-                tool_input = dict(block.input)
-                break
-
-        if tool_input is None:
-            raise RuntimeError(f"LLM did not emit the {tool['name']} tool call")
-
-        rows = list(tool_input.get("rows") or [])
-        usage_obj = getattr(response, "usage", None)
-        usage = {
-            "input_tokens": getattr(usage_obj, "input_tokens", 0),
-            "output_tokens": getattr(usage_obj, "output_tokens", 0),
-            "cache_creation_input_tokens": getattr(usage_obj, "cache_creation_input_tokens", 0),
-            "cache_read_input_tokens": getattr(usage_obj, "cache_read_input_tokens", 0),
-        }
-
-        log.info(
-            "llm.extract_tax_breakdown.done",
-            model=model,
-            prompt_hash=prompt.body_hash,
-            n_rows=len(rows),
-            usage=usage,
-        )
-
-        return TaxBreakdownResult(
-            rows=rows,
-            model=response.model,
-            prompt_hash=prompt.body_hash,
-            schema_hash=prompt.schema_hash,
-            usage=usage,
-        )
-
-    @_retry_decorator
-    def extract_structured_query(
-        self,
-        *,
-        natural_language: str,
-        model: str,
-        prompt_name: str = "nl_to_structured_query_v1",
-    ) -> StructuredQueryResult:
-        """Translate NL to a StructuredQuery payload via tool-use.
-
-        Returns the raw tool input dict. The translator service validates it
-        against the Pydantic StructuredQuery model (FIELD_OP_COMPATIBILITY,
-        sortable-field set, value-type compatibility) before any SQL builder
-        sees it — malformed LLM output is rejected here per ADR-0004.
-        """
-        prompt: LoadedPrompt = load(prompt_name)
-        system = [
-            {
-                "type": "text",
-                "text": prompt.body,
-                "cache_control": {"type": "ephemeral"},
-            }
-        ]
-        tool = {
-            "name": prompt.schema["name"],
-            "description": prompt.schema["description"],
-            "input_schema": prompt.schema["input_schema"],
-        }
-
-        log.info(
-            "llm.translate_nl.start",
-            model=model,
-            prompt_hash=prompt.body_hash,
-            input_chars=len(natural_language),
-        )
-
-        response = self._client.messages.create(
-            model=model,
-            max_tokens=_HEADER_MAX_TOKENS,
-            system=system,
-            tools=[tool],
-            tool_choice={"type": "tool", "name": tool["name"]},
-            messages=[{"role": "user", "content": natural_language}],
-        )
-
-        tool_input: dict[str, Any] | None = None
-        for block in response.content:
-            if getattr(block, "type", None) == "tool_use" and block.name == tool["name"]:
-                tool_input = dict(block.input)
-                break
-
-        if tool_input is None:
-            raise RuntimeError(f"LLM did not emit the {tool['name']} tool call")
-
-        usage_obj = getattr(response, "usage", None)
-        usage = {
-            "input_tokens": getattr(usage_obj, "input_tokens", 0),
-            "output_tokens": getattr(usage_obj, "output_tokens", 0),
-            "cache_creation_input_tokens": getattr(usage_obj, "cache_creation_input_tokens", 0),
-            "cache_read_input_tokens": getattr(usage_obj, "cache_read_input_tokens", 0),
-        }
-
-        log.info(
-            "llm.translate_nl.done",
-            model=model,
-            n_filters=len(tool_input.get("filters") or []),
-            usage=usage,
-        )
-
-        return StructuredQueryResult(
-            payload=tool_input,
-            model=response.model,
-            prompt_hash=prompt.body_hash,
-            schema_hash=prompt.schema_hash,
-            usage=usage,
-        )
-
-    @_retry_decorator
-    def extract_header_vision(
-        self,
-        *,
-        page_pngs: list[bytes],
-        model: str,
-        prompt_name: str = "extraction_header_vision_v2",
-    ) -> ExtractionResult:
-        """Vision tool-use for scanned PDFs. Each PNG → base64 image block."""
-        prompt = load(prompt_name)
-        system = [
-            {
-                "type": "text",
-                "text": prompt.body,
-                "cache_control": {"type": "ephemeral"},
-            }
-        ]
-        tool = {
-            "name": prompt.schema["name"],
-            "description": prompt.schema["description"],
-            "input_schema": prompt.schema["input_schema"],
-        }
-        user_content: list[dict[str, Any]] = []
-        for png in page_pngs:
-            user_content.append(
-                {
-                    "type": "image",
-                    "source": {
-                        "type": "base64",
-                        "media_type": "image/png",
-                        "data": base64.b64encode(png).decode(),
-                    },
-                }
-            )
-        user_content.append({"type": "text", "text": "Extract the header fields."})
-
-        log.info(
-            "llm.extract_header_vision.start",
-            model=model,
-            prompt_hash=prompt.body_hash,
-            n_pages=len(page_pngs),
-        )
-
-        response = self._client.messages.create(
-            model=model,
-            max_tokens=_HEADER_MAX_TOKENS,
+            max_tokens=spec.max_tokens,
             system=system,
             tools=[tool],
             tool_choice={"type": "tool", "name": tool["name"]},
             messages=[{"role": "user", "content": user_content}],
         )
 
-        tool_input = None
+        tool_input: dict[str, Any] | None = None
         for block in response.content:
             if getattr(block, "type", None) == "tool_use" and block.name == tool["name"]:
                 tool_input = dict(block.input)  # detach from SDK before mutation
@@ -565,8 +391,6 @@ class AnthropicLLMClient:
         if tool_input is None:
             raise RuntimeError(f"LLM did not emit the {tool['name']} tool call")
 
-        failed = bool(tool_input.pop("extraction_failed", False))
-        failure_reason = tool_input.pop("extraction_failure_reason", None)
         usage_obj = getattr(response, "usage", None)
         usage = {
             "input_tokens": getattr(usage_obj, "input_tokens", 0),
@@ -574,22 +398,38 @@ class AnthropicLLMClient:
             "cache_creation_input_tokens": getattr(usage_obj, "cache_creation_input_tokens", 0),
             "cache_read_input_tokens": getattr(usage_obj, "cache_read_input_tokens", 0),
         }
+        log.info(
+            f"llm.{spec.name}.done",
+            model=model,
+            prompt_hash=prompt.body_hash,
+            usage=usage,
+        )
 
-        # Confidence dict is per-field on this path — pull it from each field.
-        self_conf = {
-            k: float(v.get("confidence", 0.0)) for k, v in tool_input.items() if isinstance(v, dict)
-        }
-
-        return ExtractionResult(
-            fields=tool_input,
-            self_reported_confidence=self_conf,
-            extraction_failed=failed,
-            extraction_failure_reason=failure_reason,
+        ctx = _CallContext(
             model=response.model,
             prompt_hash=prompt.body_hash,
             schema_hash=prompt.schema_hash,
             usage=usage,
         )
+        return spec.parser(tool_input, ctx)
+
+
+def _build_vision_user_content(page_pngs: list[bytes]) -> list[dict[str, Any]]:
+    """Vision content: one image block per PNG plus a trailing instruction."""
+    blocks: list[dict[str, Any]] = []
+    for png in page_pngs:
+        blocks.append(
+            {
+                "type": "image",
+                "source": {
+                    "type": "base64",
+                    "media_type": "image/png",
+                    "data": base64.b64encode(png).decode(),
+                },
+            }
+        )
+    blocks.append({"type": "text", "text": "Extract the header fields."})
+    return blocks
 
 
 # ---------- Stub implementation (offline / demo) -----------------------------
@@ -604,15 +444,15 @@ class StubLLMClient:
     """Deterministic offline LLM stub.
 
     Default provider for local dev / interview review — produces realistic
-    ExtractionResults without any network or API key. Scenarios are chosen
-    by keyword in the invoice text; the cascade flow is exercised because
+    Results without any network or API key. Scenarios are chosen by
+    keyword in the invoice text; the cascade flow is exercised because
     haiku and sonnet return slightly different `total` values, triggering
-    the agreement-score override path in extraction_service._run_cascade.
+    the agreement-score override path in services/cascade.
 
     Override scenarios by including a keyword in the source document:
       "halcyon"   → big-spend invoice (drives anomaly demo with vendor history)
       "bramble"   → near-duplicate-friendly fixture
-      "[stub:fail]" or "encrypted" → extraction_failed=True
+      "[stub:fail]" or "encrypted document" → extraction_failed=True
       default     → Vega Logistics, ~$1180, math reconciles on tier-2+
 
     Seed markers (used by scripts/seed_demo.py to populate the demo inbox):
@@ -621,15 +461,13 @@ class StubLLMClient:
       [seed-number:X]    → force invoice_number to X
     """
 
-    # Scenarios keyed by the substring that appears in the invoice text (or
-    # in the fake "vision" placeholder text we synthesize from page count).
     _SCENARIOS: ClassVar[dict[str, dict[str, Any]]] = {
         "halcyon": {
             "vendor_name": "Halcyon Software",
             "invoice_number_prefix": "HAL-2026-",
             "subtotal": 28_900.00,
             "tax": 5_162.50,
-            "total_tier1": 34_063.50,  # off by $1 vs tier-2
+            "total_tier1": 34_063.50,
             "total_tier2": 34_062.50,
             "currency": "USD",
             "line_items": [
@@ -657,7 +495,7 @@ class StubLLMClient:
             "invoice_number_prefix": "BR-2026-",
             "subtotal": 635.59,
             "tax": 114.41,
-            "total_tier1": 751.00,  # off by $1
+            "total_tier1": 751.00,
             "total_tier2": 750.00,
             "currency": "USD",
             "line_items": [
@@ -701,7 +539,7 @@ class StubLLMClient:
             "invoice_number_prefix": "INV-2026-",
             "subtotal": 1_000.00,
             "tax": 180.00,
-            "total_tier1": 1_181.00,  # off by $1 → triggers cascade
+            "total_tier1": 1_181.00,
             "total_tier2": 1_180.00,
             "currency": "USD",
             "line_items": [
@@ -731,25 +569,53 @@ class StubLLMClient:
         },
     }
 
-    def extract_header(
+    def call(
         self,
+        spec: ExtractionSpec[T],
         *,
-        invoice_text: str,
         model: str,
-        prompt_name: str = "extraction_header_v2",
-    ) -> ExtractionResult:
-        if self._is_failure_trigger(invoice_text):
+        text: str | None = None,
+        page_pngs: list[bytes] | None = None,
+    ) -> T:
+        """Dispatch on spec.name to the appropriate scripted scenario.
+
+        Returns the same typed Result the Anthropic client would, just
+        synthesized from the canned _SCENARIOS map (or _stub_translate_nl
+        for the structured-query spec).
+        """
+        if spec.name == "header":
+            if text is None:
+                raise ValueError("EXTRACT_HEADER requires text=")
+            return self._stub_header(text=text, model=model)  # type: ignore[return-value]
+        if spec.name == "header_vision":
+            if page_pngs is None:
+                raise ValueError("EXTRACT_HEADER_VISION requires page_pngs=")
+            return self._stub_header_vision(page_pngs=page_pngs, model=model)  # type: ignore[return-value]
+        if spec.name == "line_items":
+            if text is None:
+                raise ValueError("EXTRACT_LINE_ITEMS requires text=")
+            return self._stub_line_items(text=text, model=model)  # type: ignore[return-value]
+        if spec.name == "tax_breakdown":
+            if text is None:
+                raise ValueError("EXTRACT_TAX_BREAKDOWN requires text=")
+            return self._stub_tax_breakdown(text=text, model=model)  # type: ignore[return-value]
+        if spec.name == "structured_query":
+            if text is None:
+                raise ValueError("EXTRACT_STRUCTURED_QUERY requires text=")
+            return self._stub_structured_query(natural_language=text, model=model)  # type: ignore[return-value]
+        raise ValueError(f"StubLLMClient: unknown spec name {spec.name!r}")
+
+    # ---- scripted scenario producers ----
+
+    def _stub_header(self, *, text: str, model: str) -> ExtractionResult:
+        if self._is_failure_trigger(text):
             return self._failure_result(model=model, vision=False)
-        scenario = self._pick_scenario(invoice_text)
-        seed = self._seed_from(invoice_text)
+        scenario = self._pick_scenario(text)
+        seed = self._seed_from(text)
         fields = self._build_fields(scenario, model=model, seed=seed)
-        _apply_seed_overrides(fields, invoice_text, model=model)
+        _apply_seed_overrides(fields, text, model=model)
         confidence = {k: 0.95 for k in fields}
-        log.info(
-            "llm.extract_header.stub",
-            model=model,
-            scenario=scenario["vendor_name"],
-        )
+        log.info("llm.header.stub", model=model, scenario=scenario["vendor_name"])
         return ExtractionResult(
             fields=fields,
             self_reported_confidence=confidence,
@@ -761,21 +627,11 @@ class StubLLMClient:
             usage=_stub_usage(),
         )
 
-    def extract_header_vision(
-        self,
-        *,
-        page_pngs: list[bytes],
-        model: str,
-        prompt_name: str = "extraction_header_vision_v2",
-    ) -> ExtractionResult:
-        # Use the PNG bytes as the seed so different scans → different invoice numbers.
+    def _stub_header_vision(self, *, page_pngs: list[bytes], model: str) -> ExtractionResult:
         seed_text = hashlib.sha256(b"".join(page_pngs)).hexdigest()
-        scenario = self._SCENARIOS["default"]  # vision path: always default scenario
+        scenario = self._SCENARIOS["default"]
         seed = self._seed_from(seed_text)
         flat = self._build_fields(scenario, model=model, seed=seed)
-        # Seed markers don't apply to the vision path — PNGs don't carry text.
-        # Seed-mode invoices use the digital path so the markers above suffice.
-        # Vision returns per-field {value, bbox, page, confidence} shapes.
         bboxes = {
             "vendor_name": [0.08, 0.06, 0.55, 0.10],
             "invoice_number": [0.66, 0.13, 0.92, 0.16],
@@ -793,7 +649,7 @@ class StubLLMClient:
                 "page": 0,
                 "confidence": 0.95,
             }
-        log.info("llm.extract_header_vision.stub", model=model, n_pages=len(page_pngs))
+        log.info("llm.header_vision.stub", model=model, n_pages=len(page_pngs))
         return ExtractionResult(
             fields=fields,
             self_reported_confidence={k: 0.95 for k in fields},
@@ -805,19 +661,8 @@ class StubLLMClient:
             usage=_stub_usage(),
         )
 
-    def extract_line_items(
-        self,
-        *,
-        invoice_text: str,
-        model: str,
-        prompt_name: str = "extraction_line_items_v1",
-    ) -> LineItemsResult:
-        """Return canned line items for the matched scenario.
-
-        Failure-mode keyword still returns an empty list (the failure surface
-        is owned by extract_header — line items just go quiet on failure).
-        """
-        if self._is_failure_trigger(invoice_text):
+    def _stub_line_items(self, *, text: str, model: str) -> LineItemsResult:
+        if self._is_failure_trigger(text):
             return LineItemsResult(
                 items=[],
                 model=model,
@@ -825,11 +670,11 @@ class StubLLMClient:
                 schema_hash="stub-line-items-v1",
                 usage=_stub_usage(),
             )
-        scenario = self._pick_scenario(invoice_text)
+        scenario = self._pick_scenario(text)
         items_template = scenario.get("line_items", [])
         items = [{**item, "confidence": 0.92, "page": 0} for item in items_template]
         log.info(
-            "llm.extract_line_items.stub",
+            "llm.line_items.stub",
             model=model,
             scenario=scenario["vendor_name"],
             n_items=len(items),
@@ -842,19 +687,8 @@ class StubLLMClient:
             usage=_stub_usage(),
         )
 
-    def extract_tax_breakdown(
-        self,
-        *,
-        invoice_text: str,
-        model: str,
-        prompt_name: str = "extraction_tax_breakdown_v1",
-    ) -> TaxBreakdownResult:
-        """Return canned per-jurisdiction tax rows for the matched scenario.
-
-        Failure-mode keyword returns an empty list. Header-extraction owns
-        the document-level failure surface.
-        """
-        if self._is_failure_trigger(invoice_text):
+    def _stub_tax_breakdown(self, *, text: str, model: str) -> TaxBreakdownResult:
+        if self._is_failure_trigger(text):
             return TaxBreakdownResult(
                 rows=[],
                 model=model,
@@ -862,11 +696,11 @@ class StubLLMClient:
                 schema_hash="stub-tax-breakdown-v1",
                 usage=_stub_usage(),
             )
-        scenario = self._pick_scenario(invoice_text)
+        scenario = self._pick_scenario(text)
         rows_template = scenario.get("tax_breakdown", [])
         rows = [{**row, "confidence": 0.94, "page": 0} for row in rows_template]
         log.info(
-            "llm.extract_tax_breakdown.stub",
+            "llm.tax_breakdown.stub",
             model=model,
             scenario=scenario["vendor_name"],
             n_rows=len(rows),
@@ -879,23 +713,12 @@ class StubLLMClient:
             usage=_stub_usage(),
         )
 
-    def extract_structured_query(
-        self,
-        *,
-        natural_language: str,
-        model: str,
-        prompt_name: str = "nl_to_structured_query_v1",
+    def _stub_structured_query(
+        self, *, natural_language: str, model: str
     ) -> StructuredQueryResult:
-        """Deterministic NL translation for the demo path.
-
-        Regex-keyed translation hits every demo phrasing without burning
-        tokens. The downstream service still validates the payload against
-        the Pydantic StructuredQuery model — same code path as the real
-        Anthropic provider — so behaviour matches.
-        """
         payload = _stub_translate_nl(natural_language)
         log.info(
-            "llm.translate_nl.stub",
+            "llm.structured_query.stub",
             model=model,
             n_filters=len(payload.get("filters", []) or []),
             untranslated=bool(payload.get("untranslated_intent")),
@@ -944,9 +767,9 @@ class StubLLMClient:
 
     @staticmethod
     def _build_fields(scenario: dict[str, Any], *, model: str, seed: str) -> dict[str, Any]:
-        # Tier-1 (haiku) returns a total that's off by $1 vs tier-2+. The
-        # cascade then triggers (math doesn't reconcile), sonnet/opus return
-        # the correct total, agreement_score moves the disputed field to 0.3,
+        # Tier-1 (haiku) returns a total off by $1 vs tier-2+. The cascade
+        # then triggers (math doesn't reconcile), sonnet/opus return the
+        # correct total, agreement_score moves the disputed field to 0.3,
         # and the demo gets a real cascade trace + agreement-override.
         is_tier_1 = "haiku" in model.lower()
         total = scenario["total_tier1"] if is_tier_1 else scenario["total_tier2"]
@@ -978,10 +801,8 @@ def _apply_seed_overrides(fields: dict[str, Any], invoice_text: str, *, model: s
     t = _SEED_TOTAL_RE.search(invoice_text)
     if t:
         base = float(t.group(1))
-        # Tier-1 keeps the cascade-triggering $1 disagreement.
         is_tier_1 = "haiku" in model.lower()
         fields["total"] = base + 1.0 if is_tier_1 else base
-        # Split 85/15 so subtotal+tax reconciles to the tier-2 base value.
         fields["subtotal"] = round(base * 0.85, 2)
         fields["tax"] = round(base - base * 0.85, 2)
 
@@ -1001,11 +822,11 @@ _NL_VENDOR_RE = re.compile(
 
 
 def _stub_translate_nl(natural_language: str) -> dict[str, Any]:
-    """Deterministic NL → StructuredQuery payload, used by the stub provider.
+    """Deterministic NL -> StructuredQuery payload for the stub provider.
 
-    Intentionally narrow: it covers the demo phrasings we control with seed
-    data, plus a couple of obvious fallbacks. Anything it can't translate
-    flows to `untranslated_intent` so the UI can show the amber notice.
+    Intentionally narrow: covers the demo phrasings we control with seed
+    data plus obvious fallbacks. Anything it can't translate flows to
+    `untranslated_intent` so the UI can show the amber notice.
     """
     text = natural_language.strip()
     lowered = text.lower()
@@ -1016,11 +837,6 @@ def _stub_translate_nl(natural_language: str) -> dict[str, Any]:
         handled_spans.append((match.start(), match.end()))
 
     def _mark_words(*patterns: str) -> bool:
-        """Find any of `patterns` as full words (regex \\b boundaries). Returns
-        True if at least one matched. Marks the matched span so it doesn't
-        leak into untranslated_intent. Each pattern is treated as a literal
-        substring, but consecutive word characters around the match are also
-        consumed (so 'anomal' eats 'anomalies' / 'anomaly')."""
         hit = False
         for kw in patterns:
             for m in re.finditer(rf"\b\w*{re.escape(kw)}\w*\b", lowered):
@@ -1028,12 +844,10 @@ def _stub_translate_nl(natural_language: str) -> dict[str, Any]:
                 hit = True
         return hit
 
-    # Triage / review-status synonyms
     if _mark_words("duplicate"):
         filters.append({"field": "triage_state", "op": "eq", "value": "likely_duplicate"})
     if _mark_words("anomal", "flagged"):
         filters.append({"field": "has_anomaly", "op": "eq", "value": True})
-    # Multi-word phrases are matched verbatim
     for phrase in ("needs review", "pending review", "to review"):
         idx = lowered.find(phrase)
         if idx >= 0:
@@ -1049,7 +863,6 @@ def _stub_translate_nl(natural_language: str) -> dict[str, Any]:
         idx = lowered.find("failed to extract")
         handled_spans.append((idx, idx + len("failed to extract")))
 
-    # Amount thresholds
     over = _NL_AMOUNT_RE.search(text)
     if over:
         amount = float(over.group(1).replace(",", ""))
@@ -1061,7 +874,6 @@ def _stub_translate_nl(natural_language: str) -> dict[str, Any]:
         filters.append({"field": "total", "op": "lt", "value": amount})
         _mark(under)
 
-    # Vendor name
     vendor = _NL_VENDOR_RE.search(text)
     if vendor:
         name = vendor.group(1).strip().rstrip(".,;:")
@@ -1074,7 +886,6 @@ def _stub_translate_nl(natural_language: str) -> dict[str, Any]:
             filters.append({"field": "vendor_name", "op": "eq", "value": name})
             _mark(vendor)
 
-    # Build the untranslated_intent from spans not handled
     handled_spans.sort()
     untranslated_chunks: list[str] = []
     cursor = 0
@@ -1089,7 +900,6 @@ def _stub_translate_nl(natural_language: str) -> dict[str, Any]:
         if chunk:
             untranslated_chunks.append(chunk)
 
-    # Filter out trivial stop tokens so we don't surface noise as "untranslated".
     cleaned = " ".join(untranslated_chunks).strip()
     _NOISE_WORDS = {
         "show",

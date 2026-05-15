@@ -30,11 +30,8 @@ import pymupdf  # type: ignore[import-not-found]
 
 from app.config import get_settings
 from app.db.session import SessionLocal
-from app.services.extraction_service import (
-    confirm_invoice,
-    extract_from_pdf,
-    mark_unprocessable,
-)
+from app.services.clerk_actions import confirm_invoice, mark_unprocessable
+from app.services.extraction_service import extract_from_pdf
 
 log = logging.getLogger("seed_demo")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s  %(message)s")

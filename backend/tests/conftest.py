@@ -64,25 +64,14 @@ def make_llm_mock(
     line_items: Any = None,
     tax_breakdown: Any = None,
 ) -> MagicMock:
-    """Build a MagicMock satisfying the LLMClient Protocol.
+    """Build a MagicMock satisfying the LLMClient.call() Protocol.
 
-    `header` / `vision` set a single return_value. `header_seq` / `vision_seq`
-    set a side_effect list for tests that exercise the cascade and need
-    sequential responses across tiers. `line_items` and `tax_breakdown` set
-    the return_value for their respective methods; if omitted, defaults
-    with empty results are wired in so existing tests keep passing without
-    specifying behavior for the Day-3/4 methods explicitly.
+    Keeps the legacy parameter names (header / vision / line_items / etc.)
+    as a convenience for tests; under the hood the mock's `call` method
+    dispatches on `spec.name` to return the right scripted Result. Sequence
+    args (`header_seq`, `vision_seq`) drive the cascade tests that need
+    different responses per tier call.
     """
-    mock = MagicMock()
-    if header is not None:
-        mock.extract_header.return_value = header
-    if header_seq is not None:
-        mock.extract_header.side_effect = header_seq
-    if vision is not None:
-        mock.extract_header_vision.return_value = vision
-    if vision_seq is not None:
-        mock.extract_header_vision.side_effect = vision_seq
-
     from app.adapters.llm_client import LineItemsResult, TaxBreakdownResult
 
     if line_items is None:
@@ -98,7 +87,6 @@ def make_llm_mock(
                 "cache_read_input_tokens": 0,
             },
         )
-    mock.extract_line_items.return_value = line_items
     if tax_breakdown is None:
         tax_breakdown = TaxBreakdownResult(
             rows=[],
@@ -112,7 +100,28 @@ def make_llm_mock(
                 "cache_read_input_tokens": 0,
             },
         )
-    mock.extract_tax_breakdown.return_value = tax_breakdown
+
+    header_iter = iter(header_seq) if header_seq is not None else None
+    vision_iter = iter(vision_seq) if vision_seq is not None else None
+
+    def _dispatch(spec, *, model, text=None, page_pngs=None, **_):
+        name = spec.name
+        if name == "header":
+            if header_iter is not None:
+                return next(header_iter)
+            return header
+        if name == "header_vision":
+            if vision_iter is not None:
+                return next(vision_iter)
+            return vision
+        if name == "line_items":
+            return line_items
+        if name == "tax_breakdown":
+            return tax_breakdown
+        raise AssertionError(f"make_llm_mock has no canned response for spec {name!r}")
+
+    mock = MagicMock()
+    mock.call.side_effect = _dispatch
     return mock
 
 

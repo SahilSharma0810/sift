@@ -10,6 +10,7 @@ from __future__ import annotations
 from unittest.mock import MagicMock, patch
 
 from app.adapters.llm_client import (
+    EXTRACT_LINE_ITEMS,
     AnthropicLLMClient,
     LineItemsResult,
     StubLLMClient,
@@ -55,7 +56,7 @@ class TestAnthropicExtractLineItems:
         client_mock.messages.create.return_value = _fake_response(canned)
         with patch("app.adapters.llm_client.Anthropic", return_value=client_mock):
             client = AnthropicLLMClient(api_key="test")
-            result = client.extract_line_items(invoice_text="any", model="claude-haiku-4-5")
+            result = client.call(EXTRACT_LINE_ITEMS, model="claude-haiku-4-5", text="any")
         assert isinstance(result, LineItemsResult)
         assert len(result.items) == 2
         assert result.items[0]["description"] == "Last-mile delivery"
@@ -66,8 +67,8 @@ class TestAnthropicExtractLineItems:
         client_mock = MagicMock()
         client_mock.messages.create.return_value = _fake_response([])
         with patch("app.adapters.llm_client.Anthropic", return_value=client_mock):
-            AnthropicLLMClient(api_key="test").extract_line_items(
-                invoice_text="x", model="claude-haiku-4-5"
+            AnthropicLLMClient(api_key="test").call(
+                EXTRACT_LINE_ITEMS, model="claude-haiku-4-5", text="x"
             )
         kwargs = client_mock.messages.create.call_args.kwargs
         system = kwargs["system"]
@@ -79,7 +80,7 @@ class TestAnthropicExtractLineItems:
         client_mock.messages.create.return_value = _fake_response([])
         with patch("app.adapters.llm_client.Anthropic", return_value=client_mock):
             client = AnthropicLLMClient(api_key="test")
-            result = client.extract_line_items(invoice_text="flat fee", model="claude-haiku-4-5")
+            result = client.call(EXTRACT_LINE_ITEMS, model="claude-haiku-4-5", text="flat fee")
         assert result.items == []
 
     def test_missing_tool_use_raises(self) -> None:
@@ -101,13 +102,13 @@ class TestAnthropicExtractLineItems:
             import pytest
 
             with pytest.raises(RuntimeError, match="tool call"):
-                client.extract_line_items(invoice_text="x", model="claude-haiku-4-5")
+                client.call(EXTRACT_LINE_ITEMS, model="claude-haiku-4-5", text="x")
 
 
 class TestStubExtractLineItems:
     def test_default_scenario_returns_vega_freight(self) -> None:
-        result = StubLLMClient().extract_line_items(
-            invoice_text="anything", model="claude-haiku-4-5"
+        result = StubLLMClient().call(
+            EXTRACT_LINE_ITEMS, model="claude-haiku-4-5", text="anything"
         )
         assert isinstance(result, LineItemsResult)
         # Vega default scenario has 3 line items
@@ -116,15 +117,15 @@ class TestStubExtractLineItems:
         assert any("Last-Mile Delivery" in d for d in descs)
 
     def test_halcyon_scenario(self) -> None:
-        result = StubLLMClient().extract_line_items(
-            invoice_text="Halcyon Software services 2026", model="claude-sonnet-4-6"
+        result = StubLLMClient().call(
+            EXTRACT_LINE_ITEMS, model="claude-sonnet-4-6", text="Halcyon Software services 2026"
         )
         assert len(result.items) == 2
         assert "Annual Platform License" in result.items[0]["description"]
 
     def test_bramble_scenario(self) -> None:
-        result = StubLLMClient().extract_line_items(
-            invoice_text="Bramble Catering event 2026", model="claude-sonnet-4-6"
+        result = StubLLMClient().call(
+            EXTRACT_LINE_ITEMS, model="claude-sonnet-4-6", text="Bramble Catering event 2026"
         )
         assert len(result.items) == 5
         # Sum reconciles to scenario subtotal (635.59) within tolerance
@@ -132,14 +133,14 @@ class TestStubExtractLineItems:
         assert abs(total - 635.59) < 0.05
 
     def test_failure_keyword_returns_empty(self) -> None:
-        result = StubLLMClient().extract_line_items(
-            invoice_text="[stub:fail] no items", model="claude-haiku-4-5"
+        result = StubLLMClient().call(
+            EXTRACT_LINE_ITEMS, model="claude-haiku-4-5", text="[stub:fail] no items"
         )
         assert result.items == []
 
     def test_each_item_has_confidence_and_page(self) -> None:
-        result = StubLLMClient().extract_line_items(
-            invoice_text="freight", model="claude-haiku-4-5"
+        result = StubLLMClient().call(
+            EXTRACT_LINE_ITEMS, model="claude-haiku-4-5", text="freight"
         )
         for item in result.items:
             assert "confidence" in item

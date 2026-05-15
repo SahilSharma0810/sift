@@ -88,3 +88,23 @@ def agreement_score(left: object, right: object, field: str) -> float:
         except Exception:
             return 0.3
     return 1.0 if str(left).strip() == str(right).strip() else 0.3
+
+
+def apply_agreement_overrides(
+    composite: dict[str, float],
+    overrides: dict[str, float],
+) -> dict[str, float]:
+    """Apply Cascade agreement-score overrides to composite confidence.
+
+    Per ADR-0003 the disputed-field confidence is REPLACED by the
+    agreement score, but we take min() against the existing composite
+    so a low structural floor (e.g. math failed -> 0.2) never gets
+    lifted by a high agreement override. No-op when `overrides` is
+    empty (cascade did not fire).
+    """
+    if not overrides:
+        return dict(composite)
+    out = dict(composite)
+    for field, score in overrides.items():
+        out[field] = min(out.get(field, 1.0), score)
+    return out

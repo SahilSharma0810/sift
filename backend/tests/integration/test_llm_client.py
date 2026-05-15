@@ -15,7 +15,12 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from app.adapters.llm_client import AnthropicLLMClient, ExtractionResult
+from app.adapters.llm_client import (
+    EXTRACT_HEADER,
+    EXTRACT_HEADER_VISION,
+    AnthropicLLMClient,
+    ExtractionResult,
+)
 
 
 @pytest.fixture
@@ -67,7 +72,7 @@ class TestLLMClientExtractHeader:
 
         with patch("app.adapters.llm_client.Anthropic", return_value=client_mock):
             client = AnthropicLLMClient(api_key="test")
-            result = client.extract_header(invoice_text="any text", model="claude-haiku-4-5")
+            result = client.call(EXTRACT_HEADER, model="claude-haiku-4-5", text="any text")
 
         assert isinstance(result, ExtractionResult)
         assert result.fields["vendor_name"] == "Vega Logistics"
@@ -82,7 +87,7 @@ class TestLLMClientExtractHeader:
 
         with patch("app.adapters.llm_client.Anthropic", return_value=client_mock):
             client = AnthropicLLMClient(api_key="test")
-            client.extract_header(invoice_text="text", model="claude-haiku-4-5")
+            client.call(EXTRACT_HEADER, model="claude-haiku-4-5", text="text")
 
         kwargs = client_mock.messages.create.call_args.kwargs
         system = kwargs["system"]
@@ -101,7 +106,7 @@ class TestLLMClientExtractHeader:
 
         with patch("app.adapters.llm_client.Anthropic", return_value=client_mock):
             client = AnthropicLLMClient(api_key="test")
-            result = client.extract_header(invoice_text="text", model="claude-haiku-4-5")
+            result = client.call(EXTRACT_HEADER, model="claude-haiku-4-5", text="text")
 
         assert result.fields["vendor_name"] == "Vega Logistics"
         assert client_mock.messages.create.call_count == 2
@@ -119,7 +124,7 @@ class TestLLMClientExtractHeader:
         with patch("app.adapters.llm_client.Anthropic", return_value=client_mock):
             client = AnthropicLLMClient(api_key="test")
             with pytest.raises(APIStatusError):
-                client.extract_header(invoice_text="text", model="claude-haiku-4-5")
+                client.call(EXTRACT_HEADER, model="claude-haiku-4-5", text="text")
 
         # Exactly one call — no retry on 4xx.
         assert client_mock.messages.create.call_count == 1
@@ -138,7 +143,7 @@ class TestLLMClientExtractHeader:
         with patch("app.adapters.llm_client.Anthropic", return_value=client_mock):
             client = AnthropicLLMClient(api_key="test")
             with pytest.raises(APITimeoutError):
-                client.extract_header(invoice_text="text", model="claude-haiku-4-5")
+                client.call(EXTRACT_HEADER, model="claude-haiku-4-5", text="text")
 
         assert client_mock.messages.create.call_count == 3
 
@@ -162,7 +167,7 @@ class TestLLMClientExtractHeader:
         with patch("app.adapters.llm_client.Anthropic", return_value=client_mock):
             client = AnthropicLLMClient(api_key="test")
             with pytest.raises(RuntimeError, match="tool call"):
-                client.extract_header(invoice_text="text", model="claude-haiku-4-5")
+                client.call(EXTRACT_HEADER, model="claude-haiku-4-5", text="text")
 
 
 def _fake_vision_response():
@@ -224,7 +229,7 @@ class TestLLMClientExtractHeaderVision:
         with patch("app.adapters.llm_client.Anthropic", return_value=client_mock):
             client = AnthropicLLMClient(api_key="test")
             png = b"\x89PNG\r\n\x1a\nfakebytes"
-            result = client.extract_header_vision(page_pngs=[png], model="claude-sonnet-4-6")
+            result = client.call(EXTRACT_HEADER_VISION, model="claude-sonnet-4-6", page_pngs=[png])
         assert result.fields["vendor_name"]["value"] == "Vega Logistics"
         assert result.fields["total"]["bbox"] == [0.70, 0.71, 0.92, 0.74]
         assert result.model == "claude-sonnet-4-6"
@@ -235,7 +240,7 @@ class TestLLMClientExtractHeaderVision:
         with patch("app.adapters.llm_client.Anthropic", return_value=client_mock):
             client = AnthropicLLMClient(api_key="test")
             png = b"\x89PNG\r\n\x1a\nfake"
-            client.extract_header_vision(page_pngs=[png], model="claude-sonnet-4-6")
+            client.call(EXTRACT_HEADER_VISION, model="claude-sonnet-4-6", page_pngs=[png])
         kwargs = client_mock.messages.create.call_args.kwargs
         msg = kwargs["messages"][0]
         assert msg["role"] == "user"

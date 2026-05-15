@@ -93,7 +93,7 @@ class TestTranslationErrorPath:
         }
 
         bad_llm = MagicMock()
-        bad_llm.extract_structured_query.return_value = StructuredQueryResult(
+        bad_llm.call.return_value = StructuredQueryResult(
             payload=bad_payload,
             model="claude-sonnet-4-6",
             prompt_hash="x",
@@ -118,7 +118,7 @@ class TestTranslationErrorPath:
             "untranslated_intent": None,
         }
         bad_llm = MagicMock()
-        bad_llm.extract_structured_query.return_value = StructuredQueryResult(
+        bad_llm.call.return_value = StructuredQueryResult(
             payload=bad_payload,
             model="claude-sonnet-4-6",
             prompt_hash="x",
@@ -165,7 +165,7 @@ class TestTranslateEndpoint:
             "untranslated_intent": None,
         }
         bad_llm = MagicMock()
-        bad_llm.extract_structured_query.return_value = StructuredQueryResult(
+        bad_llm.call.return_value = StructuredQueryResult(
             payload=bad_payload,
             model="claude-sonnet-4-6",
             prompt_hash="x",

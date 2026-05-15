@@ -4,8 +4,10 @@
 extraction — see ADR-0003 + Day-2 Plan-agent recommendation (stats built
 from confirmed rows are semantically sound; unconfirmed rows can pollute).
 
-`compute_history_scores` reads the per-vendor stats and emits per-field
-history_score values for composite confidence (ADR-0003).
+`compute_history_scores` is a thin wrapper that extracts vendor.memory.stats
+and delegates to domain.confidence — the pure math lives in the domain
+layer (single source of truth for Composite Confidence). This wrapper
+exists so callers (and tests) can stay in ORM terms.
 
 Critical: SQLAlchemy ORM does not detect in-place dict/list mutations on
 JSONB columns. After mutating `vendor.memory`, we MUST call
@@ -21,19 +23,10 @@ from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import flag_modified
 
 from app.db.models import Extraction, Vendor
-
-NUMERIC_HISTORY_FIELDS = ("total",)
-
-
-def _history_bucket(z: float) -> float:
-    az = abs(z)
-    if az < 1.0:
-        return 1.0
-    if az < 2.0:
-        return 0.85
-    if az < 3.0:
-        return 0.6
-    return 0.3
+from app.domain.confidence import (
+    NUMERIC_HISTORY_FIELDS,
+    compute_history_scores_from_stats,
+)
 
 
 def update_stats_from_extraction(
@@ -83,32 +76,14 @@ def compute_history_scores(
     vendor: Vendor | None,
     fields: dict[str, Any],
 ) -> dict[str, float]:
-    """Per-field history_score per ADR-0003.
+    """ORM-aware wrapper for the domain history-score computation.
 
-    Returns scores only for fields where we can compute one (numeric fields
-    with sufficient vendor history). Cold-start / missing vendor → {}
-    (the scorer defaults to 0.85 for missing keys).
+    Pulls the stats dict out of `vendor.memory` and delegates. Returning
+    `{}` for `None` vendor preserves the cold-start contract.
     """
     if vendor is None:
         return {}
-    memory = vendor.memory or {}
-    stats = memory.get("stats", {}) or {}
-    n = int(stats.get("total_seen", 0) or 0)
-    if n < 3:  # min vendor history for meaningful Z-score
-        return {}
-    out: dict[str, float] = {}
-    for fname in NUMERIC_HISTORY_FIELDS:
-        value = fields.get(fname)
-        if value is None:
-            continue
-        try:
-            x = float(value)
-        except (TypeError, ValueError):
-            continue
-        mean = float(stats.get(f"avg_{fname}", 0.0) or 0.0)
-        std = float(stats.get(f"std_{fname}", 0.0) or 0.0)
-        if std <= 0:
-            continue
-        z = (x - mean) / std
-        out[fname] = _history_bucket(z)
-    return out
+    stats = (vendor.memory or {}).get("stats") or {}
+    return compute_history_scores_from_stats(
+        extracted_fields=fields, vendor_stats=stats
+    )

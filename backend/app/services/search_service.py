@@ -33,10 +33,10 @@ from sqlalchemy import and_, cast, func, select, text
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy.sql.expression import ColumnElement
 
+from app.adapters.storage.serializers import invoice_to_dto
 from app.db.models import Extraction, Invoice, Vendor
 from app.domain.models import InvoiceOut
 from app.domain.nl_schema import FilterClause, StructuredQuery
-from app.services.extraction_service import _orm_invoice_to_dto
 
 log = structlog.get_logger(__name__)
 
@@ -265,4 +265,4 @@ def run_query(session: Session, *, query: StructuredQuery) -> list[InvoiceOut]:
     )
 
     rows = session.execute(stmt).unique().scalars().all()
-    return [_orm_invoice_to_dto(inv, session) for inv in rows]
+    return [invoice_to_dto(inv, session) for inv in rows]

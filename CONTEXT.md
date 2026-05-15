@@ -35,6 +35,15 @@ A 0–1 score Sift assigns to each extracted field, capturing how sure the
 extraction is. Drives Triage State.
 _Avoid_: Score, certainty, probability
 
+**Composite Confidence**:
+The specific computation Sift uses to produce a field's Confidence:
+`min(structural_score, history_score)` per ADR-0003, plus a Cascade
+agreement-score override on disputed fields. Structural comes from
+validators (math reconciliation, format checks). History comes from a
+Z-score against Vendor History numeric stats. The full computation lives
+in `app/domain/confidence.py` and emits a per-field provenance trace.
+_Avoid_: Final score, combined score, confidence calculation
+
 **Triage State**:
 The one-of-three label Sift assigns each Invoice for the AP Clerk's Inbox:
 `confident` (no clerk action needed), `needs_review` (with specific reasons),
@@ -57,6 +66,16 @@ _Avoid_: Outlier, weird value
 The set of prior Invoices Sift has seen from a given Vendor, used both to
 inform extraction (date format, typical layout) and to detect anomalies.
 _Avoid_: Vendor data, vendor profile
+
+**Cascade**:
+The tiered Haiku → Sonnet → Opus model escalation Sift runs against an
+Invoice when initial-tier output is uncertain. Triggers reactively on math
+fail, unseen Vendor, or low Composite Confidence (ADR-0003). Disputed
+fields are replaced by the higher tier and their Composite Confidence is
+overridden by the cross-model agreement score. Also engages when a clerk
+explicitly forces a tier (Cmd+K), preserving the same agreement-scoring
+discipline.
+_Avoid_: Fallback, retry, tier escalation, model chain
 
 ## Relationships
 
