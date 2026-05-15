@@ -37,7 +37,28 @@ class TestLogin:
         assert outcome.clerk.id == user.id
         assert outcome.clerk.email.lower() == "ap-clerk@example.test"
         assert outcome.signed_cookie
-        assert outcome.max_age_seconds == SETTINGS.session_default_hours * 3600
+        assert outcome.max_age_seconds is None
+
+    def test_remember_false_session_row_still_expires_in_default_hours(
+        self, db_session: Session
+    ) -> None:
+        from sqlalchemy import select
+
+        from app.db.models import AuthSession
+
+        self._seed_user(db_session)
+        login(
+            db_session,
+            email="ap-clerk@example.test",
+            password="correct-password",
+            remember=False,
+            user_agent=None,
+            secret=SECRET,
+        )
+        row = db_session.execute(select(AuthSession)).scalar_one()
+        ttl = row.expires_at - datetime.now(UTC)
+        assert timedelta(hours=SETTINGS.session_default_hours - 1) < ttl
+        assert ttl < timedelta(hours=SETTINGS.session_default_hours + 1)
 
     def test_remember_flag_extends_max_age(self, db_session: Session) -> None:
         self._seed_user(db_session)

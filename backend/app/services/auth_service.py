@@ -47,12 +47,12 @@ def login(
     if not verify_password(password, user.password_hash):
         return None
 
-    if remember:
-        max_age_seconds = settings.session_remember_days * 86400
-    else:
-        max_age_seconds = settings.session_default_hours * 3600
-
-    expires_at = datetime.now(UTC) + timedelta(seconds=max_age_seconds)
+    server_expiry_seconds = (
+        settings.session_remember_days * 86400
+        if remember
+        else settings.session_default_hours * 3600
+    )
+    expires_at = datetime.now(UTC) + timedelta(seconds=server_expiry_seconds)
     auth_session = session_repo.create(
         session,
         user_id=user.id,
@@ -64,7 +64,7 @@ def login(
     return LoginOutcome(
         clerk=_to_clerk(user),
         signed_cookie=sign_session_id(auth_session.id, secret=secret_key),
-        max_age_seconds=max_age_seconds,
+        max_age_seconds=server_expiry_seconds if remember else None,
     )
 
 
