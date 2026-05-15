@@ -6,6 +6,7 @@ import { Kbd } from '@/components/primitives/Kbd'
 import { SiftMark } from '@/components/primitives/SiftMark'
 import { SearchPalette } from '@/components/search-palette/SearchPalette'
 import { useLogoutMutation, useMeQuery } from '@/state/auth'
+import { useAnomalyCountQuery } from '@/state/anomalies'
 import { useAppMetaQuery, useInboxQuery } from '@/state/invoices'
 
 export function Shell() {
@@ -18,6 +19,7 @@ export function Shell() {
   const [helpOpen, setHelpOpen] = useState(false)
   const { data: invoices = [] } = useInboxQuery()
   const { data: meta } = useAppMetaQuery()
+  const { data: anomalyCount = 0 } = useAnomalyCountQuery()
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -108,11 +110,16 @@ export function Shell() {
               <Kbd>K</Kbd>
             </span>
           </Link>
-          <div className="nav-item">
+          <Link
+            to="/anomalies"
+            className="nav-item"
+            data-active={location.pathname === '/anomalies'}
+            style={{ textDecoration: 'none' }}
+          >
             <Icons.bell />
             <span>Anomalies</span>
-            <span className="nav-count">{counts.likely_duplicate}</span>
-          </div>
+            <span className="nav-count">{anomalyCount}</span>
+          </Link>
 
           <div className="nav-section">Library</div>
           <div className="nav-item">
