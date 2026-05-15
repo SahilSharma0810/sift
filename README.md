@@ -446,7 +446,7 @@ Latest stub-mode pass — all 55/55 pass:
 
 The 100% number isn't the boast. **The boast is that the pipeline is deterministic**: same corpus + same pipeline → same number, run-to-run. That's the bar Anthropic-mode results have to clear, not "100%", but "stable accuracy on the same corpus."
 
-Full per-row report: [`backend/eval/extraction.md`](./backend/eval/extraction.md). Calibration plot (composite confidence vs ground-truth correctness): [`backend/eval/calibration.png`](./backend/eval/calibration.png). Methodology: [`EVAL.md`](./EVAL.md) and [`TRIAGE-EVAL.md`](./TRIAGE-EVAL.md).
+Full per-row report: [`backend/eval/extraction.md`](./backend/eval/extraction.md). Calibration plot (composite confidence vs ground-truth correctness): [`backend/eval/calibration.png`](./backend/eval/calibration.png).
 
 ### Corpus 2 — NL → SQL translator (22 queries)
 
@@ -459,7 +459,7 @@ Full per-row report: [`backend/eval/extraction.md`](./backend/eval/extraction.md
 
 The two "misses" are intentional partial-translation cases (`"duplicates this month"`, `"invoices in October"`) where the relative-date phrase lands in `untranslated_intent` and the UI's amber notice shows it to the clerk. The translator told the truth about what it couldn't translate — which is the design contract, not a bug.
 
-Methodology: [`NL_EVAL.md`](./NL_EVAL.md). Per-case detail: [`backend/eval/nl.md`](./backend/eval/nl.md).
+Per-case detail: [`backend/eval/nl.md`](./backend/eval/nl.md).
 
 ### Corpus 3 — DocILE real invoices (100 random, Anthropic-mode)
 
@@ -636,7 +636,7 @@ make nuke              # stop + delete volumes (loses all DB data + uploads)
 | PDF | PyMuPDF (digital) + pdf2image (scan) | PyMuPDF gives word-level bboxes for free, which the review UI depends on |
 | Auth | Cookie session, single-clerk model | Out-of-scope to build multi-tenant auth in 5 days |
 | Container | Docker + Docker Compose | Single command bootstrap; no local Python/Node version fights |
-| Deploy | Single Docker image, FastAPI serves the Vite bundle | One image, one URL, easy to host on Fly/Render |
+| Deploy | Single Docker image, FastAPI serves the Vite bundle | One image, one URL, easy to host on Render |
 
 Dependency direction is CI-enforced by `import-linter` (see [ADR-0005](./docs/adr/0005-layered-architecture.md)).
 
@@ -646,12 +646,9 @@ Dependency direction is CI-enforced by `import-linter` (see [ADR-0005](./docs/ad
 
 The backend builds a single Docker image. The Vite production bundle is copied in and served by FastAPI's `StaticFiles`. Postgres lives outside the image (managed service recommended).
 
-Two deployment paths shipped:
+Shipped target: **Render free tier** ([`render.yaml`](./render.yaml)) — blueprint deploy from this repo, Neon Postgres, single web service. Every push to `main` triggers an auto-deploy from the Render side.
 
-- **Render free tier** (`render.yaml`) — blueprint deploy from this repo, free Postgres, single web service.
-- **Fly.io** (`fly.toml`) — production-style deploy, single Fly app, Neon Postgres recommended.
-
-Full guide — secrets, GitHub Actions wire-up, migration safety, rollback procedure — lives in [`DEPLOY.md`](./DEPLOY.md). CI deploys on push to `main` via [`.github/workflows/deploy.yml`](./.github/workflows/deploy.yml).
+Full guide — secrets, anthropic-mode toggle, migration safety, local production-mode test — lives in [`DEPLOY.md`](./DEPLOY.md).
 
 ---
 
@@ -671,12 +668,7 @@ In the order I'd ship them given another sprint:
 
 ## References
 
-- [`CONTEXT.md`](./CONTEXT.md) — domain language (Invoice, Vendor, AP Clerk, Cascade, Triage State, Composite Confidence)
-- [`PLAN.md`](./PLAN.md) — 5-day execution plan, cut-down ladder, seed-corpus design
-- [`EVAL.md`](./EVAL.md) — extraction accuracy methodology + calibration
-- [`TRIAGE-EVAL.md`](./TRIAGE-EVAL.md) — synthetic triage corpus methodology
-- [`NL_EVAL.md`](./NL_EVAL.md) — NL translator methodology
-- [`DEPLOY.md`](./DEPLOY.md) — deployment guide (Render + Fly)
+- [`DEPLOY.md`](./DEPLOY.md) — deployment guide (Render)
 - [`docs/adr/`](./docs/adr/) — six locked architectural decisions:
   - [ADR-0001](./docs/adr/0001-extraction-pipeline-no-docling.md) — dual-path extraction (PyMuPDF + vision LLM, no Docling)
   - [ADR-0002](./docs/adr/0002-postgres-on-neon-over-sqlite.md) — Postgres over SQLite

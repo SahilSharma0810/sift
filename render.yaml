@@ -1,9 +1,9 @@
 # Sift — Render Blueprint.
 #
-# Free-tier deploy of the same Dockerfile used for Fly. Postgres lives on
-# Neon (managed) per ADR-0002 — DATABASE_URL set as a secret in the Render
-# dashboard. No persistent disk on the free plan, so uploads under
-# /data/uploads reset on every container restart (cold start every ~15 min idle).
+# Free-tier deploy of the root Dockerfile. Postgres lives on Neon (managed)
+# per ADR-0002 — DATABASE_URL set as a secret in the Render dashboard.
+# No persistent disk on the free plan, so uploads under /data/uploads
+# reset on every container restart (cold start every ~15 min idle).
 #
 # First-time setup:
 #   1. https://dashboard.render.com → New → Blueprint → connect this repo.
