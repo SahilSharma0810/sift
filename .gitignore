@@ -51,3 +51,7 @@ backend/uploads/
 # Logs
 *.log
 logs/
+
+# Local-only dev/design notes (ADRs, plans, specs) — not part of the
+# public repo surface. Keep on disk for personal reference, just untracked.
+docs/

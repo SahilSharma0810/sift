@@ -71,7 +71,7 @@ def create_app() -> FastAPI:
 
     @app.get("/health")
     def health() -> dict[str, str]:
-        """Liveness probe — used by Fly for deploy verification."""
+        """Liveness probe — used by Render's health check for deploy verification."""
         return {"status": "ok", "version": __version__}
 
     @app.get("/api/meta")

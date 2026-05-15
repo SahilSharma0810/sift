@@ -63,6 +63,5 @@ RUN chmod +x /app/backend/start.sh
 EXPOSE 8000
 
 # start.sh runs `alembic upgrade head` and then uvicorn on $PORT (default
-# 8000). Same script works on Fly (PORT unset → 8000, matches fly.toml's
-# internal_port) and Render (PORT set by the platform).
+# 8000). Render sets PORT; local runs without PORT bind to 8000.
 CMD ["/app/backend/start.sh"]
