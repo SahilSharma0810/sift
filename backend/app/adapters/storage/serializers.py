@@ -57,7 +57,7 @@ def invoice_to_dto(invoice: Invoice, session: Session) -> InvoiceOut:
     )
     return InvoiceOut(
         id=invoice.id,
-        file_path=invoice.file_path,
+        storage_key=invoice.storage_key,
         file_hash=invoice.file_hash,
         perceptual_hash=invoice.perceptual_hash,
         vendor_id=invoice.vendor_id,

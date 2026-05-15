@@ -39,12 +39,12 @@ def get_invoice_dto(session: Session, invoice_id: UUID) -> InvoiceOut | None:
         return None
     return invoice_to_dto(inv, session)
 
-def get_invoice_file_path(session: Session, invoice_id: UUID) -> Path | None:
-    """Return the on-disk file path for an Invoice, or None if not found."""
+def get_invoice_storage_key(session: Session, invoice_id: UUID) -> str | None:
+    """Return the blob-store key for an Invoice, or None if not found."""
     inv = invoice_repo.get_invoice(session, invoice_id)
     if inv is None:
         return None
-    return Path(inv.file_path)
+    return inv.storage_key
 
 def get_vendor_for_invoice(session: Session, *, invoice_id) -> VendorOut | None:
     """Return the Vendor (with memory) associated with an Invoice, or None."""
