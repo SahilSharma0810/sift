@@ -193,11 +193,13 @@ export function SearchPalette({
           <div className="palette-untranslated">
             <Icons.warn />
             <div>
-              <b>Partially translated.</b> Couldn't express this in a structured filter:{' '}
+              <b>Couldn't translate fully.</b>{' '}
               <span className="mono-snip bg-white/70 px-1.5 font-mono">
                 "{translation.untranslated_intent}"
-              </span>
-              . Results below ignore that constraint.
+              </span>{' '}
+              {shouldSearch
+                ? 'isn\'t expressible as a structured filter — results below ignore that constraint.'
+                : 'has no structured equivalent. Ranking questions like "top vendors" live on the Vendors page.'}
             </div>
           </div>
         )}
@@ -214,9 +216,19 @@ export function SearchPalette({
             ))}
           </div>
         ) : !shouldSearch ? (
-          <div className="px-[18px] py-7 text-center text-sm text-ink-60">
-            No structured translation found; try one of the suggestions above, or rephrase.
-          </div>
+          translation.untranslated_intent ? (
+            <div className="palette-section">
+              <PaletteRow onSelect={() => { onClose(); navigate('/vendors') }}>
+                <Icons.spark />
+                <span>Open Vendors page</span>
+                <Kbd>↵</Kbd>
+              </PaletteRow>
+            </div>
+          ) : (
+            <div className="px-[18px] py-7 text-center text-sm text-ink-60">
+              No structured translation found; try one of the suggestions above, or rephrase.
+            </div>
+          )
         ) : (
           <div className="palette-section max-h-[360px] overflow-y-auto">
             <div className="palette-section-head">
