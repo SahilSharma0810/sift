@@ -78,3 +78,16 @@ class TestUploadInvoice:
         assert res.status_code == 200
         body = res.json()
         assert len(body) >= 1
+
+
+class TestAuthGate:
+    def test_list_requires_auth(self, unauthed_client) -> None:
+        res = unauthed_client.get("/api/invoices")
+        assert res.status_code == 401
+
+    def test_upload_requires_auth(self, unauthed_client) -> None:
+        res = unauthed_client.post(
+            "/api/invoices",
+            files={"file": ("x.pdf", b"%PDF-", "application/pdf")},
+        )
+        assert res.status_code == 401

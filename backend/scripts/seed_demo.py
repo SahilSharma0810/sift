@@ -28,10 +28,21 @@ from pathlib import Path
 
 import pymupdf  # type: ignore[import-not-found]
 
+from app.adapters.storage.user_repo import upsert_demo_user
 from app.config import get_settings
+from app.db.models import User
 from app.db.session import SessionLocal
 from app.services.clerk_actions import confirm_invoice, mark_unprocessable
 from app.services.extraction_service import extract_from_pdf
+
+
+def seed_demo_user(session) -> User:
+    settings = get_settings()
+    return upsert_demo_user(
+        session,
+        email=settings.demo_email,
+        password=settings.demo_password,
+    )
 
 log = logging.getLogger("seed_demo")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s  %(message)s")
@@ -172,6 +183,8 @@ def main() -> None:
     staging = Path("/tmp/seed_demo")
 
     try:
+        seed_demo_user(session)
+        log.info("seeded demo user %s", get_settings().demo_email)
         for seed in SEEDS:
             log.info("seeding %s ...", seed.label)
             staging.mkdir(parents=True, exist_ok=True)

@@ -1,20 +1,23 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link, Outlet, useLocation, useNavigate, useParams } from 'react-router-dom'
+import { Link, Navigate, Outlet, useLocation, useNavigate, useParams } from 'react-router-dom'
 
 import { Icons } from '@/components/primitives/Icons'
 import { Kbd } from '@/components/primitives/Kbd'
 import { SiftMark } from '@/components/primitives/SiftMark'
 import { SearchPalette } from '@/components/search-palette/SearchPalette'
+import { useLogoutMutation, useMeQuery } from '@/state/auth'
 import { useAppMetaQuery, useInboxQuery } from '@/state/invoices'
 
 export function Shell() {
+  const navigate = useNavigate()
+  const { data: me, isLoading: meLoading } = useMeQuery()
+  const logout = useLogoutMutation()
   const location = useLocation()
   const params = useParams()
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [helpOpen, setHelpOpen] = useState(false)
   const { data: invoices = [] } = useInboxQuery()
   const { data: meta } = useAppMetaQuery()
-  const navigate = useNavigate()
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -54,6 +57,17 @@ export function Shell() {
     }
     return c
   }, [invoices])
+
+  if (meLoading) {
+    return (
+      <div className="grid h-screen place-items-center bg-canvas text-ink-60 text-sm">
+        Loading…
+      </div>
+    )
+  }
+  if (!me) {
+    return <Navigate to="/login" replace />
+  }
 
   const onInbox = location.pathname === '/inbox' || location.pathname === '/'
   const reviewVendor =
@@ -126,6 +140,18 @@ export function Shell() {
         </nav>
 
         <div className="sidebar-footer">
+          <button
+            type="button"
+            onClick={() => {
+              logout.mutate(undefined, {
+                onSettled: () => navigate('/login', { replace: true }),
+              })
+            }}
+            className="text-left text-[12px] tracking-[-0.005em] text-light-subtle hover:text-light underline-offset-2 hover:underline disabled:cursor-not-allowed"
+            disabled={logout.isPending}
+          >
+            {logout.isPending ? 'Signing out…' : 'Sign out'}
+          </button>
           <span className="sidebar-footer-dot" />
           <span>All systems normal · Haiku 4.5 / Sonnet 4.6</span>
         </div>
