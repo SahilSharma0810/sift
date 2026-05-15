@@ -38,8 +38,10 @@ export function useTranslateMutation() {
   })
 }
 
-export function useSearchQuery(query: StructuredQuery) {
-
+export function useSearchQuery(
+  query: StructuredQuery,
+  options?: { enabled?: boolean },
+) {
   return useQuery({
     queryKey: ['search', JSON.stringify(query)] as const,
     queryFn: () =>
@@ -48,6 +50,7 @@ export function useSearchQuery(query: StructuredQuery) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(query),
       }),
+    enabled: options?.enabled ?? true,
   })
 }
 

@@ -121,7 +121,8 @@ export function SearchPalette({
 
   const shouldSearch = effectiveQuery.filters.length > 0
   const { data: results = [], isFetching } = useSearchQuery(
-    shouldSearch ? effectiveQuery : { filters: [], limit: 0, untranslated_intent: null },
+    effectiveQuery,
+    { enabled: shouldSearch },
   )
 
   const handleDeepLink = () => {
