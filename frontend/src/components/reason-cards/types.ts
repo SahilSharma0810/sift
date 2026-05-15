@@ -20,7 +20,7 @@ export interface ReasonActionContext {
 
 type IconComponent = (typeof Icons)[keyof typeof Icons]
 
-export interface ReasonActionSpec<R extends TriageReason> {
+interface ReasonActionSpec<R extends TriageReason> {
   label: string | ((reason: R) => string)
   icon: IconComponent
   variant?: 'primary' | 'danger' | 'ghost'
@@ -29,8 +29,8 @@ export interface ReasonActionSpec<R extends TriageReason> {
 
 export interface ReasonSpec<R extends TriageReason> {
   icon: IconComponent
-  renderTitle: (reason: R) => ReactNode
-  renderDetail: (reason: R, ctx: ReasonActionContext) => ReactNode
+  Title: (props: { reason: R }) => ReactNode
+  Detail: (props: { reason: R; ctx: ReasonActionContext }) => ReactNode
   actions: ReasonActionSpec<R>[]
 }
 

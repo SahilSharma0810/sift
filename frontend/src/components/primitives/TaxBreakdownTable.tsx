@@ -3,22 +3,18 @@ import { formatNumber } from '@/utils/format'
 
 import { Icons } from './Icons'
 
+const ROW_GRID = '[grid-template-columns:1fr_70px_90px]'
+
+function taxRowKey(row: TaxBreakdownLine): string {
+  return `${row.jurisdiction}|${row.rate ?? ''}|${row.amount}`
+}
+
 export function TaxBreakdownTable({ rows }: { rows: TaxBreakdownLine[] }) {
   if (!rows || rows.length === 0) {
     return (
-      <div
-        className="card"
-        style={{
-          padding: '12px 14px',
-          fontSize: 12.5,
-          color: 'var(--ink-60)',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 8,
-        }}
-      >
+      <div className="card flex items-center gap-2 px-3.5 py-3 text-xs text-ink-60">
         <Icons.layers />
-        <span>Single tax line on this invoice — no per-jurisdiction breakdown.</span>
+        <span>Single tax line on this invoice; no per-jurisdiction breakdown.</span>
       </div>
     )
   }
@@ -28,79 +24,31 @@ export function TaxBreakdownTable({ rows }: { rows: TaxBreakdownLine[] }) {
   return (
     <div className="card">
       <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: '1fr 70px 90px',
-          alignItems: 'center',
-          padding: '8px 12px',
-          background: 'var(--paper-hi)',
-          borderBottom: '1px solid var(--hairline)',
-          fontSize: 10.5,
-          textTransform: 'uppercase',
-          letterSpacing: '0.06em',
-          color: 'var(--ink-48)',
-        }}
+        className={`grid ${ROW_GRID} items-center border-b border-hairline bg-surface-pearl px-3 py-2 text-[12px] uppercase tracking-[0.06em] text-ink-48`}
       >
         <div>Jurisdiction</div>
-        <div style={{ textAlign: 'right' }}>Rate</div>
-        <div style={{ textAlign: 'right' }}>Amount</div>
+        <div className="text-right">Rate</div>
+        <div className="text-right">Amount</div>
       </div>
 
-      {rows.map((row, i) => (
+      {rows.map((row) => (
         <div
-          key={i}
-          style={{
-            display: 'grid',
-            gridTemplateColumns: '1fr 70px 90px',
-            alignItems: 'center',
-            padding: '9px 12px',
-            borderBottom: '1px solid var(--hairline-soft)',
-            fontSize: 13,
-            color: 'var(--ink-80)',
-          }}
+          key={taxRowKey(row)}
+          className={`grid ${ROW_GRID} items-center border-b border-hairline-soft px-3 py-[9px] text-[13px] text-ink-80`}
         >
-          <div style={{ paddingRight: 12, overflow: 'hidden', textOverflow: 'ellipsis' }}>
-            {row.jurisdiction}
+          <div className="overflow-hidden pr-3 text-ellipsis">{row.jurisdiction}</div>
+          <div className="num text-right">
+            {row.rate == null ? <span className="subtle">–</span> : `${row.rate}%`}
           </div>
-          <div className="num" style={{ textAlign: 'right' }}>
-            {row.rate == null ? <span className="subtle">—</span> : `${row.rate}%`}
-          </div>
-          <div className="num" style={{ textAlign: 'right', fontWeight: 500 }}>
-            ${formatNumber(row.amount)}
-          </div>
+          <div className="num text-right font-medium">${formatNumber(row.amount)}</div>
         </div>
       ))}
 
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: '1fr 90px',
-          alignItems: 'center',
-          padding: '9px 12px',
-          background: 'var(--paper-hi)',
-          fontSize: 12,
-        }}
-      >
-        <div
-          style={{
-            color: 'var(--ink-48)',
-            textTransform: 'uppercase',
-            letterSpacing: '0.06em',
-            fontSize: 10.5,
-          }}
-        >
+      <div className="grid grid-cols-[1fr_90px] items-center bg-surface-pearl px-3 py-[9px] text-xs">
+        <div className="text-[12px] uppercase tracking-[0.06em] text-ink-48">
           {rows.length} {rows.length === 1 ? 'jurisdiction' : 'jurisdictions'} · sum
         </div>
-        <div
-          className="num"
-          style={{
-            textAlign: 'right',
-            fontWeight: 500,
-            color: 'var(--ink)',
-          }}
-        >
-          ${formatNumber(sum)}
-        </div>
+        <div className="num text-right font-medium text-ink">${formatNumber(sum)}</div>
       </div>
     </div>
   )

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useReducer } from 'react'
 import { Link, Navigate, Outlet, useLocation, useNavigate, useParams } from 'react-router-dom'
 
 import { Icons } from '@/components/primitives/Icons'
@@ -8,20 +8,46 @@ import { SearchPalette } from '@/components/search-palette/SearchPalette'
 import { useLogoutMutation, useMeQuery } from '@/state/auth'
 import { useAppMetaQuery, useInboxQuery } from '@/state/invoices'
 
+interface OverlayState {
+  paletteOpen: boolean
+  helpOpen: boolean
+}
+
+type OverlayAction =
+  | { type: 'openPalette' }
+  | { type: 'closePalette' }
+  | { type: 'toggleHelp' }
+  | { type: 'closeAll' }
+
+function overlayReducer(state: OverlayState, action: OverlayAction): OverlayState {
+  switch (action.type) {
+    case 'openPalette':
+      return { ...state, paletteOpen: true }
+    case 'closePalette':
+      return { ...state, paletteOpen: false }
+    case 'toggleHelp':
+      return { ...state, helpOpen: !state.helpOpen }
+    case 'closeAll':
+      return { paletteOpen: false, helpOpen: false }
+  }
+}
+
 export function Shell() {
   const navigate = useNavigate()
   const { data: me, isLoading: meLoading } = useMeQuery()
   const logout = useLogoutMutation()
   const location = useLocation()
   const params = useParams()
-  const [paletteOpen, setPaletteOpen] = useState(false)
-  const [helpOpen, setHelpOpen] = useState(false)
+  const [overlay, dispatch] = useReducer(overlayReducer, {
+    paletteOpen: false,
+    helpOpen: false,
+  })
+  const { paletteOpen, helpOpen } = overlay
   const { data: invoices = [] } = useInboxQuery()
   const { data: meta } = useAppMetaQuery()
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-
       const target = e.target as HTMLElement | null
       const isEditable =
         target &&
@@ -30,13 +56,12 @@ export function Shell() {
           target.isContentEditable)
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault()
-        setPaletteOpen(true)
+        dispatch({ type: 'openPalette' })
       } else if (!isEditable && e.key === '?') {
         e.preventDefault()
-        setHelpOpen((v) => !v)
+        dispatch({ type: 'toggleHelp' })
       } else if (e.key === 'Escape') {
-        setPaletteOpen(false)
-        setHelpOpen(false)
+        dispatch({ type: 'closeAll' })
       }
     }
     window.addEventListener('keydown', onKey)
@@ -231,64 +256,53 @@ export function Shell() {
 
           <div
             className="topbar-search"
-            onClick={() => setPaletteOpen(true)}
+            onClick={() => dispatch({ type: 'openPalette' })}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault()
+                dispatch({ type: 'openPalette' })
+              }
+            }}
             role="button"
             tabIndex={0}
           >
             <Icons.search />
-            <span style={{ flex: 1 }}>Search invoices or ask anything…</span>
+            <span className="flex-1">Search invoices or ask anything…</span>
             <Kbd>⌘</Kbd>
             <Kbd>K</Kbd>
           </div>
 
-          {meta?.llm_provider === 'stub' && (
-            <div
-              title="Running with the offline StubLLMClient — no Anthropic API calls. Set SIFT_LLM_PROVIDER=anthropic to use the real cascade."
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 6,
-                padding: '4px 10px',
-                fontSize: 11,
-                fontFamily: 'var(--font-mono)',
-                textTransform: 'uppercase',
-                letterSpacing: '0.06em',
-                color: 'var(--ink-80)',
-                background: '#fff6db',
-                border: '1px solid #e6c75a',
-                cursor: 'help',
-              }}
-            >
-              <span
-                style={{
-                  width: 6,
-                  height: 6,
-                  borderRadius: '50%',
-                  background: '#c89400',
-                  display: 'inline-block',
-                }}
-              />
-              Stub mode
-            </div>
-          )}
+          {meta?.llm_provider === 'stub' && <StubModeBadge />}
         </div>
 
-        <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+        <div className="flex flex-1 flex-col overflow-hidden">
           <Outlet />
         </div>
       </main>
 
       {paletteOpen && (
         <SearchPalette
-          onClose={() => setPaletteOpen(false)}
+          onClose={() => dispatch({ type: 'closePalette' })}
           onOpen={(id) => {
-            setPaletteOpen(false)
+            dispatch({ type: 'closePalette' })
             navigate(`/invoice/${id}`)
           }}
         />
       )}
 
-      {helpOpen && <KeyboardHelp onClose={() => setHelpOpen(false)} />}
+      {helpOpen && <KeyboardHelp onClose={() => dispatch({ type: 'closeAll' })} />}
+    </div>
+  )
+}
+
+function StubModeBadge() {
+  return (
+    <div
+      title="Running with the offline StubLLMClient; no Anthropic API calls. Set SIFT_LLM_PROVIDER=anthropic to use the real cascade."
+      className="inline-flex cursor-help items-center gap-1.5 border border-[#e6c75a] bg-[#fff6db] px-2.5 py-1 font-mono text-xs uppercase tracking-[0.06em] text-ink-80"
+    >
+      <span className="inline-block size-1.5 rounded-full bg-[#c89400]" />
+      Stub mode
     </div>
   )
 }
@@ -304,54 +318,44 @@ const SHORTCUTS: { keys: string[]; description: string }[] = [
 ]
 
 function KeyboardHelp({ onClose }: { onClose: () => void }) {
+  const closeOnBackdrop = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (e.target === e.currentTarget) onClose()
+  }
+  const closeOnEscape = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key === 'Escape') {
+      e.preventDefault()
+      onClose()
+    }
+  }
   return (
     <div
-      className="scrim"
-      onClick={onClose}
-      style={{ display: 'grid', placeItems: 'center' }}
+      className="scrim grid place-items-center"
+      role="presentation"
+      onClick={closeOnBackdrop}
+      onKeyDown={closeOnEscape}
     >
       <div
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          background: 'var(--paper)',
-          border: '1px solid var(--hairline)',
-          minWidth: 380,
-          maxWidth: 460,
-          padding: 0,
-        }}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Keyboard shortcuts"
+        className="min-w-[380px] max-w-[460px] border border-hairline bg-surface"
       >
-        <div
-          style={{
-            padding: '14px 18px',
-            borderBottom: '1px solid var(--hairline)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            fontSize: 13,
-            fontWeight: 500,
-          }}
-        >
+        <div className="flex items-center justify-between border-b border-hairline px-[18px] py-3.5 text-[13px] font-medium">
           <span>Keyboard shortcuts</span>
           <Kbd>esc</Kbd>
         </div>
-        <div style={{ padding: '4px 0' }}>
-          {SHORTCUTS.map((s, i) => (
+        <div className="py-1">
+          {SHORTCUTS.map((s) => (
             <div
-              key={i}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 10,
-                padding: '7px 18px',
-                fontSize: 12.5,
-              }}
+              key={s.description}
+              className="flex items-center gap-2.5 px-[18px] py-1.5 text-[12.5px]"
             >
-              <div style={{ display: 'flex', gap: 4, width: 90 }}>
-                {s.keys.map((k, j) => (
-                  <Kbd key={j}>{k}</Kbd>
+              <div className="flex w-[90px] gap-1">
+                {s.keys.map((k) => (
+                  <Kbd key={`${s.description}-${k}`}>{k}</Kbd>
                 ))}
               </div>
-              <span style={{ color: 'var(--ink-80)' }}>{s.description}</span>
+              <span className="text-ink-80">{s.description}</span>
             </div>
           ))}
         </div>

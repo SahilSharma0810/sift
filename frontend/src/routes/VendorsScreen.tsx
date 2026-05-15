@@ -77,16 +77,18 @@ function aggregateVendors(invoices: InvoiceOut[]): VendorAggregate[] {
 
   const out: VendorAggregate[] = []
   for (const [name, group] of groups) {
-    const sorted = [...group].sort((a, b) =>
+    const sorted = group.toSorted((a, b) =>
       (getDate(a) ?? '').localeCompare(getDate(b) ?? '')
     )
-    const totals = sorted
-      .map(getTotal)
-      .filter((n): n is number => n != null && n > 0)
+    const totals = sorted.flatMap((inv) => {
+      const t = getTotal(inv)
+      return t != null && t > 0 ? [t] : []
+    })
     const totalSpent = totals.reduce((s, n) => s + n, 0)
-    const confidences = group
-      .map(minConfidence)
-      .filter((n): n is number => n != null)
+    const confidences = group.flatMap((inv) => {
+      const c = minConfidence(inv)
+      return c != null ? [c] : []
+    })
     out.push({
       name,
       invoices: group.length,
@@ -173,19 +175,19 @@ export function VendorsScreen() {
         />
         <StatTile
           label="Avg confidence"
-          value={totals.avgConfidence > 0 ? `${Math.round(totals.avgConfidence * 100)}%` : '—'}
+          value={totals.avgConfidence > 0 ? `${Math.round(totals.avgConfidence * 100)}%` : '–'}
           suffix="composite"
           last
         />
       </StatStrip>
 
       <div className="inbox-toolbar">
-        <div style={{ fontSize: 12, color: 'var(--ink-60)' }}>
+        <div className="text-xs text-ink-60">
           {isLoading
             ? 'Loading vendors…'
             : `${vendors.length} vendor${vendors.length === 1 ? '' : 's'} · grouped from ${invoices.length} invoice${invoices.length === 1 ? '' : 's'}`}
         </div>
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+        <div className="ml-auto flex gap-2">
           <Btn size="sm" variant="ghost" icon={Icons.filter}>
             Filter
           </Btn>
@@ -195,7 +197,7 @@ export function VendorsScreen() {
         </div>
       </div>
 
-      <div style={{ border: '1px solid var(--hairline)', background: 'var(--surface)' }}>
+      <div className="border border-hairline bg-surface">
         <table className="table">
           <thead>
             <tr>
@@ -219,7 +221,7 @@ export function VendorsScreen() {
             {!isLoading && sorted.length === 0 && (
               <tr>
                 <td colSpan={7} style={{ padding: 24, textAlign: 'center', color: 'var(--ink-60)' }}>
-                  No vendors yet — upload an invoice in the Inbox to start building the directory.
+                  No vendors yet. Upload an invoice in the Inbox to start building the directory.
                 </td>
               </tr>
             )}
@@ -229,35 +231,27 @@ export function VendorsScreen() {
                 onClick={() => setActive(active === v.name ? null : v.name)}
                 data-selected={active === v.name ? 'true' : 'false'}
               >
-                <td style={{ fontWeight: 500 }}>
+                <td className="font-medium">
                   {v.name}
                   {v.anomalies > 0 && (
-                    <span
-                      className="mono"
-                      style={{
-                        marginLeft: 8,
-                        fontSize: 10.5,
-                        color: 'var(--triage-needs-review)',
-                        padding: '1px 6px',
-                        border: '1px solid #ebd0a8',
-                        background: 'var(--triage-needs-review-bg)',
-                      }}
-                    >
+                    <span className="mono ml-2 border border-[#ebd0a8] bg-triage-needs-review-tint px-1.5 py-px text-[12px] text-triage-needs-review">
                       {v.anomalies} {v.anomalies === 1 ? 'anomaly' : 'anomalies'}
                     </span>
                   )}
                 </td>
                 <td className="col-right num">{v.invoices}</td>
                 <td className="col-right num">
-                  {v.totalSpent > 0 ? formatMoneyFull(v.totalSpent) : '—'}
+                  {v.totalSpent > 0 ? formatMoneyFull(v.totalSpent) : '–'}
                 </td>
                 <td className="col-right num muted">
-                  {v.avgInvoice > 0 ? formatMoneyFull(v.avgInvoice) : '—'}
+                  {v.avgInvoice > 0 ? formatMoneyFull(v.avgInvoice) : '–'}
                 </td>
-                <td className="num muted">{v.lastSeen ?? '—'}</td>
-                <td><TrendBadge trend={v.trend} /></td>
+                <td className="num muted">{v.lastSeen ?? '–'}</td>
+                <td>
+                  <TrendBadge trend={v.trend} />
+                </td>
                 <td className="col-right num muted">
-                  {v.confidence > 0 ? `${Math.round(v.confidence * 100)}%` : '—'}
+                  {v.confidence > 0 ? `${Math.round(v.confidence * 100)}%` : '–'}
                 </td>
               </tr>
             ))}
@@ -286,33 +280,14 @@ function ScreenHeader({
   sub: string
 }) {
   return (
-    <div style={{ marginBottom: 20 }}>
-      <div
-        style={{
-          fontSize: 11,
-          letterSpacing: '0.10em',
-          textTransform: 'uppercase',
-          color: 'var(--ink-48)',
-          fontWeight: 500,
-          marginBottom: 8,
-        }}
-      >
+    <div className="mb-5">
+      <div className="mb-2 text-[12px] font-medium uppercase tracking-[0.10em] text-ink-48">
         {eyebrow}
       </div>
-      <div
-        style={{
-          fontSize: 21,
-          fontWeight: 600,
-          letterSpacing: '-0.012em',
-          color: 'var(--ink)',
-          marginBottom: 4,
-        }}
-      >
+      <div className="mb-1 text-[21px] font-semibold tracking-[-0.012em] text-ink">
         {title}
       </div>
-      <div style={{ fontSize: 14, color: 'var(--ink-60)', lineHeight: 1.5, maxWidth: '70ch' }}>
-        {sub}
-      </div>
+      <div className="max-w-[70ch] text-sm leading-[1.5] text-ink-60">{sub}</div>
     </div>
   )
 }
@@ -321,13 +296,8 @@ function StatStrip({ children }: { children: ReactNode }) {
   const count = Children.count(children)
   return (
     <div
-      style={{
-        display: 'grid',
-        gridTemplateColumns: `repeat(${count}, 1fr)`,
-        background: 'var(--surface)',
-        border: '1px solid var(--hairline)',
-        marginBottom: 18,
-      }}
+      className="mb-[18px] grid border border-hairline bg-surface"
+      style={{ gridTemplateColumns: `repeat(${count}, 1fr)` }}
     >
       {children}
     </div>
@@ -346,40 +316,15 @@ function StatTile({
   last?: boolean
 }) {
   return (
-    <div
-      style={{
-        padding: '16px 20px',
-        borderRight: last ? 0 : '1px solid var(--hairline)',
-      }}
-    >
-      <div
-        style={{
-          fontSize: 10.5,
-          textTransform: 'uppercase',
-          letterSpacing: '0.06em',
-          color: 'var(--ink-48)',
-          fontWeight: 500,
-        }}
-      >
+    <div className={`px-5 py-4 ${last ? '' : 'border-r border-hairline'}`}>
+      <div className="text-[12px] font-medium uppercase tracking-[0.06em] text-ink-48">
         {label}
       </div>
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginTop: 6 }}>
-        <span
-          className="num"
-          style={{
-            fontSize: 22,
-            fontWeight: 600,
-            color: 'var(--ink)',
-            letterSpacing: '-0.012em',
-          }}
-        >
+      <div className="mt-1.5 flex items-baseline gap-2">
+        <span className="num text-[22px] font-semibold tracking-[-0.012em] text-ink">
           {value}
         </span>
-        {suffix && (
-          <span style={{ fontSize: 11.5, color: 'var(--ink-60)', fontFamily: 'var(--font-mono)' }}>
-            {suffix}
-          </span>
-        )}
+        {suffix && <span className="font-mono text-xs text-ink-60">{suffix}</span>}
       </div>
     </div>
   )
@@ -402,42 +347,31 @@ function SortHead({
   return (
     <th
       onClick={() => set(k)}
-      className={right ? 'col-right' : ''}
-      style={{ cursor: 'pointer', userSelect: 'none' }}
+      className={`cursor-pointer select-none ${right ? 'col-right' : ''}`}
     >
       <span
-        style={{
-          display: 'inline-flex',
-          alignItems: 'center',
-          gap: 4,
-          color: isActive ? 'var(--ink)' : undefined,
-        }}
+        className={`inline-flex items-center gap-1 ${isActive ? 'text-ink' : ''}`}
       >
         {children}
-        {isActive && <span style={{ fontFamily: 'var(--font-mono)' }}>↓</span>}
+        {isActive && <span className="font-mono">↓</span>}
       </span>
     </th>
   )
 }
 
+const TREND_META: Record<Trend, { label: string; color: string; glyph: string }> = {
+  rising: { label: 'Rising', color: 'var(--triage-needs-review)', glyph: '↗' },
+  declining: { label: 'Declining', color: 'var(--ink-60)', glyph: '↘' },
+  stable: { label: 'Stable', color: 'var(--ink-60)', glyph: '→' },
+  new: { label: 'New', color: 'var(--primary)', glyph: '★' },
+}
+
 function TrendBadge({ trend }: { trend: Trend }) {
-  const META: Record<Trend, { label: string; color: string; glyph: string }> = {
-    rising: { label: 'Rising', color: 'var(--triage-needs-review)', glyph: '↗' },
-    declining: { label: 'Declining', color: 'var(--ink-60)', glyph: '↘' },
-    stable: { label: 'Stable', color: 'var(--ink-60)', glyph: '→' },
-    new: { label: 'New', color: 'var(--primary)', glyph: '★' },
-  }
-  const m = META[trend]
+  const m = TREND_META[trend]
   return (
     <span
-      style={{
-        display: 'inline-flex',
-        alignItems: 'center',
-        gap: 4,
-        fontSize: 11.5,
-        color: m.color,
-        fontFamily: 'var(--font-mono)',
-      }}
+      className="inline-flex items-center gap-1 font-mono text-xs"
+      style={{ color: m.color }}
     >
       <span>{m.glyph}</span>
       <span>{m.label}</span>
@@ -455,60 +389,20 @@ function VendorDetailDrawer({
   onClose: () => void
 }) {
   return (
-    <div
-      style={{
-        position: 'fixed',
-        right: 0,
-        top: 60,
-        bottom: 0,
-        width: 440,
-        background: 'var(--surface)',
-        borderLeft: '1px solid var(--hairline)',
-        boxShadow: '0 8px 32px rgba(0, 0, 0, 0.12)',
-        overflowY: 'auto',
-        zIndex: 30,
-      }}
-    >
-      <div
-        style={{
-          padding: '16px 18px',
-          borderBottom: '1px solid var(--hairline)',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 10,
-          position: 'sticky',
-          top: 0,
-          background: 'var(--surface)',
-          zIndex: 1,
-        }}
-      >
+    <div className="fixed bottom-0 right-0 top-[60px] z-30 w-[440px] overflow-y-auto border-l border-hairline bg-surface shadow-[0_8px_32px_rgba(0,0,0,0.12)]">
+      <div className="sticky top-0 z-[1] flex items-center gap-2.5 border-b border-hairline bg-surface px-[18px] py-4">
         <div>
-          <div
-            style={{
-              fontSize: 10.5,
-              color: 'var(--ink-48)',
-              textTransform: 'uppercase',
-              letterSpacing: '0.06em',
-              fontWeight: 500,
-            }}
-          >
+          <div className="text-[12px] font-medium uppercase tracking-[0.06em] text-ink-48">
             Vendor
           </div>
-          <div style={{ fontSize: 17, fontWeight: 600, letterSpacing: '-0.005em' }}>
+          <div className="text-[17px] font-semibold tracking-[-0.005em]">
             {vendor.name}
           </div>
         </div>
         <button
           type="button"
           onClick={onClose}
-          style={{
-            marginLeft: 'auto',
-            padding: 6,
-            color: 'var(--ink-60)',
-            background: 'transparent',
-            border: 0,
-            cursor: 'pointer',
-          }}
+          className="ml-auto cursor-pointer border-0 bg-transparent p-1.5 text-ink-60"
           title="Close"
           aria-label="Close vendor details"
         >
@@ -516,27 +410,20 @@ function VendorDetailDrawer({
         </button>
       </div>
 
-      <div
-        style={{
-          padding: '16px 18px',
-          display: 'grid',
-          gridTemplateColumns: '1fr 1fr',
-          gap: 10,
-        }}
-      >
+      <div className="grid grid-cols-2 gap-2.5 px-[18px] py-4">
         <KV label="Invoices" value={String(vendor.invoices)} />
         <KV
           label="Total spent"
-          value={vendor.totalSpent > 0 ? formatMoneyFull(vendor.totalSpent) : '—'}
+          value={vendor.totalSpent > 0 ? formatMoneyFull(vendor.totalSpent) : '–'}
         />
         <KV
           label="Avg invoice"
-          value={vendor.avgInvoice > 0 ? formatMoneyFull(vendor.avgInvoice) : '—'}
+          value={vendor.avgInvoice > 0 ? formatMoneyFull(vendor.avgInvoice) : '–'}
         />
-        <KV label="Last seen" value={vendor.lastSeen ?? '—'} />
+        <KV label="Last seen" value={vendor.lastSeen ?? '–'} />
         <KV
           label="Confidence"
-          value={vendor.confidence > 0 ? `${Math.round(vendor.confidence * 100)}%` : '—'}
+          value={vendor.confidence > 0 ? `${Math.round(vendor.confidence * 100)}%` : '–'}
         />
         <KV
           label="Active anomalies"
@@ -545,24 +432,15 @@ function VendorDetailDrawer({
         />
       </div>
 
-      <div style={{ padding: '0 18px 6px', marginTop: 4 }}>
-        <div
-          style={{
-            fontSize: 10.5,
-            color: 'var(--ink-48)',
-            textTransform: 'uppercase',
-            letterSpacing: '0.06em',
-            fontWeight: 500,
-            marginBottom: 8,
-          }}
-        >
+      <div className="mt-1 px-[18px] pb-1.5">
+        <div className="mb-2 text-[12px] font-medium uppercase tracking-[0.06em] text-ink-48">
           Invoices · {invoices.length}
         </div>
       </div>
 
-      <div style={{ padding: '0 18px 18px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <div className="flex flex-col gap-1.5 px-[18px] pb-[18px]">
         {invoices.length === 0 && (
-          <div className="muted" style={{ fontSize: 13, fontStyle: 'italic' }}>
+          <div className="muted text-sm italic">
             No invoices for this vendor yet.
           </div>
         )}
@@ -573,27 +451,18 @@ function VendorDetailDrawer({
             <Link
               key={inv.id}
               to={`/invoice/${inv.id}`}
-              style={{
-                textDecoration: 'none',
-                color: 'inherit',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 10,
-                padding: '10px 12px',
-                background: 'var(--surface-recess)',
-                border: '1px solid var(--hairline)',
-              }}
+              className="flex items-center gap-2.5 border border-hairline bg-surface-recess px-3 py-2.5 text-inherit no-underline"
             >
-              <div style={{ minWidth: 0, flex: 1 }}>
-                <div className="mono" style={{ fontSize: 12, color: 'var(--ink)' }}>
-                  {String(fields.invoice_number?.value ?? '—')}
+              <div className="min-w-0 flex-1">
+                <div className="mono text-xs text-ink">
+                  {String(fields.invoice_number?.value ?? '–')}
                 </div>
-                <div style={{ fontSize: 11, color: 'var(--ink-60)', marginTop: 2 }}>
-                  {String(fields.invoice_date?.value ?? '—')}
+                <div className="mt-0.5 text-xs text-ink-60">
+                  {String(fields.invoice_date?.value ?? '–')}
                 </div>
               </div>
-              <div className="num" style={{ fontSize: 13 }}>
-                {total != null ? formatNumber(Number(total)) : '—'}
+              <div className="num text-[13px]">
+                {total != null ? formatNumber(Number(total)) : '–'}
               </div>
             </Link>
           )
@@ -612,27 +481,16 @@ function KV({
   value: string
   tone?: 'warn' | null
 }) {
-  const color = tone === 'warn' ? 'var(--triage-needs-review)' : 'var(--ink)'
   return (
-    <div
-      style={{
-        padding: '10px 12px',
-        background: 'var(--surface-recess)',
-        border: '1px solid var(--hairline)',
-      }}
-    >
-      <div
-        style={{
-          fontSize: 10.5,
-          color: 'var(--ink-48)',
-          textTransform: 'uppercase',
-          letterSpacing: '0.06em',
-          fontWeight: 500,
-        }}
-      >
+    <div className="border border-hairline bg-surface-recess px-3 py-2.5">
+      <div className="text-[12px] font-medium uppercase tracking-[0.06em] text-ink-48">
         {label}
       </div>
-      <div className="num" style={{ fontSize: 15, fontWeight: 500, color, marginTop: 2 }}>
+      <div
+        className={`num mt-0.5 text-[15px] font-medium ${
+          tone === 'warn' ? 'text-triage-needs-review' : 'text-ink'
+        }`}
+      >
         {value}
       </div>
     </div>

@@ -8,7 +8,7 @@ export function ConfidenceBadge({ value }: { value: number | null | undefined })
         data-tone="low"
         style={{ '--w': '0%' } as CSSProperties}
       >
-        —
+        –
       </span>
     )
   }

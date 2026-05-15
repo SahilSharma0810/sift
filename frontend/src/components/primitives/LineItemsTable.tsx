@@ -3,20 +3,16 @@ import { formatNumber } from '@/utils/format'
 
 import { Icons } from './Icons'
 
+const ROW_GRID = '[grid-template-columns:1fr_60px_90px_90px]'
+
+function lineItemKey(item: LineItem): string {
+  return `${item.description}|${item.quantity ?? ''}|${item.unit_price ?? ''}|${item.line_total}`
+}
+
 export function LineItemsTable({ items }: { items: LineItem[] }) {
   if (!items || items.length === 0) {
     return (
-      <div
-        className="card"
-        style={{
-          padding: '12px 14px',
-          fontSize: 12.5,
-          color: 'var(--ink-60)',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 8,
-        }}
-      >
+      <div className="card flex items-center gap-2 px-3.5 py-3 text-xs text-ink-60">
         <Icons.layers />
         <span>No itemized line items on this invoice.</span>
       </div>
@@ -28,87 +24,39 @@ export function LineItemsTable({ items }: { items: LineItem[] }) {
   return (
     <div className="card">
       <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: '1fr 60px 90px 90px',
-          alignItems: 'center',
-          padding: '8px 12px',
-          background: 'var(--paper-hi)',
-          borderBottom: '1px solid var(--hairline)',
-          fontSize: 10.5,
-          textTransform: 'uppercase',
-          letterSpacing: '0.06em',
-          color: 'var(--ink-48)',
-        }}
+        className={`grid ${ROW_GRID} items-center border-b border-hairline bg-surface-pearl px-3 py-2 text-[12px] uppercase tracking-[0.06em] text-ink-48`}
       >
         <div>Description</div>
-        <div style={{ textAlign: 'right' }}>Qty</div>
-        <div style={{ textAlign: 'right' }}>Unit</div>
-        <div style={{ textAlign: 'right' }}>Total</div>
+        <div className="text-right">Qty</div>
+        <div className="text-right">Unit</div>
+        <div className="text-right">Total</div>
       </div>
 
-      {items.map((item, i) => (
+      {items.map((item) => (
         <div
-          key={i}
-          style={{
-            display: 'grid',
-            gridTemplateColumns: '1fr 60px 90px 90px',
-            alignItems: 'center',
-            padding: '9px 12px',
-            borderBottom: '1px solid var(--hairline-soft)',
-            fontSize: 13,
-            color: 'var(--ink-80)',
-          }}
+          key={lineItemKey(item)}
+          className={`grid ${ROW_GRID} items-center border-b border-hairline-soft px-3 py-[9px] text-[13px] text-ink-80`}
         >
-          <div style={{ paddingRight: 12, overflow: 'hidden', textOverflow: 'ellipsis' }}>
-            {item.description}
+          <div className="overflow-hidden pr-3 text-ellipsis">{item.description}</div>
+          <div className="num text-right">
+            {item.quantity == null ? <span className="subtle">–</span> : item.quantity}
           </div>
-          <div className="num" style={{ textAlign: 'right' }}>
-            {item.quantity == null ? <span className="subtle">—</span> : item.quantity}
-          </div>
-          <div className="num" style={{ textAlign: 'right' }}>
+          <div className="num text-right">
             {item.unit_price == null ? (
-              <span className="subtle">—</span>
+              <span className="subtle">–</span>
             ) : (
               `$${formatNumber(item.unit_price)}`
             )}
           </div>
-          <div className="num" style={{ textAlign: 'right', fontWeight: 500 }}>
-            ${formatNumber(item.line_total)}
-          </div>
+          <div className="num text-right font-medium">${formatNumber(item.line_total)}</div>
         </div>
       ))}
 
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: '1fr 90px',
-          alignItems: 'center',
-          padding: '9px 12px',
-          background: 'var(--paper-hi)',
-          fontSize: 12,
-        }}
-      >
-        <div
-          style={{
-            color: 'var(--ink-48)',
-            textTransform: 'uppercase',
-            letterSpacing: '0.06em',
-            fontSize: 10.5,
-          }}
-        >
+      <div className="grid grid-cols-[1fr_90px] items-center bg-surface-pearl px-3 py-[9px] text-xs">
+        <div className="text-[12px] uppercase tracking-[0.06em] text-ink-48">
           {items.length} {items.length === 1 ? 'line' : 'lines'} · sum
         </div>
-        <div
-          className="num"
-          style={{
-            textAlign: 'right',
-            fontWeight: 500,
-            color: 'var(--ink)',
-          }}
-        >
-          ${formatNumber(subtotalSum)}
-        </div>
+        <div className="num text-right font-medium text-ink">${formatNumber(subtotalSum)}</div>
       </div>
     </div>
   )

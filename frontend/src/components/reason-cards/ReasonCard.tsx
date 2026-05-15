@@ -11,11 +11,11 @@ export function ReasonCard({
   reason: TriageReason
   ctx: ReasonActionContext
 }) {
-
   const spec = REASON_SPECS[reason.type] as unknown as ReasonSpec<TriageReason>
   if (!spec) return null
 
   const Icon = spec.icon
+  const { Title, Detail } = spec
 
   return (
     <div className="reason" data-kind={reason.type}>
@@ -23,16 +23,20 @@ export function ReasonCard({
         <Icon />
       </div>
       <div className="reason-body">
-        <div className="reason-title">{spec.renderTitle(reason)}</div>
-        <div className="reason-detail">{spec.renderDetail(reason, ctx)}</div>
+        <div className="reason-title">
+          <Title reason={reason} />
+        </div>
+        <div className="reason-detail">
+          <Detail reason={reason} ctx={ctx} />
+        </div>
         {spec.actions.length > 0 && (
           <div className="reason-actions">
-            {spec.actions.map((action, i) => {
+            {spec.actions.map((action) => {
               const label =
                 typeof action.label === 'function' ? action.label(reason) : action.label
               return (
                 <Btn
-                  key={i}
+                  key={label}
                   size="sm"
                   variant={action.variant}
                   icon={action.icon}

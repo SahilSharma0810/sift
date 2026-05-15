@@ -48,5 +48,3 @@ export const Icons = {
   eye: () => <Icon d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8S1 12 1 12zM12 9a3 3 0 1 1 0 6 3 3 0 0 1 0-6z" />,
   download: () => <Icon d="M12 4v12M6 10l6 6 6-6M4 20h16" />,
 } as const
-
-export type IconName = keyof typeof Icons

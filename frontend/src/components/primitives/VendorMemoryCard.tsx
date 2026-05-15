@@ -13,12 +13,12 @@ export function VendorMemoryCard({
   const seen = memory.stats?.total_seen ?? 0
   if (seen === 0) {
     return (
-      <div className="card" style={{ padding: 14, fontSize: 12.5, color: 'var(--ink-80)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+      <div className="card p-3.5 text-xs text-ink-80">
+        <div className="mb-1.5 flex items-center gap-2">
           <Icons.vendor />
           <b>No history yet</b>
         </div>
-        <div className="muted" style={{ fontSize: 12 }}>
+        <div className="muted text-xs">
           This is the first invoice from <b>{vendorName}</b>. Confirming will seed the
           vendor memory: format hints, typical totals, payment cadence.
         </div>
@@ -27,47 +27,25 @@ export function VendorMemoryCard({
   }
   return (
     <div className="card">
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: '1fr 1fr',
-        borderBottom: '1px solid var(--hairline)',
-      }}>
+      <div className="grid grid-cols-2 border-b border-hairline">
         <Cell label="Invoices seen" value={String(seen)} />
-        <Cell label="Avg total" value={`$${formatNumber(memory.stats.avg_total)}`} right />
+        <Cell label="Avg total" value={`$${formatNumber(memory.stats?.avg_total)}`} right />
       </div>
-      {memory.rules?.length > 0 && (
-        <div style={{ padding: '10px 14px' }}>
-          <div
-            className="muted"
-            style={{
-              fontSize: 10.5,
-              textTransform: 'uppercase',
-              letterSpacing: '0.06em',
-              marginBottom: 6,
-            }}
-          >
+      {memory.rules && memory.rules.length > 0 && (
+        <div className="px-3.5 py-2.5">
+          <div className="muted mb-1.5 text-[12px] uppercase tracking-[0.06em]">
             Patterns learned
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-            {memory.rules.map((r, i) => (
-              <div key={i} style={{
-                display: 'flex',
-                gap: 8,
-                alignItems: 'center',
-                fontSize: 12.5,
-              }}>
-                <span style={{
-                  width: 14,
-                  height: 14,
-                  background: '#f3e9f9',
-                  color: '#6b3b8c',
-                  display: 'grid',
-                  placeItems: 'center',
-                  flexShrink: 0,
-                }}>
+          <div className="flex flex-col gap-1">
+            {memory.rules.map((r) => (
+              <div
+                key={r.source_correction_id}
+                className="flex items-center gap-2 text-xs"
+              >
+                <span className="grid size-3.5 flex-shrink-0 place-items-center bg-[#f3e9f9] text-[#6b3b8c]">
                   <Icons.brain />
                 </span>
-                <span style={{ color: 'var(--ink-80)' }}>
+                <span className="text-ink-80">
                   {r.field}: {r.value}
                 </span>
               </div>
@@ -89,24 +67,15 @@ function Cell({
   right?: boolean
 }) {
   return (
-    <div style={{
-      padding: '10px 14px',
-      borderRight: !right ? '1px solid var(--hairline)' : 'none',
-    }}>
-      <div style={{
-        fontSize: 10.5,
-        textTransform: 'uppercase',
-        letterSpacing: '0.06em',
-        color: 'var(--ink-48)',
-      }}>{label}</div>
-      <div style={{
-        fontSize: 15,
-        fontWeight: 500,
-        color: 'var(--ink)',
-        marginTop: 2,
-        textAlign: right ? 'right' : 'left',
-        fontFamily: 'var(--font-mono)',
-      }}>{value}</div>
+    <div className={`px-3.5 py-2.5 ${right ? '' : 'border-r border-hairline'}`}>
+      <div className="text-[12px] uppercase tracking-[0.06em] text-ink-48">{label}</div>
+      <div
+        className={`mt-0.5 font-mono text-[15px] font-medium text-ink ${
+          right ? 'text-right' : 'text-left'
+        }`}
+      >
+        {value}
+      </div>
     </div>
   )
 }

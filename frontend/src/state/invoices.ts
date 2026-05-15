@@ -24,6 +24,7 @@ export const EMPTY_QUERY: StructuredQuery = {
 }
 
 export function useTranslateMutation() {
+  const qc = useQueryClient()
   return useMutation({
     mutationFn: (query: string) =>
       api<StructuredQuery>('/api/search/translate', {
@@ -31,6 +32,9 @@ export function useTranslateMutation() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ query }),
       }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['search'] })
+    },
   })
 }
 

@@ -39,20 +39,14 @@ export function FieldRow({
   const isNumeric =
     typeof field?.value === 'number' || /[\d-/]/.test(String(field?.value ?? ''))
 
-  return (
-    <div
-      className="field"
-      data-active={isActive ? 'true' : 'false'}
-      onMouseEnter={() => onActivate?.(name)}
-      onMouseLeave={() => onActivate?.(null)}
-      onClick={() => onActivate?.(name)}
-    >
+  const body = (
+    <>
       <div className="field-label">{label}</div>
       <div className="field-value">
         {isEditing ? (
           <input
+            ref={(el) => el?.focus()}
             className="field-edit-input"
-            autoFocus
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             onBlur={() => onCommit?.(name, draft)}
@@ -90,6 +84,37 @@ export function FieldRow({
           />
         )}
       </div>
+    </>
+  )
+
+  if (!onActivate) {
+    return (
+      <div className="field" data-active={isActive ? 'true' : 'false'}>
+        {body}
+      </div>
+    )
+  }
+
+  const activate = () => onActivate(name)
+  const deactivate = () => onActivate(null)
+
+  return (
+    <div
+      className="field"
+      role="button"
+      tabIndex={0}
+      data-active={isActive ? 'true' : 'false'}
+      onMouseEnter={activate}
+      onMouseLeave={deactivate}
+      onClick={activate}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          activate()
+        }
+      }}
+    >
+      {body}
     </div>
   )
 }
