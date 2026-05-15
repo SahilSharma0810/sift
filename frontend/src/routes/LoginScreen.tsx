@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 
 import { SiftMark } from '@/components/primitives/SiftMark'
+import { useLoginMutation } from '@/state/auth'
 
 const ARROW_PATH = 'M5 12h14M12 5l7 7-7 7'
 
@@ -101,10 +102,12 @@ function PreviewRow({ variant, label, vendor, amount, reason }: PreviewRowProps)
 
 export function LoginScreen() {
   const navigate = useNavigate()
+  const loginMutation = useLoginMutation()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [remember, setRemember] = useState(true)
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
 
   useEffect(() => {
     const meta = document.querySelector<HTMLMetaElement>('meta[name="viewport"]')
@@ -119,8 +122,22 @@ export function LoginScreen() {
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     if (!email.trim() || !password) return
-
-    navigate('/inbox')
+    setErrorMessage(null)
+    loginMutation.mutate(
+      { email: email.trim(), password, remember },
+      {
+        onSuccess: () => {
+          navigate('/inbox', { replace: true })
+        },
+        onError: (err) => {
+          const detail =
+            err.status === 401
+              ? 'Email or password incorrect.'
+              : 'Something went wrong. Try again.'
+          setErrorMessage(detail)
+        },
+      },
+    )
   }
 
   return (
@@ -271,6 +288,15 @@ export function LoginScreen() {
               </div>
             </div>
 
+            {errorMessage ? (
+              <div
+                role="alert"
+                className="mt-2 text-[12.5px] leading-[1.5] text-aside-review"
+              >
+                {errorMessage}
+              </div>
+            ) : null}
+
             <div className="mt-[18px] flex items-center gap-2.5 text-[13px] text-ink-60 max-md:text-sm">
               <input
                 id="remember"
@@ -301,9 +327,10 @@ export function LoginScreen() {
 
             <button
               type="submit"
+              disabled={loginMutation.isPending}
               className="mt-[22px] flex w-full flex-nowrap items-center justify-center gap-2 whitespace-nowrap border-0 bg-action px-4 py-3.5 text-[15px] font-semibold tracking-[-0.005em] text-white transition-all duration-100 hover:bg-action-focus active:scale-[0.98] disabled:cursor-not-allowed disabled:bg-ink-48 max-md:py-[15px] max-md:text-[15.5px]"
             >
-              <span>Sign in</span>
+              <span>{loginMutation.isPending ? 'Signing in…' : 'Sign in'}</span>
               <ArrowIcon />
             </button>
           </form>
