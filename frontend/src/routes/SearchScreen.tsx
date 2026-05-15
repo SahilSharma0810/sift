@@ -12,7 +12,7 @@ import {
   useTranslateMutation,
 } from '@/state/invoices'
 import type { InvoiceOut, TriageState } from '@/types/generated/domain'
-import { formatNumber } from '@/utils/format'
+import { formatMoney } from '@/utils/format'
 
 function parseQueryParam(raw: string | null): StructuredQuery {
   if (!raw) return { ...EMPTY_QUERY }
@@ -228,6 +228,7 @@ export function SearchScreen() {
                 const vendor = fields.vendor_name?.value ?? '–'
                 const invoiceNum = fields.invoice_number?.value ?? '–'
                 const total = fields.total?.value
+                const currency = String(fields.currency?.value ?? '')
                 const date = fields.invoice_date?.value ?? '–'
                 return (
                   <tr
@@ -242,7 +243,7 @@ export function SearchScreen() {
                     <td className="num px-3 py-2.5">{String(invoiceNum)}</td>
                     <td className="num px-3 py-2.5">{String(date)}</td>
                     <td className="num px-3 py-2.5 text-right">
-                      {total == null ? '–' : `$${formatNumber(Number(total))}`}
+                      {total == null ? '–' : formatMoney(Number(total), currency)}
                     </td>
                     <td className="px-3 py-2.5 text-ink-60">{inv.review_status}</td>
                   </tr>

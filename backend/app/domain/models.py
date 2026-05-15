@@ -20,6 +20,8 @@ ReviewStatus = Literal["pending", "confirmed", "dismissed_duplicate", "unprocess
 
 ExtractionSource = str
 
+FieldValue = str | float | int | None
+
 class ExtractedField(BaseModel):
     """A single extracted field with bbox + confidence + provenance.
 

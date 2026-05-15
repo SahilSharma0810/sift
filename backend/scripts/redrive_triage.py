@@ -28,6 +28,7 @@ from sqlalchemy import select, update
 
 from app.db.models import Extraction, Invoice, Vendor
 from app.db.session import SessionLocal
+from app.domain.models import AnomalyReason, DuplicateOfReason
 from app.domain.scoring import compute_composite_confidence
 from app.domain.triage import derive_triage
 from app.domain.validators import compute_structural_scores
@@ -45,11 +46,19 @@ def _flat_fields(stored_fields: dict) -> dict:
 def _confidence_map(stored: dict) -> dict[str, float]:
     return {k: float(v) for k, v in (stored or {}).items()}
 
-def _was_duplicate(reasons: list) -> dict | None:
+def _was_duplicate(reasons: list) -> DuplicateOfReason | None:
     for r in reasons or []:
         if r.get("type") == "duplicate_of":
-            return r
+            return DuplicateOfReason(**{k: v for k, v in r.items() if k != "type"})
     return None
+
+
+def _anomalies_from_reasons(reasons: list) -> list[AnomalyReason]:
+    return [
+        AnomalyReason(**{k: v for k, v in r.items() if k != "type"})
+        for r in reasons or []
+        if r.get("type") == "anomaly"
+    ]
 
 def _math_passed_from_fields(flat_fields: dict) -> bool:
     from app.domain.validators import math_reconciles
@@ -101,11 +110,7 @@ def main() -> int:
             old_reasons = ext.predicted_triage_reasons or []
 
             dup = _was_duplicate(old_reasons)
-            anomalies = [
-                {k: v for k, v in r.items() if k != "type"}
-                for r in old_reasons
-                if r.get("type") == "anomaly"
-            ]
+            anomalies = _anomalies_from_reasons(old_reasons)
             math_passed = _math_passed_from_fields(flat)
             is_unseen = bool(
                 (vendor is None)
@@ -128,7 +133,7 @@ def main() -> int:
 
             change = "→" if new_state != old_state else "·"
             label = str(inv.id)[:8]
-            new_reason_types = sorted({r["type"] for r in new_reasons})
+            new_reason_types = sorted({r.type for r in new_reasons})
             reason_str = ",".join(new_reason_types) if new_reason_types else "—"
             print(f"{label:<10}  {old_state:<18}  {new_state:<18}  {change}  reasons={reason_str}")
 
@@ -143,7 +148,7 @@ def main() -> int:
                     .where(Extraction.id == ext.id)
                     .values(
                         predicted_triage_state=new_state,
-                        predicted_triage_reasons=new_reasons,
+                        predicted_triage_reasons=[r.model_dump(mode="json") for r in new_reasons],
                         confidence_per_field=confidence,
                     )
                 )

@@ -18,6 +18,12 @@ from app.domain.confidence import (
     compute_confidence,
     compute_history_scores_from_stats,
 )
+from app.domain.models import VendorMemoryStats
+
+
+def _stats(*, n: int, mean: float, std: float) -> VendorMemoryStats:
+    return VendorMemoryStats(total_seen=n, avg_total=mean, std_total=std)
+
 
 CLEAN_FIELDS = {
     "vendor_name": "Vega Logistics",
@@ -52,11 +58,7 @@ class TestComputeConfidence:
 
     def test_vendor_history_with_outlier_drops_total_history(self) -> None:
         """Total far from vendor mean -> history bucket 0.3 -> composite 0.3."""
-        stats = {
-            "total_seen": 10,
-            "avg_total": 1180.0,
-            "std_total": 50.0,
-        }
+        stats = _stats(n=10, mean=1180.0, std=50.0)
         outlier = {**CLEAN_FIELDS, "total": 5000.0}
         report = compute_confidence(extracted_fields=outlier, vendor_stats=stats)
         assert report.has_vendor_history is True
@@ -64,11 +66,7 @@ class TestComputeConfidence:
     def test_vendor_history_governs_when_math_passes(self) -> None:
         """Math passes -> structural is 1.0 for total; vendor history outlier
         drops the composite to the history bucket."""
-        stats = {
-            "total_seen": 10,
-            "avg_total": 1180.0,
-            "std_total": 50.0,
-        }
+        stats = _stats(n=10, mean=1180.0, std=50.0)
 
         outlier = {
             **CLEAN_FIELDS,
@@ -96,11 +94,7 @@ class TestComputeConfidence:
 
     def test_per_field_trace_components(self) -> None:
         """ConfidenceReport.fields surfaces structural / history / override per field."""
-        stats = {
-            "total_seen": 10,
-            "avg_total": 1180.0,
-            "std_total": 50.0,
-        }
+        stats = _stats(n=10, mean=1180.0, std=50.0)
         report = compute_confidence(
             extracted_fields=CLEAN_FIELDS,
             vendor_stats=stats,
@@ -120,19 +114,20 @@ class TestComputeHistoryScoresFromStats:
             extracted_fields={"total": 1000.0}, vendor_stats=None
         ) == {}
         assert compute_history_scores_from_stats(
-            extracted_fields={"total": 1000.0}, vendor_stats={}
+            extracted_fields={"total": 1000.0},
+            vendor_stats=VendorMemoryStats(),
         ) == {}
 
     def test_low_sample_size_suppresses_history(self) -> None:
         """Fewer than MIN_HISTORY_SAMPLES seen -> no history score yet."""
-        stats = {"total_seen": 2, "avg_total": 1000.0, "std_total": 50.0}
+        stats = _stats(n=2, mean=1000.0, std=50.0)
         out = compute_history_scores_from_stats(
             extracted_fields={"total": 1000.0}, vendor_stats=stats
         )
         assert out == {}
 
     def test_z_score_bucketing(self) -> None:
-        stats = {"total_seen": 10, "avg_total": 1000.0, "std_total": 100.0}
+        stats = _stats(n=10, mean=1000.0, std=100.0)
 
         assert compute_history_scores_from_stats(
             extracted_fields={"total": 1050.0}, vendor_stats=stats
@@ -152,7 +147,7 @@ class TestComputeHistoryScoresFromStats:
 
     def test_zero_std_skips_field(self) -> None:
         """A vendor with stddev 0 means we have no spread signal — skip."""
-        stats = {"total_seen": 10, "avg_total": 1000.0, "std_total": 0.0}
+        stats = _stats(n=10, mean=1000.0, std=0.0)
         out = compute_history_scores_from_stats(
             extracted_fields={"total": 1000.0}, vendor_stats=stats
         )

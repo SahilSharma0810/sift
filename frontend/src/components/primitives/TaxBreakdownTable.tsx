@@ -1,5 +1,5 @@
 import type { TaxBreakdownLine } from '@/types/generated/domain'
-import { formatNumber } from '@/utils/format'
+import { formatMoney } from '@/utils/format'
 
 import { Icons } from './Icons'
 
@@ -9,7 +9,13 @@ function taxRowKey(row: TaxBreakdownLine): string {
   return `${row.jurisdiction}|${row.rate ?? ''}|${row.amount}`
 }
 
-export function TaxBreakdownTable({ rows }: { rows: TaxBreakdownLine[] }) {
+export function TaxBreakdownTable({
+  rows,
+  currency,
+}: {
+  rows: TaxBreakdownLine[]
+  currency?: string
+}) {
   if (!rows || rows.length === 0) {
     return (
       <div className="card flex items-center gap-2 px-3.5 py-3 text-xs text-ink-60">
@@ -40,7 +46,7 @@ export function TaxBreakdownTable({ rows }: { rows: TaxBreakdownLine[] }) {
           <div className="num text-right">
             {row.rate == null ? <span className="subtle">–</span> : `${row.rate}%`}
           </div>
-          <div className="num text-right font-medium">${formatNumber(row.amount)}</div>
+          <div className="num text-right font-medium">{formatMoney(row.amount, currency)}</div>
         </div>
       ))}
 
@@ -48,7 +54,7 @@ export function TaxBreakdownTable({ rows }: { rows: TaxBreakdownLine[] }) {
         <div className="text-[12px] uppercase tracking-[0.06em] text-ink-48">
           {rows.length} {rows.length === 1 ? 'jurisdiction' : 'jurisdictions'} · sum
         </div>
-        <div className="num text-right font-medium text-ink">${formatNumber(sum)}</div>
+        <div className="num text-right font-medium text-ink">{formatMoney(sum, currency)}</div>
       </div>
     </div>
   )

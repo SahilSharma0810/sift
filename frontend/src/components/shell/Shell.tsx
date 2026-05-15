@@ -194,10 +194,6 @@ export function Shell() {
             <Icons.brain />
             <span>Vendor memory</span>
           </div>
-          <div className="nav-item">
-            <Icons.cascade />
-            <span>Cascade runs</span>
-          </div>
         </nav>
 
         <div className="sidebar-footer">
@@ -213,8 +209,6 @@ export function Shell() {
           >
             {logout.isPending ? 'Signing out…' : 'Sign out'}
           </button>
-          <span className="sidebar-footer-dot" />
-          <span>All systems normal · Haiku 4.5 / Sonnet 4.6</span>
         </div>
       </aside>
 

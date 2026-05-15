@@ -82,6 +82,36 @@ ignore = ["E501"]        # ruff format handles line length
 "alembic/*" = ["E402"]            # alembic templates do late imports
 "app/api/*" = ["B008"]            # FastAPI Depends/File() in defaults is idiomatic
 
+[tool.mypy]
+python_version = "3.12"
+files = ["app"]
+warn_redundant_casts = true
+warn_unused_ignores = true
+no_implicit_optional = true
+
+[[tool.mypy.overrides]]
+module = ["fitz", "fitz.*", "pdf2image", "pdf2image.*", "imagehash", "pgvector.*"]
+ignore_missing_imports = true
+
+# Ratchet: each block below tracks a real error that step-3 cleanup will fix.
+# Remove the override when the underlying error is gone — `warn_unused_ignores`
+# above won't catch a stale override block, so check by hand.
+[[tool.mypy.overrides]]
+module = ["app.services.anomaly_service"]
+disable_error_code = ["arg-type"]
+
+[[tool.mypy.overrides]]
+module = ["app.services.search_service"]
+disable_error_code = ["return-value"]
+
+[[tool.mypy.overrides]]
+module = ["app.services.nl_translation_service"]
+disable_error_code = ["arg-type"]
+
+[[tool.mypy.overrides]]
+module = ["app.adapters.llm_client"]
+disable_error_code = ["call-overload"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"

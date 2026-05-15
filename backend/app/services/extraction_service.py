@@ -53,8 +53,15 @@ from app.adapters.storage import extraction_repo, invoice_repo, vendor_repo
 from app.config import get_settings
 from app.db.models import Extraction, Invoice
 from app.domain import confidence
-from app.domain.anomalies import detect_anomalies
+from app.domain.anomalies import AcknowledgedOutlier, detect_anomalies
 from app.domain.duplicates import classify_duplicate, hamming_distance
+from app.domain.models import (
+    AnomalyReason,
+    DuplicateOfReason,
+    ExtractionFailedReason,
+    TriageReason,
+    VendorMemoryStats,
+)
 from app.domain.triage import derive_triage
 from app.domain.validators import (
     REQUIRED_FIELDS,
@@ -87,6 +94,10 @@ def _normalize_value(field_value: Any) -> Any:
 def _flat_fields(raw: dict[str, Any]) -> dict[str, Any]:
     """Strip out the wrapper dicts to get a flat field-name → value mapping."""
     return {k: _normalize_value(v) for k, v in raw.items()}
+
+def _dump_reasons(reasons: list[TriageReason]) -> list[dict[str, Any]]:
+    """Serialize Pydantic reason models to JSONB-compatible dicts."""
+    return [r.model_dump(mode="json") for r in reasons]
 
 def _get_or_create_invoice(
     session: Session,
@@ -240,7 +251,7 @@ def _detect_duplicate(
     perceptual_hash: str,
     dismissals_against: list[str],
     exclude_invoice_id: Any = None,
-) -> dict[str, Any] | None:
+) -> DuplicateOfReason | None:
     """Run the two-signal duplicate check, honoring prior `not-a-duplicate` dismissals."""
     candidates = invoice_repo.find_phash_candidates(session)
     best_id = None
@@ -273,11 +284,11 @@ def _detect_duplicate(
         match = classify_duplicate(content_match=True, phash_distance=content_match_phash_dist)
         if match:
             method, sim = match
-            return {
-                "invoice_id": str(content_match_id),
-                "similarity": sim,
-                "match_method": method,
-            }
+            return DuplicateOfReason(
+                invoice_id=content_match_id,
+                similarity=sim,
+                match_method=method,
+            )
 
     if best_id is not None:
         if str(best_id) in dismissals_against:
@@ -285,11 +296,11 @@ def _detect_duplicate(
         match = classify_duplicate(content_match=False, phash_distance=best_dist)
         if match:
             method, sim = match
-            return {
-                "invoice_id": str(best_id),
-                "similarity": sim,
-                "match_method": method,
-            }
+            return DuplicateOfReason(
+                invoice_id=best_id,
+                similarity=sim,
+                match_method=method,
+            )
 
     return None
 
@@ -357,14 +368,13 @@ def extract_from_pdf(
             extracted_fields={},
             confidence_per_field={},
             predicted_triage_state="needs_review",
-            predicted_triage_reasons=[
-                {
-                    "type": "extraction_failed",
-                    "stage": "llm_call",
-                    "detail": initial_result.extraction_failure_reason
+            predicted_triage_reasons=_dump_reasons([
+                ExtractionFailedReason(
+                    stage="llm_call",
+                    detail=initial_result.extraction_failure_reason
                     or "LLM reported extraction_failed",
-                }
-            ],
+                )
+            ]),
             cascade_trace={
                 "tiers": [
                     {
@@ -383,12 +393,13 @@ def extract_from_pdf(
     fields_flat = _flat_fields(initial_result.fields)
     vendor_name = fields_flat.get("vendor_name") or "Unknown"
     vendor = vendor_repo.upsert_by_normalized_name(session, name=str(vendor_name))
-    vendor_stats = (vendor.memory or {}).get("stats") or None
+    raw_stats = (vendor.memory or {}).get("stats") or None
+    vendor_stats = VendorMemoryStats(**raw_stats) if raw_stats else None
     pre_report = confidence.compute_confidence(
         extracted_fields=fields_flat,
         vendor_stats=vendor_stats,
     )
-    is_unseen = bool(vendor.memory == {} or not vendor.memory.get("stats", {}).get("total_seen", 0))
+    is_unseen = vendor_stats is None or vendor_stats.total_seen == 0
 
     cascade_result = cascade.run_cascade(
         llm=llm,
@@ -454,14 +465,16 @@ def extract_from_pdf(
             exclude_invoice_id=invoice.id,
         )
 
-    anomalies: list[dict[str, Any]] = []
-    if duplicate_of is None:
-        mem = vendor.memory or {}
-        stats = mem.get("stats", {}) or {}
-        acked = mem.get("acknowledged_outliers", {}) or {}
+    anomalies: list[AnomalyReason] = []
+    if duplicate_of is None and vendor_stats is not None:
+        acked_raw = (vendor.memory or {}).get("acknowledged_outliers") or {}
+        acked: dict[str, list[AcknowledgedOutlier]] = {
+            field: [AcknowledgedOutlier(value=float(o.get("value", 0.0) or 0.0)) for o in lst]
+            for field, lst in acked_raw.items()
+        }
         anomalies = detect_anomalies(
             fields=final_fields,
-            stats=stats,
+            stats=vendor_stats,
             acknowledged_outliers=acked,
         )
 
@@ -497,7 +510,7 @@ def extract_from_pdf(
         extracted_fields=extracted_fields_shape,
         confidence_per_field=composite,
         predicted_triage_state=state,
-        predicted_triage_reasons=reasons,
+        predicted_triage_reasons=_dump_reasons(reasons),
         cascade_trace={"tiers": cascade_trace_tiers},
         line_items=line_items_raw,
         tax_breakdown=tax_breakdown_raw,

@@ -6,3 +6,12 @@ export function formatNumber(n: number | null | undefined): string {
     maximumFractionDigits: 2,
   })
 }
+
+export function formatMoney(
+  amount: number | null | undefined,
+  currency?: string | null,
+): string {
+  if (amount == null) return '—'
+  const code = (currency ?? '').trim()
+  return code ? `${code} ${formatNumber(amount)}` : formatNumber(amount)
+}

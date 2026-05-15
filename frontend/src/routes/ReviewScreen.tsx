@@ -46,27 +46,6 @@ function minConfidence(inv: InvoiceOut): number | null {
   return Math.min(...vals)
 }
 
-interface CascadeStep {
-  tier: string
-  callIndex: number
-}
-
-function cascadeTiers(inv: InvoiceOut): CascadeStep[] {
-  const trace = inv.current_extraction?.cascade_trace as
-    | { tiers?: Array<{ model?: string }> }
-    | undefined
-  const tiers = trace?.tiers ?? []
-  return tiers.flatMap((t, idx) => {
-    const m = (t?.model ?? '').toLowerCase()
-    let tier: string
-    if (m.includes('haiku')) tier = 'haiku'
-    else if (m.includes('sonnet')) tier = 'sonnet'
-    else if (m.includes('opus')) tier = 'opus'
-    else tier = m || 'unknown'
-    return tier ? [{ tier, callIndex: idx }] : []
-  })
-}
-
 function reasonKey(
   r: NonNullable<InvoiceOut['current_extraction']>['predicted_triage_reasons'][number],
 ): string {
@@ -143,10 +122,8 @@ export function ReviewScreen() {
     )
   }
 
-  const ext = invoice.current_extraction
-  const reasons = ext?.predicted_triage_reasons ?? []
+  const reasons = invoice.current_extraction?.predicted_triage_reasons ?? []
   const variant = pillVariant(invoice)
-  const tiers = cascadeTiers(invoice)
   const isUnprocessable = invoice.review_status === 'unprocessable'
 
   const reasonCtx: ReasonActionContext = {
@@ -230,7 +207,16 @@ export function ReviewScreen() {
             </Btn>
             <TriagePill variant={variant} pct={minConfidence(invoice)} />
             <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
-              <Btn size="sm" variant="ghost" icon={Icons.refresh} title="Retry extraction" />
+              <Btn
+                size="sm"
+                variant="ghost"
+                icon={Icons.refresh}
+                title="Retry extraction"
+                onClick={() => retry.mutate({ id: invoice.id })}
+                disabled={retry.isPending}
+              >
+                {retry.isPending ? 'Retrying…' : 'Retry'}
+              </Btn>
             </div>
           </div>
 
@@ -264,9 +250,6 @@ export function ReviewScreen() {
               </span>
             </Btn>
             <Btn icon={Icons.x} onClick={() => markUnp.mutate(invoice.id)}>Dismiss</Btn>
-            <Btn variant="ghost" icon={Icons.cascade} onClick={() => retry.mutate({ id: invoice.id, forceTier: 'claude-opus-4-7' })}>
-              Force Opus
-            </Btn>
           </div>
         </div>
 
@@ -300,9 +283,6 @@ export function ReviewScreen() {
                 <span>Manual entry mode</span>
               </span>
             )}
-            <span className="ml-auto font-mono text-[12px] text-ink-48">
-              cascade: {tiers.length ? tiers.map((t) => t.tier).join(' → ') : '–'}
-            </span>
           </div>
 
           <div className="card" style={{ marginBottom: 12 }}>
@@ -326,27 +306,25 @@ export function ReviewScreen() {
 
         <div className="review-side-section">
           <div className="review-side-section-title">Line items</div>
-          <LineItemsTable items={invoice.current_extraction?.line_items ?? []} />
+          <LineItemsTable
+            items={invoice.current_extraction?.line_items ?? []}
+            currency={currency}
+          />
         </div>
 
         <div className="review-side-section">
           <div className="review-side-section-title">Tax breakdown</div>
-          <TaxBreakdownTable rows={invoice.current_extraction?.tax_breakdown ?? []} />
+          <TaxBreakdownTable
+            rows={invoice.current_extraction?.tax_breakdown ?? []}
+            currency={currency}
+          />
         </div>
-
-        {}
-        {tiers.length > 0 && (
-          <div className="review-side-section">
-            <div className="review-side-section-title">Cascade trace</div>
-            <CascadeTrace tiers={tiers} />
-          </div>
-        )}
 
         {}
         {vendor?.memory && (
           <div className="review-side-section">
             <div className="review-side-section-title">Vendor memory</div>
-            <VendorMemoryCard memory={vendor.memory} vendorName={vendor.name} />
+            <VendorMemoryCard memory={vendor.memory} vendorName={vendor.name} currency={currency} />
           </div>
         )}
 
@@ -356,66 +334,3 @@ export function ReviewScreen() {
   )
 }
 
-const TIER_META: Record<string, { label: string; color: string; bg: string; cost: string }> = {
-  haiku: { label: 'Haiku 4.5', color: 'var(--ink-60)', bg: 'var(--surface-recess)', cost: '$0.001' },
-  sonnet: { label: 'Sonnet 4.6', color: '#1d6280', bg: '#e7f1f6', cost: '$0.012' },
-  opus: { label: 'Opus 4.7', color: '#6b3b8c', bg: '#f3e9f9', cost: '$0.060' },
-}
-
-function CascadeTrace({ tiers }: { tiers: CascadeStep[] }) {
-  return (
-    <div className="card p-3">
-      <div className="flex flex-wrap items-center gap-1">
-        {tiers.map((step, i) => {
-          const m = TIER_META[step.tier] ?? {
-            label: step.tier,
-            color: 'var(--ink-60)',
-            bg: 'var(--surface-recess)',
-            cost: '',
-          }
-          return (
-            <span
-              key={`${step.tier}-${step.callIndex}`}
-              className="inline-flex items-center"
-            >
-              <CascadeBadge label={m.label} cost={m.cost} bg={m.bg} color={m.color} />
-              {i < tiers.length - 1 && (
-                <span className="mx-1 text-ink-48">→</span>
-              )}
-            </span>
-          )
-        })}
-      </div>
-      <div className="muted mt-2 text-xs leading-[1.5]">
-        {tiers.length === 1
-          ? 'First tier returned high composite confidence; no escalation needed.'
-          : tiers.length === 2
-            ? "Haiku's output triggered the cascade (math fails or low confidence). Sonnet's values shown above."
-            : 'Sonnet disagreed with Haiku on disputed fields. Opus broke the tie; agreement scores merged into composite.'}
-      </div>
-    </div>
-  )
-}
-
-function CascadeBadge({
-  label,
-  cost,
-  bg,
-  color,
-}: {
-  label: string
-  cost: string
-  bg: string
-  color: string
-}) {
-  return (
-    <span
-      className="inline-flex items-center gap-1.5 border border-hairline px-2 py-1 font-mono text-xs"
-      style={{ background: bg, color }}
-    >
-      <span className="size-1.5 rounded-full" style={{ background: color }} />
-      <span>{label}</span>
-      {cost && <span className="opacity-60">{cost}</span>}
-    </span>
-  )
-}

@@ -17,8 +17,8 @@ module never sees an ORM row.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
 
+from app.domain.models import FieldValue, VendorMemoryStats
 from app.domain.scoring import (
     apply_agreement_overrides,
     compute_composite_confidence,
@@ -59,15 +59,14 @@ class ConfidenceReport:
 
 def compute_confidence(
     *,
-    extracted_fields: dict[str, Any],
-    vendor_stats: dict[str, Any] | None = None,
+    extracted_fields: dict[str, FieldValue],
+    vendor_stats: VendorMemoryStats | None = None,
     agreement_overrides: dict[str, float] | None = None,
 ) -> ConfidenceReport:
     """Compute Composite Confidence + provenance for one extraction.
 
-    `vendor_stats` is the cleaned dict from `vendor.memory.stats` (or
-    None for a cold-start Vendor). `agreement_overrides` is the per-field
-    score returned by the Cascade module when it fired.
+    `vendor_stats` is None for a cold-start Vendor. `agreement_overrides`
+    is the per-field score returned by the Cascade module when it fired.
     """
     structural = compute_structural_scores(extracted_fields)
     history = compute_history_scores_from_stats(
@@ -95,36 +94,33 @@ def compute_confidence(
 
 def compute_history_scores_from_stats(
     *,
-    extracted_fields: dict[str, Any],
-    vendor_stats: dict[str, Any] | None,
+    extracted_fields: dict[str, FieldValue],
+    vendor_stats: VendorMemoryStats | None,
 ) -> dict[str, float]:
-    """Per-field history score from a clean vendor-stats dict.
+    """Per-field history score from vendor stats.
 
     Returns scores only for numeric fields with sufficient history;
     cold-start / sparse fields are absent (the composite scorer falls
     back to DEFAULT_HISTORY_SCORE for missing keys).
     """
-    if not vendor_stats:
-        return {}
-    n = int(vendor_stats.get("total_seen", 0) or 0)
-    if n < MIN_HISTORY_SAMPLES:
+    if vendor_stats is None or vendor_stats.total_seen < MIN_HISTORY_SAMPLES:
         return {}
     out: dict[str, float] = {}
-    for fname in NUMERIC_HISTORY_FIELDS:
-        value = extracted_fields.get(fname)
-        if value is None:
-            continue
-        try:
-            x = float(value)
-        except (TypeError, ValueError):
-            continue
-        mean = float(vendor_stats.get(f"avg_{fname}", 0.0) or 0.0)
-        std = float(vendor_stats.get(f"std_{fname}", 0.0) or 0.0)
-        if std <= 0:
-            continue
-        z = (x - mean) / std
-        out[fname] = _history_bucket(z)
+    if "total" in NUMERIC_HISTORY_FIELDS:
+        value = extracted_fields.get("total")
+        bucket = _bucket_for(value, mean=vendor_stats.avg_total, std=vendor_stats.std_total)
+        if bucket is not None:
+            out["total"] = bucket
     return out
+
+def _bucket_for(value: FieldValue, *, mean: float, std: float) -> float | None:
+    if value is None or std <= 0:
+        return None
+    try:
+        x = float(value)
+    except (TypeError, ValueError):
+        return None
+    return _history_bucket((x - mean) / std)
 
 def _history_bucket(z: float) -> float:
     """ADR-0003 Z-score buckets: |z|<1: 1.0, <2: 0.85, <3: 0.6, else 0.3."""
@@ -137,14 +133,14 @@ def _history_bucket(z: float) -> float:
         return 0.6
     return 0.3
 
-def _math_passed(fields: dict[str, Any]) -> bool:
+def _math_passed(fields: dict[str, FieldValue]) -> bool:
     return math_reconciles(
         subtotal=_maybe_float(fields.get("subtotal")),
         tax=_maybe_float(fields.get("tax")),
         total=_maybe_float(fields.get("total")),
     )
 
-def _maybe_float(v: Any) -> float | None:
+def _maybe_float(v: FieldValue) -> float | None:
     if v is None:
         return None
     try:

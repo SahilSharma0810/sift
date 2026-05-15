@@ -1,5 +1,5 @@
 import type { LineItem } from '@/types/generated/domain'
-import { formatNumber } from '@/utils/format'
+import { formatMoney } from '@/utils/format'
 
 import { Icons } from './Icons'
 
@@ -9,7 +9,13 @@ function lineItemKey(item: LineItem): string {
   return `${item.description}|${item.quantity ?? ''}|${item.unit_price ?? ''}|${item.line_total}`
 }
 
-export function LineItemsTable({ items }: { items: LineItem[] }) {
+export function LineItemsTable({
+  items,
+  currency,
+}: {
+  items: LineItem[]
+  currency?: string
+}) {
   if (!items || items.length === 0) {
     return (
       <div className="card flex items-center gap-2 px-3.5 py-3 text-xs text-ink-60">
@@ -45,10 +51,10 @@ export function LineItemsTable({ items }: { items: LineItem[] }) {
             {item.unit_price == null ? (
               <span className="subtle">–</span>
             ) : (
-              `$${formatNumber(item.unit_price)}`
+              formatMoney(item.unit_price, currency)
             )}
           </div>
-          <div className="num text-right font-medium">${formatNumber(item.line_total)}</div>
+          <div className="num text-right font-medium">{formatMoney(item.line_total, currency)}</div>
         </div>
       ))}
 
@@ -56,7 +62,7 @@ export function LineItemsTable({ items }: { items: LineItem[] }) {
         <div className="text-[12px] uppercase tracking-[0.06em] text-ink-48">
           {items.length} {items.length === 1 ? 'line' : 'lines'} · sum
         </div>
-        <div className="num text-right font-medium text-ink">${formatNumber(subtotalSum)}</div>
+        <div className="num text-right font-medium text-ink">{formatMoney(subtotalSum, currency)}</div>
       </div>
     </div>
   )

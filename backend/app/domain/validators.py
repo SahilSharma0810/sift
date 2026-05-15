@@ -6,8 +6,11 @@ no LLM calls, no DB. The eval harness sits on this seam.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from datetime import datetime
 from decimal import Decimal
+
+from app.domain.models import FieldValue
 
 AMOUNT_TOLERANCE = Decimal("0.02")
 
@@ -158,7 +161,7 @@ REQUIRED_FIELDS = (
     "currency",
 )
 
-def find_missing_required(fields: dict[str, object]) -> list[str]:
+def find_missing_required(fields: Mapping[str, object]) -> list[str]:
     """Names of required fields that are missing, None, or empty-string."""
     missing: list[str] = []
     for name in REQUIRED_FIELDS:
@@ -176,7 +179,7 @@ PRESENT_BUT_INVALID = 0.3
 
 AMOUNT_FIELDS = ("subtotal", "tax", "total")
 
-def compute_structural_scores(fields: dict[str, object]) -> dict[str, float]:
+def compute_structural_scores(fields: Mapping[str, FieldValue]) -> dict[str, float]:
     """Map each known field to a structural_score per ADR-0003.
 
     Returns a score per REQUIRED_FIELDS entry plus `subtotal` and `tax`.
@@ -185,11 +188,11 @@ def compute_structural_scores(fields: dict[str, object]) -> dict[str, float]:
 
     missing = set(find_missing_required(fields))
 
-    def _maybe_float(v: object) -> float | None:
+    def _maybe_float(v: FieldValue) -> float | None:
         if v is None:
             return None
         try:
-            return float(v)  # type: ignore[arg-type]
+            return float(v)
         except (TypeError, ValueError):
             return None
 
