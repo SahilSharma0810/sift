@@ -86,6 +86,24 @@ class TestLogin:
         assert "HttpOnly" in set_cookie
         assert "SameSite=lax" in set_cookie
 
+    def test_login_without_remember_omits_max_age(
+        self, unauthed_client, db_session: Session
+    ) -> None:
+        _seed_demo_user(db_session)
+        res = unauthed_client.post(
+            "/api/auth/login",
+            json={
+                "email": "ap-clerk@sift.demo",
+                "password": "letmein-demo",
+                "remember": False,
+            },
+        )
+        assert res.status_code == 200
+        set_cookie = res.headers["set-cookie"]
+        assert "Max-Age=" not in set_cookie
+        assert "HttpOnly" in set_cookie
+        assert "SameSite=lax" in set_cookie
+
 
 class TestMe:
     def test_me_without_cookie_is_401(self, unauthed_client) -> None:
