@@ -41,9 +41,23 @@ class Settings(BaseSettings):
 
     cors_origins_raw: str = Field(default="http://localhost:5173", alias="SIFT_CORS_ORIGINS")
 
+    secret_key: str = Field(
+        default="dev-only-secret-do-not-use-in-prod",
+        alias="SIFT_SECRET_KEY",
+    )
+    cookie_secure: bool = Field(default=False, alias="SIFT_COOKIE_SECURE")
+    session_remember_days: int = Field(default=30, alias="SIFT_SESSION_REMEMBER_DAYS")
+    session_default_hours: int = Field(default=12, alias="SIFT_SESSION_DEFAULT_HOURS")
+    demo_email: str = Field(default="ap-clerk@sift.demo", alias="SIFT_DEMO_EMAIL")
+    demo_password: str = Field(default="letmein-demo", alias="SIFT_DEMO_PASSWORD")
+
     @property
     def cors_origins(self) -> list[str]:
         return [o.strip() for o in self.cors_origins_raw.split(",") if o.strip()]
+
+    @property
+    def using_dev_secret(self) -> bool:
+        return self.secret_key == "dev-only-secret-do-not-use-in-prod"
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:

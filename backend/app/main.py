@@ -49,6 +49,12 @@ def create_app() -> FastAPI:
     settings = get_settings()
     configure_logging(settings.log_level, settings.log_format)
 
+    if settings.using_dev_secret:
+        structlog.get_logger().warning(
+            "auth.dev_secret_in_use",
+            hint="set SIFT_SECRET_KEY in production",
+        )
+
     app = FastAPI(
         title="Sift",
         version=__version__,
