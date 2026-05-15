@@ -456,8 +456,14 @@ def extract_from_pdf(
 
     anomalies: list[dict[str, Any]] = []
     if duplicate_of is None:
-        stats = (vendor.memory or {}).get("stats", {}) or {}
-        anomalies = detect_anomalies(fields=final_fields, stats=stats)
+        mem = vendor.memory or {}
+        stats = mem.get("stats", {}) or {}
+        acked = mem.get("acknowledged_outliers", {}) or {}
+        anomalies = detect_anomalies(
+            fields=final_fields,
+            stats=stats,
+            acknowledged_outliers=acked,
+        )
 
     state, reasons = derive_triage(
         extracted_fields=final_fields,

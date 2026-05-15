@@ -121,4 +121,5 @@ ignore_imports = [
     "app.api.search -> app.db.session",
     "app.api.deps -> app.db.session",
     "app.api.auth -> app.db.session",
+    "app.api.anomalies -> app.db.session",
 ]
