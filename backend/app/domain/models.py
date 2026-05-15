@@ -27,6 +27,12 @@ class ExtractedField(BaseModel):
 
     See PLAN.md `extracted_fields` shape. The bbox-highlight UX (beat 1)
     and provenance-hover UX (beat 3) both depend on this shape.
+
+    `iso_from` / `iso_to` are populated only for `invoice_date`. They carry
+    the canonical YYYY-MM-DD form so search filters compare against a
+    single, parseable representation regardless of how the source PDF
+    wrote the date. Point dates set both fields to the same value; billing
+    periods ("9/21/20 - 9/26/20") set them to the range endpoints.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -36,6 +42,8 @@ class ExtractedField(BaseModel):
     page: int = 0
     confidence: float = Field(ge=0.0, le=1.0)
     source: ExtractionSource
+    iso_from: str | None = None
+    iso_to: str | None = None
 
 class TaxBreakdownLine(BaseModel):
     """One row of the per-jurisdiction tax breakdown table.
@@ -144,9 +152,15 @@ class VendorMemoryRule(BaseModel):
     first_learned_at: datetime
 
 class VendorMemoryStats(BaseModel):
-    """Cached per-vendor stats — feeds anomaly detection AND history_score."""
+    """Cached per-vendor stats — feeds anomaly detection AND history_score.
 
-    model_config = ConfigDict(extra="forbid")
+    Storage shape (the JSONB `memory.stats` dict) carries private Welford
+    intermediates like `_var_n_total` alongside the public fields. The
+    model is the public projection — extras are ignored, not forbidden,
+    so reading from storage after running updates doesn't blow up.
+    """
+
+    model_config = ConfigDict(extra="ignore")
 
     total_seen: int = 0
     avg_total: float = 0.0

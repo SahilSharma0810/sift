@@ -768,6 +768,9 @@ _NL_VENDOR_RE = re.compile(
     re.IGNORECASE,
 )
 
+_TODAY_PREFIX_RE = re.compile(r"^Today is \d{4}-\d{2}-\d{2}\.\s*Query:\s*", re.IGNORECASE)
+
+
 def _stub_translate_nl(natural_language: str) -> dict[str, Any]:
     """Deterministic NL -> StructuredQuery payload for the stub provider.
 
@@ -775,7 +778,7 @@ def _stub_translate_nl(natural_language: str) -> dict[str, Any]:
     data plus obvious fallbacks. Anything it can't translate flows to
     `untranslated_intent` so the UI can show the amber notice.
     """
-    text = natural_language.strip()
+    text = _TODAY_PREFIX_RE.sub("", natural_language.strip()).strip()
     lowered = text.lower()
     filters: list[dict[str, Any]] = []
     handled_spans: list[tuple[int, int]] = []

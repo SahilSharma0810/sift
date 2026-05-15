@@ -16,12 +16,18 @@ from tests.conftest import patch_make_llm_client
 FIXTURES = Path(__file__).parents[1] / "fixtures"
 CLEAN_PDF = FIXTURES / "digital_invoice_clean.pdf"
 
-def _llm_result(vendor: str, number: str, total: float, currency: str = "USD") -> ExtractionResult:
+def _llm_result(
+    vendor: str,
+    number: str,
+    total: float,
+    currency: str = "USD",
+    invoice_date: str = "2026-05-13",
+) -> ExtractionResult:
     return ExtractionResult(
         fields={
             "vendor_name": vendor,
             "invoice_number": number,
-            "invoice_date": "2026-05-13",
+            "invoice_date": invoice_date,
             "subtotal": round(total * 0.85, 2),
             "tax": round(total - total * 0.85, 2),
             "total": total,
@@ -42,10 +48,17 @@ def _llm_result(vendor: str, number: str, total: float, currency: str = "USD") -
     )
 
 def _upload(
-    client: TestClient, marker: str, vendor: str, total: float, currency: str = "USD"
+    client: TestClient,
+    marker: str,
+    vendor: str,
+    total: float,
+    currency: str = "USD",
+    invoice_date: str = "2026-05-13",
 ) -> str:
     body = CLEAN_PDF.read_bytes() + f"\n%{marker}\n".encode()
-    with patch_make_llm_client(header=_llm_result(vendor, f"INV-{marker}", total, currency)):
+    with patch_make_llm_client(
+        header=_llm_result(vendor, f"INV-{marker}", total, currency, invoice_date)
+    ):
         res = client.post(
             "/api/invoices",
             files={"file": (f"{marker}.pdf", body, "application/pdf")},
@@ -74,6 +87,31 @@ class TestSearchByVendor:
             body[0]["current_extraction"]["extracted_fields"]["vendor_name"]["value"]
             == "QA SearchVendor Vega Logistics"
         )
+
+    def test_vendor_eq_is_case_insensitive(self, api_client: TestClient) -> None:
+        """Whatever a clerk sees in the inbox, they can search for it.
+
+        Prod incident: extracted `vendor_name` was 'Epsilon' (display) but
+        `vendors.name` had drifted to 'epsilon' (storage). Case-sensitive
+        `eq` returned 0; clerk thought search was broken. Lock the contract:
+        any case the clerk types must match either the joined vendor row
+        OR the current extraction's vendor_name value.
+        """
+        _upload(api_client, "ci-1", "QA SearchVendor Epsilon", 1000.0)
+        for typed in ("Epsilon", "epsilon", "EPSILON", "qa searchvendor epsilon"):
+            res = api_client.post(
+                "/api/search",
+                json={
+                    "filters": [
+                        {"field": "vendor_name", "op": "eq", "value": typed}
+                        if typed.lower() == "qa searchvendor epsilon"
+                        else {"field": "vendor_name", "op": "contains", "value": typed}
+                    ],
+                    "limit": 50,
+                },
+            )
+            assert res.status_code == 200, res.text
+            assert len(res.json()) == 1, f"{typed!r} should match (got 0 rows)"
 
 class TestSearchByTotal:
     def test_total_gt(self, api_client: TestClient) -> None:
@@ -261,3 +299,102 @@ class TestAuthGate:
     def test_translate_requires_auth(self, unauthed_client) -> None:
         res = unauthed_client.post("/api/search/translate", json={"query": "x"})
         assert res.status_code == 401
+
+
+class TestSearchByInvoiceDate:
+    """Filter by `invoice_date` reads `iso_from`, the canonical normalized form.
+
+    Prod incident: dates landed in `extracted_fields.invoice_date.value` as
+    free-form strings ("April 30, 1999", "9/21/20 - 9/26/20") and the SQL
+    builder cast them with `to_date(..., 'YYYY-MM-DD')` which failed on
+    everything except ISO. Lock the contract: any verbatim format that
+    `date_parser.parse_date_or_range` understands must round-trip through
+    a date filter correctly.
+    """
+
+    def test_lt_matches_old_dates(self, api_client: TestClient) -> None:
+        _upload(api_client, "old", "QA DateVendor Old", 100.0, invoice_date="April 30, 1999")
+        _upload(api_client, "mid", "QA DateVendor Mid", 200.0, invoice_date="2020-09-25")
+        _upload(api_client, "new", "QA DateVendor New", 300.0, invoice_date="2026-05-13")
+
+        res = api_client.post(
+            "/api/search",
+            json={
+                "filters": [{"field": "invoice_date", "op": "lt", "value": "2020-01-01"}],
+                "limit": 50,
+            },
+        )
+        assert res.status_code == 200, res.text
+        body = res.json()
+        vendors = sorted(
+            r["current_extraction"]["extracted_fields"]["vendor_name"]["value"]
+            for r in body
+            if r["current_extraction"]["extracted_fields"]["vendor_name"]["value"].startswith("QA Date")
+        )
+        assert vendors == ["QA DateVendor Old"]
+
+    def test_between_matches_inclusive_range(self, api_client: TestClient) -> None:
+        _upload(api_client, "bt-a", "QA DateVendor A", 100.0, invoice_date="April 30, 1999")
+        _upload(api_client, "bt-b", "QA DateVendor B", 200.0, invoice_date="2020-09-25")
+        _upload(api_client, "bt-c", "QA DateVendor C", 300.0, invoice_date="2026-05-13")
+
+        res = api_client.post(
+            "/api/search",
+            json={
+                "filters": [
+                    {
+                        "field": "invoice_date",
+                        "op": "between",
+                        "value": ["2020-01-01", "2020-12-31"],
+                    }
+                ],
+                "limit": 50,
+            },
+        )
+        assert res.status_code == 200, res.text
+        body = res.json()
+        vendors = sorted(
+            r["current_extraction"]["extracted_fields"]["vendor_name"]["value"]
+            for r in body
+            if r["current_extraction"]["extracted_fields"]["vendor_name"]["value"].startswith("QA Date")
+        )
+        assert vendors == ["QA DateVendor B"]
+
+    def test_range_value_uses_iso_from_endpoint(self, api_client: TestClient) -> None:
+        """Billing-period strings (`9/21/20 - 9/26/20`) parse to a range; the
+        filter compares against `iso_from`, so the row matches queries that
+        include the start of the period.
+        """
+        _upload(
+            api_client,
+            "range-1",
+            "QA DateVendor Range",
+            500.0,
+            invoice_date="9/21/20 - 9/26/20",
+        )
+        res = api_client.post(
+            "/api/search",
+            json={
+                "filters": [
+                    {
+                        "field": "invoice_date",
+                        "op": "between",
+                        "value": ["2020-09-21", "2020-09-21"],
+                    }
+                ],
+                "limit": 50,
+            },
+        )
+        assert res.status_code == 200, res.text
+        body = res.json()
+        matched = [
+            r
+            for r in body
+            if r["current_extraction"]["extracted_fields"]["vendor_name"]["value"]
+            == "QA DateVendor Range"
+        ]
+        assert len(matched) == 1
+        date_field = matched[0]["current_extraction"]["extracted_fields"]["invoice_date"]
+        assert date_field["value"] == "9/21/20 - 9/26/20"
+        assert date_field["iso_from"] == "2020-09-21"
+        assert date_field["iso_to"] == "2020-09-26"

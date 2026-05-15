@@ -29,7 +29,7 @@ from datetime import date, datetime
 from typing import Any
 
 import structlog
-from sqlalchemy import and_, cast, func, select, text
+from sqlalchemy import and_, cast, func, or_, select, text
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy.sql.expression import ColumnElement
 
@@ -85,29 +85,41 @@ def _parse_date(v: Any) -> date:
         return datetime.fromisoformat(v).date()
     raise ValueError(f"cannot parse date from {v!r}")
 
-def _build_date_clause(json_key: str, op: str, value: Any) -> ColumnElement[bool]:
-    """invoice_date is stored as a string per the extraction shape; we cast it
-    to a Postgres date at query time. Invoices whose date string doesn't
-    parse silently fall out of date-filtered queries — acceptable for now,
-    flagged in EVAL.md if it becomes an issue."""
+def _ef_iso_from(field_name: str):
+    """JSONB path: extracted_fields -> field_name -> iso_from cast to DATE.
 
-    col_text = _ef_value(json_key)
-    casted = func.to_date(col_text, "YYYY-MM-DD")
+    Canonical date filter target. Invoices whose `value` couldn't be
+    parsed have iso_from=null and fall out of date-filtered queries —
+    same behavior as before, but now honestly modeled.
+    """
+    return func.to_date(
+        Extraction.extracted_fields[field_name]["iso_from"].astext, "YYYY-MM-DD"
+    )
+
+
+def _build_date_clause(json_key: str, op: str, value: Any) -> ColumnElement[bool]:
+    """Filter on `iso_from` — the canonical start of the invoice's date range.
+
+    For point dates, iso_from == iso_to (set by date_parser). For billing
+    periods, iso_from is the period start, which matches typical AP
+    intent ("invoices issued before X" = "period started before X").
+    """
+    iso_from = _ef_iso_from(json_key)
     if op == "eq":
-        return casted == _parse_date(value)
+        return iso_from == _parse_date(value)
     if op == "neq":
-        return casted != _parse_date(value)
+        return iso_from != _parse_date(value)
     if op == "gt":
-        return casted > _parse_date(value)
+        return iso_from > _parse_date(value)
     if op == "gte":
-        return casted >= _parse_date(value)
+        return iso_from >= _parse_date(value)
     if op == "lt":
-        return casted < _parse_date(value)
+        return iso_from < _parse_date(value)
     if op == "lte":
-        return casted <= _parse_date(value)
+        return iso_from <= _parse_date(value)
     if op == "between":
         lo, hi = value
-        return and_(casted >= _parse_date(lo), casted <= _parse_date(hi))
+        return and_(iso_from >= _parse_date(lo), iso_from <= _parse_date(hi))
     raise ValueError(f"unsupported date op: {op}")
 
 def _build_has_anomaly_clause(value: Any) -> ColumnElement[bool]:
@@ -140,17 +152,33 @@ def _build_clause(clause: FilterClause) -> ColumnElement[bool]:
     v = clause.value
 
     if f == "vendor_name":
+        ef_vendor = _ef_value("vendor_name")
         if op in {"eq", "neq", "contains"}:
             target = v if not isinstance(v, list) else None
             if target is None:
                 raise ValueError("vendor_name eq/neq/contains expects a scalar")
+            t = str(target).lower()
             if op == "eq":
-                return Vendor.name == target
+                return or_(
+                    func.lower(Vendor.name) == t,
+                    func.lower(ef_vendor) == t,
+                )
             if op == "neq":
-                return Vendor.name != target
-            return Vendor.name.ilike(f"%{target}%")
+                return and_(
+                    func.coalesce(func.lower(Vendor.name), "") != t,
+                    func.coalesce(func.lower(ef_vendor), "") != t,
+                )
+            return or_(
+                Vendor.name.ilike(f"%{target}%"),
+                ef_vendor.ilike(f"%{target}%"),
+            )
         if op == "in":
-            return Vendor.name.in_(v if isinstance(v, list) else [v])
+            vals = v if isinstance(v, list) else [v]
+            lower_vals = [str(x).lower() for x in vals]
+            return or_(
+                func.lower(Vendor.name).in_(lower_vals),
+                func.lower(ef_vendor).in_(lower_vals),
+            )
 
     if f == "invoice_date":
         return _build_date_clause("invoice_date", op, v)
@@ -195,7 +223,7 @@ def _sortable_column(name: str):
     if name == "vendor_name":
         return Vendor.name
     if name == "invoice_date":
-        return func.to_date(_ef_value("invoice_date"), "YYYY-MM-DD")
+        return _ef_iso_from("invoice_date")
     if name == "total":
         from sqlalchemy import Numeric
 

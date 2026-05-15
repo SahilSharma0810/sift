@@ -154,6 +154,8 @@ export interface ExtractedField {
   page?: Page;
   confidence: Confidence;
   source: Source;
+  iso_from?: string | null;
+  iso_to?: string | null;
 }
 /**
  * One row of the per-jurisdiction tax breakdown table.

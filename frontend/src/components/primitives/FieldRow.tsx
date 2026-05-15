@@ -39,6 +39,14 @@ export function FieldRow({
   const isNumeric =
     typeof field?.value === 'number' || /[\d-/]/.test(String(field?.value ?? ''))
 
+  const isoFrom = field?.iso_from
+  const isoTo = field?.iso_to
+  const isoHint = isoFrom
+    ? isoFrom === isoTo
+      ? `Interpreted as ${isoFrom}`
+      : `Interpreted as ${isoFrom} → ${isoTo}`
+    : null
+
   const body = (
     <>
       <div className="field-label">{label}</div>
@@ -63,8 +71,16 @@ export function FieldRow({
         ) : empty ? (
           <span className="v-empty">empty</span>
         ) : (
-          <span className={isNumeric ? 'v-mono' : ''}>
+          <span
+            className={isNumeric ? 'v-mono' : ''}
+            title={isoHint ?? undefined}
+          >
             {typeof field?.value === 'number' ? formatNumber(field.value) : field?.value}
+          </span>
+        )}
+        {isoHint && !isEditing && !empty && (
+          <span className="text-[11px] text-ink-48 font-mono whitespace-nowrap">
+            {isoHint}
           </span>
         )}
       </div>

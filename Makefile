@@ -9,7 +9,7 @@
         test test-backend test-frontend lint format types-gen \
         sh-backend sh-frontend sh-db clean nuke \
         reset-db seed-demo demo \
-        seed-eval eval-extraction eval-nl eval
+        seed-eval eval-extraction eval-nl eval-search eval
 
 help: ## Show this help.
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | \
@@ -103,14 +103,20 @@ demo: reset-db seed-demo ## One-shot: clean slate + curated demo state. Run befo
 seed-eval: ## Populate the eval corpus (synthetic, 55 invoices with ground truth).
 	docker compose exec -T backend uv run python -m scripts.seed_eval
 
+backfill-invoice-date-iso: ## Normalize existing invoice_date.value into iso_from/iso_to.
+	docker compose exec -T backend uv run python -m scripts.backfill_invoice_date_iso
+
 eval-extraction: ## Score extraction + triage accuracy against ground truth.
 	docker compose exec -T backend uv run python -m scripts.eval_extraction
 
 eval-nl: ## Score NL→SQL translator on the curated query corpus.
 	docker compose exec -T backend uv run python -m scripts.eval_nl
 
-eval: reset-db seed-eval eval-extraction eval-nl ## Full eval pass — resets DB, seeds, scores, writes reports.
-	@echo "✓ Eval complete.  See backend/eval/extraction.md / nl.md / calibration.png"
+eval-search: ## End-to-end search accuracy — NL → translate → execute → set diff vs ground truth.
+	docker compose exec -T backend uv run python -m scripts.eval_search
+
+eval: reset-db seed-eval eval-extraction eval-nl eval-search ## Full eval pass — resets DB, seeds, scores, writes reports.
+	@echo "✓ Eval complete.  See backend/eval/extraction.md / nl.md / search.md / calibration.png"
 
 # ---------- cleanup ----------
 clean: ## Stop and remove containers (keep volumes).

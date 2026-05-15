@@ -54,6 +54,7 @@ from app.config import get_settings
 from app.db.models import Extraction, Invoice
 from app.domain import confidence
 from app.domain.anomalies import AcknowledgedOutlier, detect_anomalies
+from app.domain.date_parser import parse_date_or_range
 from app.domain.duplicates import classify_duplicate, hamming_distance
 from app.domain.models import (
     AnomalyReason,
@@ -221,6 +222,9 @@ def _build_extracted_fields_shape(
     Vision path: bbox comes from the LLM tool-use input.
     Digital path: bbox comes from fuzzy-match against word stream.
     Source: "pymupdf+<tier-or-model>" for digital, "claude-vision" for vision.
+
+    `invoice_date` also gets `iso_from` / `iso_to` populated via the
+    Python date parser — the canonical form the search SQL filters on.
     """
     out: dict[str, Any] = {}
     for field in (*REQUIRED_FIELDS, "subtotal", "tax"):
@@ -239,6 +243,13 @@ def _build_extracted_fields_shape(
             "confidence": confidence.get(field, 0.0),
             "source": source,
         }
+
+    date_field = out.get("invoice_date")
+    if date_field is not None:
+        iso_from, iso_to = parse_date_or_range(date_field.get("value"))
+        date_field["iso_from"] = iso_from
+        date_field["iso_to"] = iso_to
+
     return out
 
 def _tier_for_model(model: str, settings) -> str:

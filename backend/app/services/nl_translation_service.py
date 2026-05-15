@@ -12,6 +12,7 @@ translator is the contract boundary, not the provider.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 import structlog
@@ -56,8 +57,10 @@ def translate(
     if not natural_language or not natural_language.strip():
         return StructuredQuery(filters=[], untranslated_intent=None)
 
+    today = datetime.now(UTC).date().isoformat()
+    text = f"Today is {today}.\n\nQuery: {natural_language}"
     result = llm.call(
-        EXTRACT_STRUCTURED_QUERY, model=settings.model_tier_2, text=natural_language
+        EXTRACT_STRUCTURED_QUERY, model=settings.model_tier_1, text=text
     )
 
     try:

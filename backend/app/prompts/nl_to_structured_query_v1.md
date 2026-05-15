@@ -29,9 +29,11 @@ Sortable fields: `vendor_name`, `invoice_date`, `total`, `subtotal`, `tax_total`
 
 Translation rules:
 
-- Dates: when the user says "last month" / "this week" / "in April", emit a `between` clause with literal `YYYY-MM-DD` endpoints — do not return relative phrases.
-- "anomalies" / "flagged" → `triage_state eq needs_review` (use `has_anomaly eq true` only when the user is explicitly about anomalies vs. all needs_review reasons).
+- The user message starts with `Today is YYYY-MM-DD.` — use that as today's date when resolving relative phrases. Never substitute your own training-time date.
+- Dates: when the user says "last month" / "this week" / "in April" / "before 19th May" / "yesterday", convert to literal `YYYY-MM-DD` endpoints using the given today's date. Use `lt` / `gt` / `between` as appropriate. Do not return relative phrases.
+- "anomalies" / "flagged" → `has_anomaly eq true`.
+- "needs review" / "pending review" → `triage_state eq needs_review`.
 - "duplicates" / "likely duplicate" → `triage_state eq likely_duplicate`.
 - "unprocessable" / "encrypted" / "failed to extract" → `review_status eq unprocessable`.
-- Vendor-name matches: prefer `eq` when the user names a specific vendor, `contains` only when the wording is ambiguous ("invoices mentioning Vega").
+- Vendor-name matches: default to `contains` for any single-word vendor reference ("from Epsilon", "Vega invoices") — vendors are stored with display casing that may differ from how the clerk types them, and `contains` is case-insensitive. Use `eq` only when the user clearly types the full multi-word legal name verbatim.
 - If you cannot translate any part of the request to a structured clause, put the leftover wording in `untranslated_intent` exactly as the user said it. Never invent a clause to cover ambiguity.
