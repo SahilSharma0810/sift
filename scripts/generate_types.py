@@ -14,12 +14,28 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import re
 import subprocess
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "frontend" / "src" / "types" / "generated" / "domain.ts"
+
+# pydantic2ts marks `type` optional in each reason interface because the
+# Python models give it a Literal default. The runtime always serializes
+# it, so flip the discriminator to required to make exhaustive unions work.
+_REQUIRE_TYPE = re.compile(r"^(\s*)type\?: (Type\d*);$", flags=re.MULTILINE)
+
+ALIAS_FOOTER = """
+// Python type aliases that pydantic2ts loses (it names types by field path).
+export type TriageState = PredictedTriageState;
+export type TriageReason = PredictedTriageReasons[number];
+"""
+
+
+def _post_process(text: str) -> str:
+    return _REQUIRE_TYPE.sub(r"\1type: \2;", text) + ALIAS_FOOTER
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
@@ -45,6 +61,7 @@ def main() -> int:
         tmp = OUT.with_suffix(".ts.check")
         cmd[-1] = str(tmp)
         subprocess.run(cmd, check=True, cwd=ROOT)
+        tmp.write_text(_post_process(tmp.read_text()))
         if not OUT.exists() or OUT.read_bytes() != tmp.read_bytes():
             tmp.unlink(missing_ok=True)
             print("ERROR: generated types are out of date. Run scripts/generate_types.py.")
@@ -53,6 +70,7 @@ def main() -> int:
         return 0
 
     subprocess.run(cmd, check=True, cwd=ROOT)
+    OUT.write_text(_post_process(OUT.read_text()))
     print(f"Wrote {OUT.relative_to(ROOT)}")
     return 0
 

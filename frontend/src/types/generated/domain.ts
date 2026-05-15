@@ -189,37 +189,37 @@ export interface LineItem {
   confidence?: Confidence2;
 }
 export interface MathFailsReason {
-  type?: Type;
+  type: Type;
   subtotal: Subtotal;
   tax: Tax;
   total: Total;
   delta: Delta;
 }
 export interface AnomalyReason {
-  type?: Type1;
+  type: Type1;
   field: Field;
   vendor_mean: VendorMean;
   vendor_std: VendorStd;
   z_score: ZScore;
 }
 export interface DuplicateOfReason {
-  type?: Type2;
+  type: Type2;
   invoice_id: InvoiceId;
   similarity: Similarity;
   match_method: MatchMethod;
 }
 export interface LowConfidenceReason {
-  type?: Type3;
+  type: Type3;
   field: Field1;
   score: Score;
   reason: Reason;
 }
 export interface MissingFieldReason {
-  type?: Type4;
+  type: Type4;
   field: Field2;
 }
 export interface UnseenVendorReason {
-  type?: Type5;
+  type: Type5;
   vendor_name: VendorName;
 }
 /**
@@ -227,7 +227,7 @@ export interface UnseenVendorReason {
  * not the model, having failed.
  */
 export interface ExtractionFailedReason {
-  type?: Type6;
+  type: Type6;
   stage: Stage;
   detail: Detail;
 }
@@ -372,3 +372,7 @@ export interface BulkAcknowledgeOut {
   acknowledged: Acknowledged1;
   failed: Failed;
 }
+
+// Python type aliases that pydantic2ts loses (it names types by field path).
+export type TriageState = PredictedTriageState;
+export type TriageReason = PredictedTriageReasons[number];
