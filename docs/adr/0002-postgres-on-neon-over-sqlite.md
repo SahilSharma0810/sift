@@ -32,8 +32,8 @@ SQLAlchemy 2.0 (sync) as the ORM. Alembic for migrations. Local dev via
   - Vector search future-proofing: `sqlite-vec` works but `pgvector` is
     production-tested; adding semantic search on Day 5 becomes a half-day
     task vs a DB swap.
-  - "Production signal" matters for the Zamp evaluation context — Zamp
-    operates at finance-grade production scale.
+  - "Production signal" matters for AP/finance-grade workloads, where
+    Sift is targeted.
 - **Postgres self-hosted (Fly Postgres app or docker).** More moving parts
   than the managed option, no real upside for a demo.
 - **DuckDB.** Excellent for the analytical-query slice (vendor history,

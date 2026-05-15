@@ -117,7 +117,7 @@ function PaperLayout({ invoice, activeField, onFieldHover }) {
           Bill to
         </div>
         <div style={{ marginTop: 4 }}>
-          <b>Zamp Finance Operations</b><br/>
+          <b>Northwind Finance Operations</b><br/>
           900 Market Street, Suite 400<br/>
           San Francisco, CA 94103
         </div>
