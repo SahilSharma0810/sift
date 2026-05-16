@@ -22,9 +22,11 @@ from app.db.models import Vendor
 from app.domain.models import InvoiceOut, VendorOut
 from app.services.extraction_service import extract_from_pdf
 
-def extract_and_serialize(session: Session, *, pdf_path: Path) -> InvoiceOut:
+def extract_and_serialize(
+    session: Session, *, pdf_path: Path, storage_key: str
+) -> InvoiceOut:
     """Run the full extraction pipeline and return a serialized DTO."""
-    result = extract_from_pdf(session, pdf_path=pdf_path)
+    result = extract_from_pdf(session, pdf_path=pdf_path, storage_key=storage_key)
     return invoice_to_dto(result.invoice, session)
 
 def list_invoice_dtos(session: Session, *, limit: int = 200) -> list[InvoiceOut]:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from pathlib import Path
 
 from sqlalchemy.orm import Session
@@ -9,6 +10,10 @@ from sqlalchemy.orm import Session
 from app.adapters.llm_client import ExtractionResult, LineItemsResult
 from app.services.extraction_service import extract_from_pdf
 from tests.conftest import patch_make_llm_client
+
+
+def _storage_key_for(pdf_path: Path) -> str:
+    return f"{hashlib.sha256(pdf_path.read_bytes()).hexdigest()}.pdf"
 
 FIXTURES = Path(__file__).parents[1] / "fixtures"
 CLEAN_PDF = FIXTURES / "digital_invoice_clean.pdf"
@@ -47,7 +52,7 @@ class TestExtractFromPdf:
         test_pdf.write_bytes(CLEAN_PDF.read_bytes())
 
         with patch_make_llm_client(header=_fake_llm_result()):
-            result = extract_from_pdf(db_session, pdf_path=test_pdf)
+            result = extract_from_pdf(db_session, pdf_path=test_pdf, storage_key=_storage_key_for(test_pdf))
 
         assert result.invoice.review_status == "pending"
         assert result.extraction.predicted_triage_state == "confident"
@@ -62,8 +67,8 @@ class TestExtractFromPdf:
         test_pdf.write_bytes(CLEAN_PDF.read_bytes())
 
         with patch_make_llm_client(header=_fake_llm_result()):
-            r1 = extract_from_pdf(db_session, pdf_path=test_pdf)
-            r2 = extract_from_pdf(db_session, pdf_path=test_pdf)
+            r1 = extract_from_pdf(db_session, pdf_path=test_pdf, storage_key=_storage_key_for(test_pdf))
+            r2 = extract_from_pdf(db_session, pdf_path=test_pdf, storage_key=_storage_key_for(test_pdf))
 
         assert r1.invoice.id == r2.invoice.id
 
@@ -104,7 +109,7 @@ class TestExtractFromPdf:
         )
 
         with patch_make_llm_client(header=failed_digital, vision=failed_vision):
-            result = extract_from_pdf(db_session, pdf_path=test_pdf)
+            result = extract_from_pdf(db_session, pdf_path=test_pdf, storage_key=_storage_key_for(test_pdf))
 
         assert result.extraction.predicted_triage_state == "needs_review"
         reasons = result.extraction.predicted_triage_reasons
@@ -158,7 +163,7 @@ class TestExtractFromPdf:
         )
 
         with patch_make_llm_client(header=empty_digital, vision=recovered_vision) as mock:
-            result = extract_from_pdf(db_session, pdf_path=test_pdf)
+            result = extract_from_pdf(db_session, pdf_path=test_pdf, storage_key=_storage_key_for(test_pdf))
 
         spec_names = [call.args[0].name for call in mock.call.call_args_list]
         assert "header" in spec_names, "digital extraction should be attempted first"
@@ -236,7 +241,7 @@ class TestExtractFromPdfVisionPath:
             },
         )
         with patch_make_llm_client(vision=vision_result):
-            result = extract_from_pdf(db_session, pdf_path=test_pdf)
+            result = extract_from_pdf(db_session, pdf_path=test_pdf, storage_key=_storage_key_for(test_pdf))
 
         assert result.extraction.model == "claude-sonnet-4-6"
         assert result.extraction.predicted_triage_state == "confident"
@@ -329,7 +334,7 @@ class TestExtractFromPdfCascade:
         with patch_make_llm_client(
             header_seq=[haiku_result, sonnet_result, opus_result],
         ):
-            result = extract_from_pdf(db_session, pdf_path=test_pdf)
+            result = extract_from_pdf(db_session, pdf_path=test_pdf, storage_key=_storage_key_for(test_pdf))
 
         assert result.extraction.extracted_fields["total"]["value"] == 1180.0
         trace = result.extraction.cascade_trace
@@ -397,7 +402,7 @@ class TestExtractFromPdfCascade:
             },
         )
         with patch_make_llm_client(header_seq=[haiku_result, sonnet_result]):
-            result = extract_from_pdf(db_session, pdf_path=test_pdf)
+            result = extract_from_pdf(db_session, pdf_path=test_pdf, storage_key=_storage_key_for(test_pdf))
 
         trace = result.extraction.cascade_trace
         assert len(trace["tiers"]) == 2, (
@@ -478,8 +483,8 @@ class TestExtractFromPdfDuplicate:
             },
         )
         with patch_make_llm_client(vision=vision_good):
-            r1 = extract_from_pdf(db_session, pdf_path=first)
-            r2 = extract_from_pdf(db_session, pdf_path=second)
+            r1 = extract_from_pdf(db_session, pdf_path=first, storage_key=_storage_key_for(first))
+            r2 = extract_from_pdf(db_session, pdf_path=second, storage_key=_storage_key_for(second))
 
         assert r1.invoice.id != r2.invoice.id
         assert r2.extraction.predicted_triage_state == "likely_duplicate"
@@ -517,7 +522,7 @@ class TestExtractFromPdfLineItems:
         )
 
         with patch_make_llm_client(header=_fake_llm_result(), line_items=line_items_result):
-            result = extract_from_pdf(db_session, pdf_path=test_pdf)
+            result = extract_from_pdf(db_session, pdf_path=test_pdf, storage_key=_storage_key_for(test_pdf))
 
         assert result.extraction.line_items == items
 
@@ -597,6 +602,6 @@ class TestExtractFromPdfLineItems:
             },
         )
         with patch_make_llm_client(vision=vision_result, line_items=line_items_result):
-            result = extract_from_pdf(db_session, pdf_path=test_pdf)
+            result = extract_from_pdf(db_session, pdf_path=test_pdf, storage_key=_storage_key_for(test_pdf))
 
         assert result.extraction.line_items == []

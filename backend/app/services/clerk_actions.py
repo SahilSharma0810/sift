@@ -30,7 +30,6 @@ from sqlalchemy.orm import Session
 
 from app.adapters.storage import extraction_repo, invoice_repo
 from app.adapters.storage.blob_store import get_blob_store
-from app.config import get_settings
 from app.db.models import Invoice, Vendor
 from app.services.extraction_service import ExtractResult, extract_from_pdf
 from app.services.vendor_memory_service import update_stats_from_extraction
@@ -49,7 +48,7 @@ def retry_extraction(
     inv = invoice_repo.get_invoice(session, invoice_id)
     if inv is None:
         raise LookupError(f"invoice {invoice_id} not found")
-    store = get_blob_store(get_settings())
+    store = get_blob_store()
     with store.local_path(inv.storage_key) as pdf_path:
         return extract_from_pdf(
             session,

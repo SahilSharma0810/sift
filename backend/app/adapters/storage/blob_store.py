@@ -13,12 +13,13 @@ local, a download-to-tempfile for R2.
 from __future__ import annotations
 
 from contextlib import AbstractContextManager
+from functools import lru_cache
 from pathlib import Path
 from typing import Protocol, runtime_checkable
 
 from starlette.responses import Response
 
-from app.config import Settings
+from app.config import get_settings
 
 
 @runtime_checkable
@@ -29,7 +30,9 @@ class BlobStore(Protocol):
     def serve_response(self, key: str) -> Response: ...
 
 
-def get_blob_store(settings: Settings) -> BlobStore:
+@lru_cache(maxsize=1)
+def get_blob_store() -> BlobStore:
+    settings = get_settings()
     if settings.blob_store == "local":
         from app.adapters.storage.local_blob_store import LocalDiskBlobStore
         return LocalDiskBlobStore(upload_dir=settings.upload_dir)
