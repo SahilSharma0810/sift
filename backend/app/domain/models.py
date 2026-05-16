@@ -202,7 +202,7 @@ class InvoiceOut(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     id: UUID
-    file_path: str
+    storage_key: str
     file_hash: str
     perceptual_hash: str | None
     vendor_id: UUID | None

@@ -9,7 +9,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
@@ -38,6 +38,12 @@ class Settings(BaseSettings):
 
     upload_dir: Path = Field(default=Path("./uploads"), alias="SIFT_UPLOAD_DIR")
 
+    blob_store: Literal["local", "r2"] = Field(default="local", alias="SIFT_BLOB_STORE")
+    r2_account_id: str = Field(default="", alias="SIFT_R2_ACCOUNT_ID")
+    r2_access_key_id: str = Field(default="", alias="SIFT_R2_ACCESS_KEY_ID")
+    r2_secret_access_key: str = Field(default="", alias="SIFT_R2_SECRET_ACCESS_KEY")
+    r2_bucket: str = Field(default="", alias="SIFT_R2_BUCKET")
+
     log_level: str = Field(default="INFO", alias="SIFT_LOG_LEVEL")
     log_format: str = Field(default="json", alias="SIFT_LOG_FORMAT")
 
@@ -60,6 +66,21 @@ class Settings(BaseSettings):
     @property
     def using_dev_secret(self) -> bool:
         return self.secret_key == "dev-only-secret-do-not-use-in-prod"
+
+    @model_validator(mode="after")
+    def _r2_requires_credentials(self) -> "Settings":
+        if self.blob_store == "r2":
+            missing = [
+                name for name, val in [
+                    ("r2_account_id", self.r2_account_id),
+                    ("r2_access_key_id", self.r2_access_key_id),
+                    ("r2_secret_access_key", self.r2_secret_access_key),
+                    ("r2_bucket", self.r2_bucket),
+                ] if not val
+            ]
+            if missing:
+                raise ValueError(f"blob_store=r2 requires: {', '.join(missing)}")
+        return self
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:

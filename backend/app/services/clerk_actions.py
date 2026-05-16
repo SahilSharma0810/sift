@@ -26,11 +26,10 @@ layer to serialize via invoice_queries.
 
 from __future__ import annotations
 
-from pathlib import Path
-
 from sqlalchemy.orm import Session
 
 from app.adapters.storage import extraction_repo, invoice_repo
+from app.adapters.storage.blob_store import get_blob_store
 from app.db.models import Invoice, Vendor
 from app.services.extraction_service import ExtractResult, extract_from_pdf
 from app.services.vendor_memory_service import update_stats_from_extraction
@@ -49,9 +48,15 @@ def retry_extraction(
     inv = invoice_repo.get_invoice(session, invoice_id)
     if inv is None:
         raise LookupError(f"invoice {invoice_id} not found")
-    return extract_from_pdf(
-        session, pdf_path=Path(inv.file_path), force_tier=force_tier, skip_dedup=True
-    )
+    store = get_blob_store()
+    with store.local_path(inv.storage_key) as pdf_path:
+        return extract_from_pdf(
+            session,
+            pdf_path=pdf_path,
+            storage_key=inv.storage_key,
+            force_tier=force_tier,
+            skip_dedup=True,
+        )
 
 def confirm_invoice(session: Session, *, invoice_id) -> Invoice:
     """Mark Invoice confirmed; update Vendor stats from its current Extraction.

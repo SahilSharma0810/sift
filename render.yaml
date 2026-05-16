@@ -1,16 +1,20 @@
 # Sift — Render Blueprint.
 #
 # Free-tier deploy of the root Dockerfile. Postgres lives on Neon (managed)
-# per ADR-0002 — DATABASE_URL set as a secret in the Render dashboard.
-# No persistent disk on the free plan, so uploads under /data/uploads
-# reset on every container restart (cold start every ~15 min idle).
+# per ADR-0002. Invoice PDFs live in Cloudflare R2 (S3-compatible, zero
+# egress) per ADR-0007. Both DATABASE_URL and the four SIFT_R2_* vars are
+# set as secrets in the Render dashboard.
 #
 # First-time setup:
 #   1. https://dashboard.render.com → New → Blueprint → connect this repo.
 #   2. Render reads this file and provisions the service.
-#   3. Set the secret envs in the dashboard (DATABASE_URL, SIFT_SECRET_KEY):
+#   3. Set the secret envs in the dashboard:
 #        DATABASE_URL=postgresql+psycopg://...neon...
 #        SIFT_SECRET_KEY=<openssl rand -hex 32>
+#        SIFT_R2_ACCOUNT_ID=...  (from R2 dashboard)
+#        SIFT_R2_ACCESS_KEY_ID=...
+#        SIFT_R2_SECRET_ACCESS_KEY=...
+#        SIFT_R2_BUCKET=...
 #   4. Click Apply. First deploy runs `alembic upgrade head` then uvicorn.
 
 services:
@@ -26,8 +30,8 @@ services:
         value: stub
       - key: SIFT_COOKIE_SECURE
         value: "true"
-      - key: SIFT_UPLOAD_DIR
-        value: /data/uploads
+      - key: SIFT_BLOB_STORE
+        value: r2
       - key: SIFT_LOG_FORMAT
         value: json
       - key: SIFT_LOG_LEVEL
@@ -35,4 +39,12 @@ services:
       - key: DATABASE_URL
         sync: false
       - key: SIFT_SECRET_KEY
+        sync: false
+      - key: SIFT_R2_ACCOUNT_ID
+        sync: false
+      - key: SIFT_R2_ACCESS_KEY_ID
+        sync: false
+      - key: SIFT_R2_SECRET_ACCESS_KEY
+        sync: false
+      - key: SIFT_R2_BUCKET
         sync: false

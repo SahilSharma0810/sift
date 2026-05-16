@@ -22,7 +22,7 @@ class TestCreateAck:
         vendor = upsert_by_normalized_name(db_session, name="Halcyon Software")
         invoice = create_invoice(
             db_session,
-            file_path="/data/uploads/h.pdf",
+            storage_key="h.pdf",
             file_hash="hash-h-1",
             vendor_id=vendor.id,
         )
@@ -44,7 +44,7 @@ class TestCreateAck:
         vendor = upsert_by_normalized_name(db_session, name="Halcyon Idempotent")
         invoice = create_invoice(
             db_session,
-            file_path="/data/uploads/h2.pdf",
+            storage_key="h2.pdf",
             file_hash="hash-h-2",
             vendor_id=vendor.id,
         )
@@ -73,7 +73,7 @@ class TestListAcksByInvoiceIds:
         vendor = upsert_by_normalized_name(db_session, name="V Lookup")
         inv = create_invoice(
             db_session,
-            file_path="/data/uploads/lookup.pdf",
+            storage_key="lookup.pdf",
             file_hash="hash-lookup",
             vendor_id=vendor.id,
         )

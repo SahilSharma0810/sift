@@ -39,6 +39,9 @@ dependencies = [
 
     # HTTP retries (LLM auto-retry per ADR-0006)
     "tenacity>=9.0.0",
+
+    # Object storage — Cloudflare R2 via S3-compatible API per ADR-0007
+    "boto3>=1.35.0",
 ]
 
 [dependency-groups]

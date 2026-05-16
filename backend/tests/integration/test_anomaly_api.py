@@ -12,7 +12,7 @@ def _seed_anomaly_invoice(db_session: Session) -> str:
     vendor = upsert_by_normalized_name(db_session, name="API Halcyon")
     inv = create_invoice(
         db_session,
-        file_path="/data/uploads/api-halc.pdf",
+        storage_key="api-halc.pdf",
         file_hash="api-halc-1",
         vendor_id=vendor.id,
     )

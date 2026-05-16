@@ -13,16 +13,14 @@ serialize response. No direct imports from app.adapters or app.db.
 
 from __future__ import annotations
 
-import hashlib
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
-from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
+from starlette.responses import Response
 
 from app.api.deps import get_current_clerk
-from app.config import get_settings
 from app.db.session import get_session
 from app.domain.auth import ClerkOut
 from app.domain.models import InvoiceOut, VendorOut
@@ -33,11 +31,11 @@ from app.services.clerk_actions import (
     retry_extraction,
 )
 from app.services.invoice_queries import (
-    extract_and_serialize,
     get_invoice_dto,
-    get_invoice_file_path,
     get_vendor_for_invoice,
     list_invoice_dtos,
+    serve_invoice_pdf,
+    upload_pdf_and_extract,
 )
 
 router = APIRouter()
@@ -60,17 +58,7 @@ def upload_invoice(
             status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
             detail="only application/pdf is accepted",
         )
-
-    settings = get_settings()
-    settings.upload_dir.mkdir(parents=True, exist_ok=True)
-
-    raw = file.file.read()
-    file_hash = hashlib.sha256(raw).hexdigest()
-    target = settings.upload_dir / f"{file_hash}.pdf"
-    if not target.exists():
-        target.write_bytes(raw)
-
-    return extract_and_serialize(session, pdf_path=target)
+    return upload_pdf_and_extract(session, source=file.file)
 
 @router.get("", response_model=list[InvoiceOut])
 def list_invoices_endpoint(
@@ -91,15 +79,17 @@ def get_invoice_endpoint(
     return dto
 
 @router.get("/{invoice_id}/file")
-def serve_invoice_pdf(
+def serve_invoice_pdf_endpoint(
     invoice_id: UUID,
     _clerk: ClerkOut = Depends(get_current_clerk),
     session: Session = Depends(get_session),
-) -> FileResponse:
-    path = get_invoice_file_path(session, invoice_id)
-    if path is None or not path.exists():
-        raise HTTPException(status_code=404, detail="not found")
-    return FileResponse(path, media_type="application/pdf")
+) -> Response:
+    try:
+        return serve_invoice_pdf(session, invoice_id)
+    except LookupError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)
+        ) from exc
 
 @router.get("/{invoice_id}/vendor", response_model=VendorOut | None)
 def get_invoice_vendor(
@@ -147,5 +137,17 @@ def retry_endpoint(
     _clerk: ClerkOut = Depends(get_current_clerk),
     session: Session = Depends(get_session),
 ) -> InvoiceOut:
-    result = retry_extraction(session, invoice_id=invoice_id, force_tier=force_tier)
+    try:
+        result = retry_extraction(
+            session, invoice_id=invoice_id, force_tier=force_tier
+        )
+    except LookupError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)
+        ) from exc
+    except FileNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_410_GONE,
+            detail=f"invoice {invoice_id} PDF is no longer available",
+        ) from exc
     return _serialize(result.invoice, session)

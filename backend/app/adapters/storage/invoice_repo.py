@@ -13,13 +13,13 @@ from app.db.models import Invoice
 def create_invoice(
     session: Session,
     *,
-    file_path: str,
+    storage_key: str,
     file_hash: str,
     vendor_id: UUID | None,
     perceptual_hash: str | None = None,
 ) -> Invoice:
     inv = Invoice(
-        file_path=file_path,
+        storage_key=storage_key,
         file_hash=file_hash,
         vendor_id=vendor_id,
         perceptual_hash=perceptual_hash,
