@@ -10,13 +10,14 @@ import sys
 from pathlib import Path
 
 import structlog
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from app import __version__
 from app.config import get_settings
+from app.services.usage_service import BudgetExceededError
 
 def configure_logging(level: str, fmt: str) -> None:
     """Structured JSON logging to stdout — per PLAN.md pre-grilled non-decision."""
@@ -79,12 +80,25 @@ def create_app() -> FastAPI:
         """Surface non-secret runtime config so the UI can show a stub-mode pill."""
         return {"version": __version__, "llm_provider": settings.llm_provider}
 
-    from app.api import anomalies, auth, invoices, search
+    from app.api import anomalies, auth, invoices, search, usage
 
     app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
     app.include_router(invoices.router, prefix="/api/invoices", tags=["invoices"])
     app.include_router(search.router, prefix="/api/search", tags=["search"])
     app.include_router(anomalies.router, prefix="/api/anomalies", tags=["anomalies"])
+    app.include_router(usage.router, prefix="/api/usage", tags=["usage"])
+
+    @app.exception_handler(BudgetExceededError)
+    async def _budget_exceeded(_req: Request, exc: BudgetExceededError) -> JSONResponse:
+        return JSONResponse(
+            status_code=402,
+            content={
+                "detail": "api_budget_exceeded",
+                "message": str(exc),
+                "spent_usd": round(exc.spent_usd, 4),
+                "limit_usd": exc.limit_usd,
+            },
+        )
 
     spa_dist = Path("/app/frontend/dist")
     if spa_dist.exists():

@@ -14,8 +14,10 @@ from typing import ClassVar
 from sqlalchemy import (
     Boolean,
     DateTime,
+    Float,
     ForeignKey,
     Index,
+    Integer,
     String,
     Text,
     UniqueConstraint,
@@ -180,6 +182,30 @@ class AuthSession(Base):
     )
 
     user: Mapped[User] = relationship(back_populates="sessions")
+
+
+class ApiUsage(Base):
+    """One row per LLM call — audit trail for the API spend cap.
+
+    `cost_usd` is the value at write time; pricing changes don't retroactively
+    rewrite history. Aggregations for the dashboard sum this column directly.
+    """
+
+    __tablename__ = "api_usage"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    model: Mapped[str] = mapped_column(String(64), nullable=False)
+    spec_name: Mapped[str] = mapped_column(String(64), nullable=False)
+    input_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    output_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    cache_creation_input_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    cache_read_input_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    cost_usd: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+
+    __table_args__ = (Index("ix_api_usage_created_at", "created_at"),)
 
 
 class AnomalyAck(Base):

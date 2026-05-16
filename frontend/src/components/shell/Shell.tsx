@@ -5,6 +5,7 @@ import { Icons } from '@/components/primitives/Icons'
 import { Kbd } from '@/components/primitives/Kbd'
 import { SiftMark } from '@/components/primitives/SiftMark'
 import { SearchPalette } from '@/components/search-palette/SearchPalette'
+import { ApiUsageIndicator } from '@/components/shell/ApiUsageIndicator'
 import { useLogoutMutation, useMeQuery } from '@/state/auth'
 import { useAnomalyCountQuery } from '@/state/anomalies'
 import { useAppMetaQuery, useInboxQuery } from '@/state/invoices'
@@ -182,7 +183,9 @@ export function Shell() {
           </Link>
         </nav>
 
-        <div className="sidebar-footer">
+        <div className="mt-auto flex flex-col">
+          <ApiUsageIndicator />
+          <div className="sidebar-footer" style={{ marginTop: 0 }}>
           <button
             type="button"
             onClick={() => {
@@ -195,6 +198,7 @@ export function Shell() {
           >
             {logout.isPending ? 'Signing out…' : 'Sign out'}
           </button>
+          </div>
         </div>
       </aside>
 
