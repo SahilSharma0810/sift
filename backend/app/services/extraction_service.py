@@ -336,6 +336,10 @@ def extract_from_pdf(
     lives across backends (local or R2). The caller pre-computes the
     sha256 + `.pdf` so we don't double-hash.
     """
+    if not storage_key.endswith(".pdf"):
+        raise ValueError(
+            f"storage_key must be {{sha256}}.pdf-shaped, got {storage_key!r}"
+        )
     settings = get_settings()
     file_hash = storage_key.removesuffix(".pdf")
 

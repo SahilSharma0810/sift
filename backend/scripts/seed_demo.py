@@ -195,7 +195,9 @@ def main() -> None:
             final_path = _persist_pdf(body_bytes, upload_dir)
             tmp_pdf.unlink(missing_ok=True)
 
-            result = extract_from_pdf(session, pdf_path=final_path)
+            result = extract_from_pdf(
+                session, pdf_path=final_path, storage_key=final_path.name
+            )
 
             if seed.confirm:
                 confirm_invoice(session, invoice_id=result.invoice.id)
