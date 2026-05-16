@@ -25,10 +25,17 @@ OUT = ROOT / "frontend" / "src" / "types" / "generated" / "domain.ts"
 # pydantic2ts marks `type` optional in each reason interface because the
 # Python models give it a Literal default. The runtime always serializes
 # it, so flip the discriminator to required to make exhaustive unions work.
-_REQUIRE_TYPE = re.compile(r"^(\s*)type\?: (Type\d*);$", flags=re.MULTILINE)
+# Older pydantic2ts emitted named aliases (`type?: Type1;`); newer versions
+# inline the string literal (`type?: "anomaly";`). Both shapes get matched.
+_REQUIRE_TYPE = re.compile(r"^(\s*)type\?: ([^;]+);$", flags=re.MULTILINE)
 
 ALIAS_FOOTER = """
-// Python type aliases that pydantic2ts loses (it names types by field path).
+// Top-level aliases — newer pydantic2ts inlines field unions inside their
+// parent interfaces instead of emitting named types. These indexed-access
+// aliases re-export them so the rest of the app keeps a stable type name.
+export type ReviewStatus = InvoiceOut["review_status"];
+export type PredictedTriageState = ExtractionOut["predicted_triage_state"];
+export type PredictedTriageReasons = ExtractionOut["predicted_triage_reasons"];
 export type TriageState = PredictedTriageState;
 export type TriageReason = PredictedTriageReasons[number];
 """

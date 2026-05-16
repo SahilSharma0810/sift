@@ -53,7 +53,7 @@ export interface AnomalyAggregates {
   highest_severity_vendor?: string | null;
 }
 export interface AnomalyReason {
-  type?: "anomaly";
+  type: "anomaly";
   field: string;
   vendor_mean: number;
   vendor_std: number;
@@ -80,7 +80,7 @@ export interface ClerkOut {
   display_name?: string | null;
 }
 export interface DuplicateOfReason {
-  type?: "duplicate_of";
+  type: "duplicate_of";
   invoice_id: string;
   similarity: number;
   match_method: "perceptual_hash" | "content_fingerprint" | "both";
@@ -111,7 +111,7 @@ export interface ExtractedField {
  * not the model, having failed.
  */
 export interface ExtractionFailedReason {
-  type?: "extraction_failed";
+  type: "extraction_failed";
   stage: "pdf_read" | "llm_call" | "validation" | "cascade_exhausted";
   detail: string;
 }
@@ -144,24 +144,24 @@ export interface ExtractionOut {
   created_at: string;
 }
 export interface MathFailsReason {
-  type?: "math_fails";
+  type: "math_fails";
   subtotal: number;
   tax: number;
   total: number;
   delta: number;
 }
 export interface LowConfidenceReason {
-  type?: "low_confidence";
+  type: "low_confidence";
   field: string;
   score: number;
   reason: string;
 }
 export interface MissingFieldReason {
-  type?: "missing_field";
+  type: "missing_field";
   field: string;
 }
 export interface UnseenVendorReason {
-  type?: "unseen_vendor";
+  type: "unseen_vendor";
   vendor_name: string;
 }
 /**
@@ -258,6 +258,11 @@ export interface VendorOut {
   memory: VendorMemory;
 }
 
-// Python type aliases that pydantic2ts loses (it names types by field path).
+// Top-level aliases — newer pydantic2ts inlines field unions inside their
+// parent interfaces instead of emitting named types. These indexed-access
+// aliases re-export them so the rest of the app keeps a stable type name.
+export type ReviewStatus = InvoiceOut["review_status"];
+export type PredictedTriageState = ExtractionOut["predicted_triage_state"];
+export type PredictedTriageReasons = ExtractionOut["predicted_triage_reasons"];
 export type TriageState = PredictedTriageState;
 export type TriageReason = PredictedTriageReasons[number];
