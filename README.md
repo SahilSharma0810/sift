@@ -660,6 +660,45 @@ First-time setup (matches the comment block at the top of `render.yaml`):
 
 To run the live deploy in anthropic mode, also set `SIFT_LLM_PROVIDER=anthropic` and `ANTHROPIC_API_KEY=sk-ant-…` as secret env vars on the Render service. Without those, the default `stub` provider keeps the live URL free of API spend.
 
+### Cloudflare R2 setup (production only)
+
+Local dev uses the on-disk default — you don't need R2 to run Sift locally.
+
+For Render / any production deploy:
+
+1. Sign in to Cloudflare → R2 → **Create bucket**. Name it whatever (e.g. `sift-invoices`).
+2. R2 → **Manage R2 API Tokens** → **Create API token**:
+   - Permissions: **Object Read & Write**
+   - Specify bucket: the one you just made
+   - Save the **Access Key ID** and **Secret Access Key** — Cloudflare won't show them again.
+3. Note your **Account ID** (top right of the R2 dashboard).
+4. In Render → service → Environment, set:
+   - `SIFT_BLOB_STORE=r2`
+   - `SIFT_R2_ACCOUNT_ID=<your account id>`
+   - `SIFT_R2_ACCESS_KEY_ID=<from step 2>`
+   - `SIFT_R2_SECRET_ACCESS_KEY=<from step 2>`
+   - `SIFT_R2_BUCKET=<bucket name from step 1>`
+5. In R2 → your bucket → **Settings → CORS Policy**, paste:
+
+   ```json
+   [
+     {
+       "AllowedOrigins": ["https://<your-render-host>.onrender.com"],
+       "AllowedMethods": ["GET"],
+       "AllowedHeaders": ["Range", "If-None-Match", "If-Modified-Since"],
+       "ExposeHeaders": ["Content-Length", "Content-Range", "ETag"],
+       "MaxAgeSeconds": 3600
+     }
+   ]
+   ```
+
+   (For local frontend dev against a remote R2 you'd also list
+   `http://localhost:5173`, but local dev defaults to `SIFT_BLOB_STORE=local`
+   and never talks to R2 in the first place.)
+
+6. Redeploy. The app reads PDFs from R2 on first request after upload;
+   the 5-minute signed URLs are issued per request.
+
 ---
 
 ## Future work
