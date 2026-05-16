@@ -884,16 +884,79 @@ def _stub_usage() -> dict[str, int]:
         "cache_read_input_tokens": 0,
     }
 
-def make_llm_client(settings: Settings) -> LLMClient:
+class BudgetedLLMClient:
+    """LLMClient wrapper that enforces the API spend cap.
+
+    Before every call: refuses if total recorded cost has reached the cap.
+    After every successful call: persists a usage row (own transaction).
+
+    The wrapper is added unconditionally — for the stub provider its
+    pricing computes to $0 so it's a no-op, and tests can still assert
+    on the audit trail without a special path.
+    """
+
+    def __init__(
+        self,
+        inner: LLMClient,
+        *,
+        session_factory,
+        limit_usd: float,
+    ) -> None:
+        self._inner = inner
+        self._session_factory = session_factory
+        self._limit_usd = limit_usd
+
+    def call(
+        self,
+        spec: ExtractionSpec[T],
+        *,
+        model: str,
+        text: str | None = None,
+        page_pngs: list[bytes] | None = None,
+    ) -> T:
+        from app.services import usage_service
+
+        with self._session_factory() as session:
+            usage_service.assert_within_budget(session, limit_usd=self._limit_usd)
+
+        result = self._inner.call(spec, model=model, text=text, page_pngs=page_pngs)
+
+        usage = getattr(result, "usage", None)
+        if isinstance(usage, dict):
+            usage_service.record_usage(
+                self._session_factory,
+                model=getattr(result, "model", model),
+                spec_name=spec.name,
+                usage=usage,
+            )
+        return result
+
+
+def make_llm_client(settings: Settings, *, session_factory=None) -> LLMClient:
     """Pick the LLMClient impl based on Settings.llm_provider.
 
     Default is `stub` so a fresh checkout can run the full pipeline with no
     API key. Set `SIFT_LLM_PROVIDER=anthropic` (and `ANTHROPIC_API_KEY=...`)
     for real model calls.
+
+    The returned client is always wrapped in `BudgetedLLMClient` so the
+    spend cap and audit trail apply uniformly. Callers that don't pass a
+    `session_factory` (tests, scripts) get the SessionLocal default.
     """
     provider = settings.llm_provider
     if provider == "anthropic":
-        return AnthropicLLMClient(api_key=settings.anthropic_api_key)
-    if provider == "stub":
-        return StubLLMClient()
-    raise ValueError(f"Unknown SIFT_LLM_PROVIDER={provider!r}. Expected 'stub' or 'anthropic'.")
+        inner: LLMClient = AnthropicLLMClient(api_key=settings.anthropic_api_key)
+    elif provider == "stub":
+        inner = StubLLMClient()
+    else:
+        raise ValueError(
+            f"Unknown SIFT_LLM_PROVIDER={provider!r}. Expected 'stub' or 'anthropic'."
+        )
+
+    if session_factory is None:
+        from app.db.session import SessionLocal
+
+        session_factory = SessionLocal
+    return BudgetedLLMClient(
+        inner, session_factory=session_factory, limit_usd=settings.api_budget_usd
+    )

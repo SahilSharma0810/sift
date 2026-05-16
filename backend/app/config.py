@@ -34,6 +34,8 @@ class Settings(BaseSettings):
     model_tier_2: str = Field(default="claude-sonnet-4-6", alias="SIFT_MODEL_TIER_2")
     model_tier_3: str = Field(default="claude-opus-4-7", alias="SIFT_MODEL_TIER_3")
 
+    api_budget_usd: float = Field(default=5.0, alias="SIFT_API_BUDGET_USD")
+
     upload_dir: Path = Field(default=Path("./uploads"), alias="SIFT_UPLOAD_DIR")
 
     log_level: str = Field(default="INFO", alias="SIFT_LOG_LEVEL")
