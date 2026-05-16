@@ -18,7 +18,6 @@ from pathlib import Path
 from typing import BinaryIO
 from uuid import UUID
 
-from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 from starlette.responses import Response
 
@@ -48,7 +47,7 @@ def upload_pdf_and_extract(session: Session, *, source: BinaryIO) -> InvoiceOut:
         if not store.exists(storage_key):
             store.put_path(storage_key, tmp_path)
 
-        return extract_and_serialize(
+        return _extract_and_serialize(
             session, pdf_path=tmp_path, storage_key=storage_key
         )
     finally:
@@ -56,14 +55,19 @@ def upload_pdf_and_extract(session: Session, *, source: BinaryIO) -> InvoiceOut:
 
 
 def serve_invoice_pdf(session: Session, invoice_id: UUID) -> Response:
-    """Resolve an invoice's blob-store key and delegate to the store's response."""
+    """Resolve an invoice's blob-store key and delegate to the store's response.
+
+    Raises `LookupError` if the invoice is missing — the API layer translates
+    that to HTTP 404, matching the convention used by clerk_actions /
+    anomaly_service.
+    """
     key = get_invoice_storage_key(session, invoice_id)
     if key is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not found")
+        raise LookupError(f"invoice {invoice_id} not found")
     return get_blob_store().serve_response(key)
 
 
-def extract_and_serialize(
+def _extract_and_serialize(
     session: Session, *, pdf_path: Path, storage_key: str
 ) -> InvoiceOut:
     """Run the full extraction pipeline and return a serialized DTO."""

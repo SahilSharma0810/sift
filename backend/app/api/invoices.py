@@ -84,7 +84,12 @@ def serve_invoice_pdf_endpoint(
     _clerk: ClerkOut = Depends(get_current_clerk),
     session: Session = Depends(get_session),
 ) -> Response:
-    return serve_invoice_pdf(session, invoice_id)
+    try:
+        return serve_invoice_pdf(session, invoice_id)
+    except LookupError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)
+        ) from exc
 
 @router.get("/{invoice_id}/vendor", response_model=VendorOut | None)
 def get_invoice_vendor(
