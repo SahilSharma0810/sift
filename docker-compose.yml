@@ -46,6 +46,13 @@ services:
       SIFT_LOG_FORMAT: console
       SIFT_LOG_LEVEL: DEBUG
       SIFT_CORS_ORIGINS: http://localhost:5173
+      # Blob storage — defaults to local disk; set SIFT_BLOB_STORE=r2 in .env
+      # plus the four SIFT_R2_* vars to exercise the Cloudflare R2 path locally.
+      SIFT_BLOB_STORE: ${SIFT_BLOB_STORE:-local}
+      SIFT_R2_ACCOUNT_ID: ${SIFT_R2_ACCOUNT_ID:-}
+      SIFT_R2_ACCESS_KEY_ID: ${SIFT_R2_ACCESS_KEY_ID:-}
+      SIFT_R2_SECRET_ACCESS_KEY: ${SIFT_R2_SECRET_ACCESS_KEY:-}
+      SIFT_R2_BUCKET: ${SIFT_R2_BUCKET:-}
     volumes:
       - ./backend:/app
       - sift_backend_venv:/app/.venv       # mask host's .venv
