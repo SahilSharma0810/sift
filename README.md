@@ -275,8 +275,8 @@ Four tables. The 1:N from `invoices → extractions` is what makes re-extraction
 ```sql
 invoices (
   id UUID PRIMARY KEY,
-  file_path TEXT NOT NULL,
-  file_hash TEXT NOT NULL,            -- SHA-256, dedupe on upload
+  storage_key VARCHAR(80) NOT NULL,    -- {sha256}.pdf basename — backend-agnostic
+  file_hash TEXT NOT NULL,             -- SHA-256, dedupe on upload
   perceptual_hash TEXT,                -- phash for duplicate detection
   vendor_id UUID REFERENCES vendors,
   uploaded_at TIMESTAMPTZ,

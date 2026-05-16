@@ -8,6 +8,7 @@ dev DB. The LLM is patched at the factory site.
 from __future__ import annotations
 
 from pathlib import Path
+from uuid import uuid4
 
 from fastapi.testclient import TestClient
 
@@ -78,6 +79,28 @@ class TestUploadInvoice:
         assert res.status_code == 200
         body = res.json()
         assert len(body) >= 1
+
+
+class TestServePdf:
+    def test_serve_returns_pdf_bytes_after_upload(self, api_client: TestClient) -> None:
+        with (
+            patch_make_llm_client(header=_fake_llm_result()),
+            CLEAN_PDF.open("rb") as fh,
+        ):
+            upload = api_client.post(
+                "/api/invoices",
+                files={"file": ("clean-serve.pdf", fh, "application/pdf")},
+            )
+        invoice_id = upload.json()["id"]
+        res = api_client.get(f"/api/invoices/{invoice_id}/file")
+        assert res.status_code == 200, res.text
+        assert res.headers["content-type"] == "application/pdf"
+        assert "immutable" in res.headers["cache-control"]
+        assert res.content.startswith(b"%PDF-")
+
+    def test_serve_returns_404_for_missing_invoice(self, api_client: TestClient) -> None:
+        res = api_client.get(f"/api/invoices/{uuid4()}/file")
+        assert res.status_code == 404
 
 
 class TestAuthGate:

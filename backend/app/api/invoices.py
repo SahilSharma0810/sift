@@ -137,5 +137,17 @@ def retry_endpoint(
     _clerk: ClerkOut = Depends(get_current_clerk),
     session: Session = Depends(get_session),
 ) -> InvoiceOut:
-    result = retry_extraction(session, invoice_id=invoice_id, force_tier=force_tier)
+    try:
+        result = retry_extraction(
+            session, invoice_id=invoice_id, force_tier=force_tier
+        )
+    except LookupError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)
+        ) from exc
+    except FileNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_410_GONE,
+            detail=f"invoice {invoice_id} PDF is no longer available",
+        ) from exc
     return _serialize(result.invoice, session)
