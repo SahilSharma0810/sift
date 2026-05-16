@@ -44,7 +44,7 @@ def _seed_invoice_with_anomaly(
         for i, t in enumerate(confirmed_history_totals):
             prev_inv = create_invoice(
                 db_session,
-                file_path=f"/data/uploads/{file_hash}-prev-{i}.pdf",
+                storage_key=f"{file_hash}-prev-{i}.pdf",
                 file_hash=f"{file_hash}-prev-{i}",
                 vendor_id=vendor.id,
             )
@@ -67,7 +67,7 @@ def _seed_invoice_with_anomaly(
 
     inv = create_invoice(
         db_session,
-        file_path=f"/data/uploads/{file_hash}.pdf",
+        storage_key=f"{file_hash}.pdf",
         file_hash=file_hash,
         vendor_id=vendor.id,
     )

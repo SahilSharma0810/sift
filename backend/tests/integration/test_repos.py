@@ -87,7 +87,7 @@ class TestInvoiceRepo:
         v = upsert_by_normalized_name(db_session, name="Vega Inv A")
         inv = create_invoice(
             db_session,
-            file_path="/data/uploads/abc.pdf",
+            storage_key="abc.pdf",
             file_hash="hash-abc-1",
             vendor_id=v.id,
         )
@@ -103,8 +103,8 @@ class TestInvoiceRepo:
 
     def test_list_invoices_returns_recently_uploaded(self, db_session: Session) -> None:
         v = upsert_by_normalized_name(db_session, name="Vega List Test")
-        a = create_invoice(db_session, file_path="/a", file_hash="ha-list-1", vendor_id=v.id)
-        b = create_invoice(db_session, file_path="/b", file_hash="hb-list-1", vendor_id=v.id)
+        a = create_invoice(db_session, storage_key="a.pdf", file_hash="ha-list-1", vendor_id=v.id)
+        b = create_invoice(db_session, storage_key="b.pdf", file_hash="hb-list-1", vendor_id=v.id)
         invoices = list_invoices(db_session, limit=10)
 
         ids = {inv.id for inv in invoices[:5]}
@@ -116,7 +116,7 @@ class TestExtractionRepo:
         v = upsert_by_normalized_name(db_session, name=f"Vega Ext {hash_suffix}")
         return create_invoice(
             db_session,
-            file_path=f"/x-{hash_suffix}",
+            storage_key=f"x-{hash_suffix}.pdf",
             file_hash=f"hext-{hash_suffix}",
             vendor_id=v.id,
         )
@@ -220,7 +220,7 @@ class TestInvoiceRepoExtensions:
 
         v = upsert_by_normalized_name(db_session, name=vendor_name)
         return create_invoice(
-            db_session, file_path=f"/x-{file_hash}", file_hash=file_hash, vendor_id=v.id
+            db_session, storage_key=f"x-{file_hash}.pdf", file_hash=file_hash, vendor_id=v.id
         )
 
     def test_phash_candidates_skip_null(self, db_session) -> None:

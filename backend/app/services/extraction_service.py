@@ -24,7 +24,6 @@ Per ADR-0005: services orchestrate domain + adapters; never imports from api.
 
 from __future__ import annotations
 
-import hashlib
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -78,13 +77,6 @@ class ExtractResult:
     invoice: Invoice
     extraction: Extraction
 
-def _hash_file(path: Path) -> str:
-    """SHA-256 of file bytes — chunked 64KB to avoid memory spikes on large scans."""
-    h = hashlib.sha256()
-    with open(path, "rb") as f:
-        for chunk in iter(lambda: f.read(65536), b""):
-            h.update(chunk)
-    return h.hexdigest()
 
 def _digital_extraction_empty(result: ExtractionResult) -> bool:
     """Digital-path Haiku came back with nothing usable — fall through to vision.
@@ -118,7 +110,7 @@ def _get_or_create_invoice(
     session: Session,
     *,
     file_hash: str,
-    file_path: Path,
+    storage_key: str,
     vendor_id,
     perceptual_hash: str | None,
 ) -> Invoice:
@@ -127,7 +119,7 @@ def _get_or_create_invoice(
         return existing
     return invoice_repo.create_invoice(
         session,
-        file_path=str(file_path),
+        storage_key=storage_key,
         file_hash=file_hash,
         vendor_id=vendor_id,
         perceptual_hash=perceptual_hash,
@@ -333,12 +325,19 @@ def extract_from_pdf(
     session: Session,
     *,
     pdf_path: Path,
+    storage_key: str,
     force_tier: str | None = None,
     skip_dedup: bool = False,
 ) -> ExtractResult:
-    """Day-2 extraction pipeline. See module docstring for stages."""
+    """Day-2 extraction pipeline. See module docstring for stages.
+
+    `pdf_path` is the local on-disk file used for reading + extraction.
+    `storage_key` is the blob-store key used to record where the file
+    lives across backends (local or R2). The caller pre-computes the
+    sha256 + `.pdf` so we don't double-hash.
+    """
     settings = get_settings()
-    file_hash = _hash_file(pdf_path)
+    file_hash = storage_key.removesuffix(".pdf")
 
     if not skip_dedup:
         existing = invoice_repo.find_by_file_hash(session, file_hash)
@@ -393,7 +392,7 @@ def extract_from_pdf(
         invoice = _get_or_create_invoice(
             session,
             file_hash=file_hash,
-            file_path=pdf_path,
+            storage_key=storage_key,
             vendor_id=vendor.id,
             perceptual_hash=phash,
         )
@@ -486,7 +485,7 @@ def extract_from_pdf(
     invoice = _get_or_create_invoice(
         session,
         file_hash=file_hash,
-        file_path=pdf_path,
+        storage_key=storage_key,
         vendor_id=vendor.id,
         perceptual_hash=phash,
     )

@@ -17,7 +17,7 @@ def _build_extraction_row(db_session, vendor, fields):
 
     inv = create_invoice(
         db_session,
-        file_path="/x",
+        storage_key="x.pdf",
         file_hash=f"vm-{vendor.id}-{fields.get('total', 0)}",
         vendor_id=vendor.id,
     )
