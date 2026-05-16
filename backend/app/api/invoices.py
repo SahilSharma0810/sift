@@ -13,9 +13,6 @@ serialize response. No direct imports from app.adapters or app.db.
 
 from __future__ import annotations
 
-import hashlib
-import tempfile
-from pathlib import Path
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
@@ -23,7 +20,6 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from starlette.responses import Response
 
-from app.adapters.storage.blob_store import get_blob_store
 from app.api.deps import get_current_clerk
 from app.db.session import get_session
 from app.domain.auth import ClerkOut
@@ -35,11 +31,11 @@ from app.services.clerk_actions import (
     retry_extraction,
 )
 from app.services.invoice_queries import (
-    extract_and_serialize,
     get_invoice_dto,
-    get_invoice_storage_key,
     get_vendor_for_invoice,
     list_invoice_dtos,
+    serve_invoice_pdf,
+    upload_pdf_and_extract,
 )
 
 router = APIRouter()
@@ -62,28 +58,7 @@ def upload_invoice(
             status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
             detail="only application/pdf is accepted",
         )
-
-    store = get_blob_store()
-
-    hasher = hashlib.sha256()
-    tmp = tempfile.NamedTemporaryFile(suffix=".pdf", delete=False)  # noqa: SIM115
-    try:
-        while chunk := file.file.read(64 * 1024):
-            hasher.update(chunk)
-            tmp.write(chunk)
-        tmp.close()
-        tmp_path = Path(tmp.name)
-
-        file_hash = hasher.hexdigest()
-        storage_key = f"{file_hash}.pdf"
-        if not store.exists(storage_key):
-            store.put_path(storage_key, tmp_path)
-
-        return extract_and_serialize(
-            session, pdf_path=tmp_path, storage_key=storage_key
-        )
-    finally:
-        Path(tmp.name).unlink(missing_ok=True)
+    return upload_pdf_and_extract(session, source=file.file)
 
 @router.get("", response_model=list[InvoiceOut])
 def list_invoices_endpoint(
@@ -104,16 +79,12 @@ def get_invoice_endpoint(
     return dto
 
 @router.get("/{invoice_id}/file")
-def serve_invoice_pdf(
+def serve_invoice_pdf_endpoint(
     invoice_id: UUID,
     _clerk: ClerkOut = Depends(get_current_clerk),
     session: Session = Depends(get_session),
 ) -> Response:
-    key = get_invoice_storage_key(session, invoice_id)
-    if key is None:
-        raise HTTPException(status_code=404, detail="not found")
-    store = get_blob_store()
-    return store.serve_response(key)
+    return serve_invoice_pdf(session, invoice_id)
 
 @router.get("/{invoice_id}/vendor", response_model=VendorOut | None)
 def get_invoice_vendor(
