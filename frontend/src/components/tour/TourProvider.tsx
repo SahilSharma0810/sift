@@ -13,7 +13,7 @@ import { TOUR_STEPS } from "@/components/tour/steps";
 import { TourSpotlight } from "@/components/tour/TourSpotlight";
 import { TourTooltip } from "@/components/tour/TourTooltip";
 
-const STORAGE_KEY = "sift.tour.v1";
+const STORAGE_KEY = "sift.tour.v2";
 const AUTOSTART_DELAY_MS = 600;
 
 type TourCtx = {

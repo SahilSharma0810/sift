@@ -29,8 +29,8 @@ export const TOUR_STEPS: TourStep[] = [
   {
     id: "anomalies",
     selector: '[data-tour="nav-anomalies"]',
-    title: "Anomalies are statistical",
-    body: "Not \"the model felt unsure.\" Real Z-scores against this vendor's own history. Open one and you'll see the math behind the flag.",
+    title: "Anomalies — an optional add-on",
+    body: 'Not core to the extract → review loop, but a useful side-view. Real Z-scores against this vendor\'s own history, not "the model felt unsure." Skip it if you only care about clearing the inbox.',
     placement: "right",
   },
   {
@@ -39,5 +39,12 @@ export const TOUR_STEPS: TourStep[] = [
     title: "Search in plain English",
     body: 'Type "anomalies from Halcyon over $50k" — it becomes a typed query you can edit, share, and export as CSV with the query embedded in the file header.',
     placement: "bottom",
+  },
+  {
+    id: "api-usage",
+    selector: '[data-tour="api-usage"]',
+    title: "API spend — interview demo cap",
+    body: "This is a demo for an interview round, so there's a hard USD limit on the Anthropic API. The bar shows spend against that cap. When it hits zero, new extractions and search translations are blocked until the cap is raised — drop a PDF anyway and you'll get a clear error, not a silent failure.",
+    placement: "right",
   },
 ];
