@@ -222,6 +222,29 @@ class FieldCorrectionOut(BaseModel):
     corrected_at: datetime
 
 
+class AggregateRow(BaseModel):
+    """One row of an aggregate result. `group` is the group-by value
+    (None for an ungrouped scalar). `value` is the aggregated number.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+    group: str | None
+    value: float
+
+
+class AggregateResult(BaseModel):
+    """Response shape for /api/search/aggregate. Mirrors the Aggregate
+    directive so the UI can label the result correctly (e.g. "Sum of
+    Total by Vendor").
+    """
+
+    model_config = ConfigDict(extra="forbid")
+    op: str
+    field: str | None
+    group_by: str | None
+    rows: list[AggregateRow]
+
+
 from app.domain.auth import ClerkOut, LoginIn  # noqa: F401, E402
 from app.domain.anomalies_models import (  # noqa: F401, E402
     AnomaliesResponse,

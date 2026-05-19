@@ -83,10 +83,56 @@ class FilterClause(BaseModel):
             )
         return self
 
-class StructuredQuery(BaseModel):
-    """Flat conjunction (implicit AND) + sort + limit + untranslated_intent.
+GroupableField = Literal[
+    "vendor_name",
+    "triage_state",
+    "review_status",
+    "currency",
+]
 
-    Per ADR-0004. No OR/NOT/nested groups in v1 — the chip UI is a flat row.
+AggregateField = Literal[
+    "total",
+    "subtotal",
+    "tax_total",
+]
+
+AggregateOp = Literal["count", "sum", "avg"]
+
+
+class Aggregate(BaseModel):
+    """Aggregation directive — count/sum/avg, optionally grouped.
+
+    - `op="count"` ignores `field` (counts rows matching `filters`).
+    - `op="sum"` / `op="avg"` require `field` (one of the numeric columns).
+    - `group_by` is optional. When set, the result is a list of
+      `{group, value}` rows sorted by `value` desc.
+    - `limit` on the parent StructuredQuery caps grouped output rows.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    op: AggregateOp
+    field: AggregateField | None = None
+    group_by: GroupableField | None = None
+
+    @model_validator(mode="after")
+    def _check_field_op_compat(self) -> Aggregate:
+        if self.op == "count":
+            if self.field is not None:
+                raise ValueError("count does not take a `field` (it counts rows).")
+            return self
+        if self.field is None:
+            raise ValueError(f"op '{self.op}' requires a numeric `field`.")
+        return self
+
+
+class StructuredQuery(BaseModel):
+    """Flat conjunction (implicit AND) + sort + limit + untranslated_intent
+    + optional aggregate. Per ADR-0004 (extended for aggregation v2).
+
+    No OR/NOT/nested groups — the chip UI is still a flat row. When
+    `aggregate` is set, the result shape switches from invoice rows to
+    aggregate rows; the frontend dispatches on this.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -95,3 +141,4 @@ class StructuredQuery(BaseModel):
     sort: tuple[SortableField, Literal["asc", "desc"]] | None = None
     limit: int = Field(default=50, ge=1, le=500)
     untranslated_intent: str | None = None
+    aggregate: Aggregate | None = None

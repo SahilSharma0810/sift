@@ -35,8 +35,14 @@ from sqlalchemy.sql.expression import ColumnElement
 
 from app.adapters.storage.serializers import invoice_to_dto
 from app.db.models import Extraction, Invoice, Vendor
-from app.domain.models import InvoiceOut
-from app.domain.nl_schema import FilterClause, StructuredQuery
+from app.domain.models import AggregateResult, AggregateRow, InvoiceOut
+from app.domain.nl_schema import (
+    Aggregate,
+    AggregateField,
+    FilterClause,
+    GroupableField,
+    StructuredQuery,
+)
 
 log = structlog.get_logger(__name__)
 
@@ -277,3 +283,100 @@ def run_query(session: Session, *, query: StructuredQuery) -> list[InvoiceOut]:
 
     rows = session.execute(stmt).unique().scalars().all()
     return [invoice_to_dto(inv, session) for inv in rows]
+
+
+_AGG_FIELD_JSON_KEY: dict[AggregateField, str] = {
+    "total": "total",
+    "subtotal": "subtotal",
+    "tax_total": "tax",
+}
+
+
+def _aggregate_value_expr(agg: Aggregate):
+    from sqlalchemy import Numeric
+
+    if agg.op == "count":
+        return func.count()
+    json_key = _AGG_FIELD_JSON_KEY[agg.field]  # type: ignore[index]
+    casted = cast(_ef_value(json_key), Numeric)
+    if agg.op == "sum":
+        return func.coalesce(func.sum(casted), 0)
+    if agg.op == "avg":
+        return func.avg(casted)
+    raise ValueError(f"unsupported aggregate op: {agg.op}")
+
+
+def _group_by_column(name: GroupableField):
+    if name == "vendor_name":
+        return Vendor.name
+    if name == "triage_state":
+        return Extraction.predicted_triage_state
+    if name == "review_status":
+        return Invoice.review_status
+    if name == "currency":
+        return _ef_value("currency")
+    raise ValueError(f"not a groupable column: {name}")
+
+
+def run_aggregate_query(session: Session, *, query: StructuredQuery) -> AggregateResult:
+    """Execute a StructuredQuery whose `aggregate` is set, returning an
+    AggregateResult. Filters are applied as the WHERE clause (same builders
+    as the row-level search). `group_by` produces grouped rows; otherwise
+    a single scalar row is returned. Grouped rows are sorted by value desc
+    and capped at `query.limit`.
+    """
+    if query.aggregate is None:
+        raise ValueError("run_aggregate_query requires query.aggregate to be set")
+    agg = query.aggregate
+
+    value_expr = _aggregate_value_expr(agg).label("value")
+
+    base = (
+        select()
+        .select_from(Invoice)
+        .join(Extraction, Extraction.invoice_id == Invoice.id)
+        .join(Vendor, Vendor.id == Invoice.vendor_id, isouter=True)
+        .where(Extraction.is_current.is_(True))
+    )
+
+    where_clauses: list[ColumnElement[bool]] = []
+    for clause in query.filters:
+        where_clauses.append(_build_clause(clause))
+    if where_clauses:
+        base = base.where(and_(*where_clauses))
+
+    if agg.group_by is None:
+        stmt = base.add_columns(value_expr)
+        row = session.execute(stmt).one()
+        value = float(row.value if row.value is not None else 0)
+        return AggregateResult(
+            op=agg.op,
+            field=agg.field,
+            group_by=None,
+            rows=[AggregateRow(group=None, value=value)],
+        )
+
+    group_col = _group_by_column(agg.group_by).label("group")
+    stmt = (
+        base.add_columns(group_col, value_expr)
+        .group_by(group_col)
+        .order_by(value_expr.desc().nulls_last())
+        .limit(query.limit)
+    )
+
+    rows = session.execute(stmt).all()
+    out: list[AggregateRow] = []
+    for row in rows:
+        group_val = row.group if row.group is not None else "(unknown)"
+        out.append(AggregateRow(group=str(group_val), value=float(row.value or 0)))
+
+    log.info(
+        "search.run_aggregate",
+        op=agg.op,
+        field=agg.field,
+        group_by=agg.group_by,
+        n_filters=len(query.filters),
+        n_rows=len(out),
+    )
+
+    return AggregateResult(op=agg.op, field=agg.field, group_by=agg.group_by, rows=out)

@@ -1,4 +1,4 @@
-import { lazy, Suspense, useMemo, useState } from "react";
+import { lazy, Suspense, useMemo, useState, type CSSProperties } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
 import { Btn } from "@/components/primitives/Btn";
@@ -6,11 +6,13 @@ import { FieldRow } from "@/components/primitives/FieldRow";
 import { Icons } from "@/components/primitives/Icons";
 import { LineItemsTable } from "@/components/primitives/LineItemsTable";
 import { LoadingSplash } from "@/components/primitives/LoadingSplash";
+import { PanelSplitter } from "@/components/primitives/PanelSplitter";
 import { TaxBreakdownTable } from "@/components/primitives/TaxBreakdownTable";
 import { TriagePill } from "@/components/primitives/TriagePill";
 import { VendorMemoryCard } from "@/components/primitives/VendorMemoryCard";
 import { ReasonCard } from "@/components/reason-cards/ReasonCard";
 import type { ReasonActionContext } from "@/components/reason-cards/types";
+import { usePanelWidth } from "@/hooks/usePanelWidth";
 import {
   useConfirmMutation,
   useDismissDuplicateMutation,
@@ -75,6 +77,12 @@ export function ReviewScreen() {
   const { data: invoice, isLoading, error } = useInvoiceQuery(id);
   const { data: allInvoices = [] } = useInboxQuery();
   const { data: vendor } = useInvoiceVendorQuery(id);
+  const [sideWidth, setSideWidth] = usePanelWidth({
+    storageKey: "sift.review.sideWidth.v1",
+    defaultWidth: 520,
+    min: 360,
+    max: 820,
+  });
 
   const confirm = useConfirmMutation();
   const dismissDup = useDismissDuplicateMutation();
@@ -169,7 +177,10 @@ export function ReviewScreen() {
     typeof fields.total?.value === "number" ? fields.total.value : null;
 
   return (
-    <div className="review-grid">
+    <div
+      className="review-grid"
+      style={{ "--review-side-w": `${sideWidth}px` } as CSSProperties}
+    >
       <div className="pdf-stage">
         {isUnprocessable ? (
           <div className="pdf-paper pdf-paper-encrypted">
@@ -210,6 +221,16 @@ export function ReviewScreen() {
           </Suspense>
         )}
       </div>
+
+      <PanelSplitter
+        className="review-resizer"
+        width={sideWidth}
+        onChange={setSideWidth}
+        min={360}
+        max={820}
+        side="right"
+        ariaLabel="Resize review panel"
+      />
 
       <div className="review-side">
         <div

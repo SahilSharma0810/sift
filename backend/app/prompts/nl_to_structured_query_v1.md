@@ -37,4 +37,27 @@ Translation rules:
 - "unprocessable" / "encrypted" / "failed to extract" → `review_status eq unprocessable`.
 - Vendor-name matches: default to `contains` for any single-word vendor reference ("from Epsilon", "Vega invoices") — vendors are stored with display casing that may differ from how the clerk types them, and `contains` is case-insensitive. Use `eq` only when the user clearly types the full multi-word legal name verbatim.
 - If you cannot translate any part of the request to a structured clause, put the leftover wording in `untranslated_intent` exactly as the user said it. Never invent a clause to cover ambiguity.
-- **Aggregation intents are out of scope.** Questions like "top 5 vendors", "which vendor has most invoices", "how many invoices per vendor", "vendors ranked by spend", "biggest vendors" ask for a grouping/count over the corpus — this schema does not support GROUP BY. Do **not** half-translate them into a misleading `sort` (e.g. `vendor_name asc, limit=5` is alphabetical, not "top 5"). Emit empty `filters`, null `sort`, and put the entire phrase in `untranslated_intent`. The UI will show the amber notice and direct the user to the Vendors page. "Highest invoices" / "largest invoices" / "top N invoices by amount" ARE in scope — those are sort by `total desc`, no aggregation.
+
+Aggregation (`aggregate` field):
+
+- Set `aggregate` when the user asks for **counts**, **totals**, **averages**, **top-N rankings**, or **per-category breakdowns** over the corpus.
+- `aggregate.op` is one of `count`, `sum`, `avg`.
+  - `count` ignores `field` (use `null`). Counts rows matching `filters`.
+  - `sum` / `avg` require `field` to be one of `total`, `subtotal`, `tax_total`.
+- `aggregate.group_by` is optional. Allowed values: `vendor_name`, `triage_state`, `review_status`, `currency`. Use it for phrases like "per vendor", "by status", "by currency", "for each vendor".
+- For "top N" phrases, set `aggregate` with the appropriate `op` + `group_by`, AND set the parent `limit` to N. The downstream layer sorts grouped rows by value desc and caps at `limit`.
+- Aggregation queries can still have `filters` — they apply as the WHERE before the GROUP BY. Example: "how many invoices from Halcyon" → `filters=[vendor_name contains Halcyon]`, `aggregate={op:count, field:null, group_by:null}`.
+
+Examples:
+
+| User query | `filters` | `aggregate` | `limit` |
+|---|---|---|---|
+| "how many invoices" | `[]` | `{op:count}` | 50 |
+| "how many anomalies this month" | date + has_anomaly | `{op:count}` | 50 |
+| "total spend last quarter" | invoice_date between | `{op:sum, field:total}` | 50 |
+| "average invoice amount" | `[]` | `{op:avg, field:total}` | 50 |
+| "spend per vendor" | `[]` | `{op:sum, field:total, group_by:vendor_name}` | 50 |
+| "top 5 vendors by invoice count" | `[]` | `{op:count, group_by:vendor_name}` | 5 |
+| "biggest vendors by spend" | `[]` | `{op:sum, field:total, group_by:vendor_name}` | 50 |
+
+"Highest invoices" / "largest invoices" / "top N invoices by amount" are NOT aggregations — those return individual invoice rows sorted by `total desc`, no `aggregate`.

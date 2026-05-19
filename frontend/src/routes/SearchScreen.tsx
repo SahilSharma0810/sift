@@ -7,8 +7,10 @@ import { LoadingSplash } from "@/components/primitives/LoadingSplash";
 import { TriagePill } from "@/components/primitives/TriagePill";
 import {
   EMPTY_QUERY,
+  type AggregateResult,
   type FilterClause,
   type StructuredQuery,
+  useAggregateQuery,
   useInvoicePrefetcher,
   useSearchQuery,
   useTranslateMutation,
@@ -25,6 +27,7 @@ function parseQueryParam(raw: string | null): StructuredQuery {
       limit: parsed.limit ?? 50,
       sort: parsed.sort ?? null,
       untranslated_intent: parsed.untranslated_intent ?? null,
+      aggregate: parsed.aggregate ?? null,
     };
   } catch {
     return { ...EMPTY_QUERY };
@@ -91,6 +94,12 @@ export function SearchScreen() {
 
   const translate = useTranslateMutation();
   const { data: results = [], isFetching, error } = useSearchQuery(query);
+  const {
+    data: aggregate,
+    isFetching: aggregateFetching,
+    error: aggregateError,
+  } = useAggregateQuery(query);
+  const isAggregate = Boolean(query.aggregate);
 
   const setQuery = (next: StructuredQuery) => {
     setParams({ q: JSON.stringify(next) }, { replace: true });
@@ -123,6 +132,7 @@ export function SearchScreen() {
         limit: translated.limit ?? 50,
         sort: translated.sort ?? null,
         untranslated_intent: translated.untranslated_intent ?? null,
+        aggregate: translated.aggregate ?? null,
       });
     } catch (e) {
       setQuery({
@@ -206,7 +216,17 @@ export function SearchScreen() {
       </div>
 
       <div className="flex-1 overflow-auto px-5 py-3">
-        {error ? (
+        {isAggregate ? (
+          aggregateError ? (
+            <div className="p-4 text-ink-60">
+              Aggregate failed: {String(aggregateError)}
+            </div>
+          ) : aggregateFetching && !aggregate ? (
+            <LoadingSplash size="page" message="Computing" />
+          ) : aggregate ? (
+            <AggregateResultBlock aggregate={aggregate} />
+          ) : null
+        ) : error ? (
           <div className="p-4 text-ink-60">Search failed: {String(error)}</div>
         ) : isFetching && results.length === 0 ? (
           <LoadingSplash size="page" message="Searching" />
@@ -304,5 +324,122 @@ function ChipWithRemove({
         ✕
       </button>
     </span>
+  );
+}
+
+const FIELD_LABEL: Record<string, string> = {
+  total: "Total",
+  subtotal: "Subtotal",
+  tax_total: "Tax",
+};
+const GROUP_LABEL: Record<string, string> = {
+  vendor_name: "Vendor",
+  triage_state: "Triage",
+  review_status: "Status",
+  currency: "Currency",
+};
+
+function aggregateTitle(a: AggregateResult): string {
+  const opPart =
+    a.op === "count"
+      ? "Count of invoices"
+      : a.op === "sum"
+        ? `Sum of ${FIELD_LABEL[a.field ?? ""] ?? a.field}`
+        : `Avg of ${FIELD_LABEL[a.field ?? ""] ?? a.field}`;
+  if (a.group_by) {
+    return `${opPart} by ${GROUP_LABEL[a.group_by] ?? a.group_by}`;
+  }
+  return opPart;
+}
+
+function formatAggValue(a: AggregateResult, v: number): string {
+  if (a.op === "count") return v.toLocaleString();
+  return v.toLocaleString(undefined, {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 0,
+  });
+}
+
+function AggregateResultBlock({ aggregate }: { aggregate: AggregateResult }) {
+  const title = aggregateTitle(aggregate);
+  const isScalar = aggregate.group_by === null;
+  const total = aggregate.rows.reduce((s, r) => s + r.value, 0);
+
+  if (isScalar) {
+    const row = aggregate.rows[0];
+    const value = row ? row.value : 0;
+    return (
+      <div className="flex flex-col items-start gap-3 border border-hairline bg-surface p-6">
+        <div className="font-mono text-[11px] uppercase tracking-[0.1em] text-ink-48">
+          {title}
+        </div>
+        <div className="font-display text-[44px] font-semibold leading-none tracking-[-0.02em] text-ink">
+          {formatAggValue(aggregate, value)}
+        </div>
+        <div className="text-[12.5px] text-ink-60">
+          Across the corpus matching the current filters.
+        </div>
+      </div>
+    );
+  }
+
+  const maxValue = aggregate.rows.reduce(
+    (m, r) => (r.value > m ? r.value : m),
+    0,
+  );
+
+  return (
+    <div className="border border-hairline bg-surface">
+      <div className="flex items-baseline justify-between border-b border-hairline px-5 py-3">
+        <div className="font-mono text-[11px] uppercase tracking-[0.1em] text-ink-48">
+          {title}
+        </div>
+        <div className="font-mono text-[11px] text-ink-60">
+          {aggregate.rows.length} {aggregate.rows.length === 1 ? "row" : "rows"}{" "}
+          · {formatAggValue(aggregate, total)} total
+        </div>
+      </div>
+      <table className="w-full border-collapse text-[13.5px]">
+        <thead>
+          <tr>
+            <th className="border-b border-hairline px-4 py-2 text-left text-[12px] uppercase tracking-[0.06em] text-ink-48">
+              {GROUP_LABEL[aggregate.group_by ?? ""] ?? aggregate.group_by}
+            </th>
+            <th className="border-b border-hairline px-4 py-2 text-right text-[12px] uppercase tracking-[0.06em] text-ink-48">
+              {aggregate.op === "count" ? "Invoices" : "Value"}
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {aggregate.rows.map((row, i) => {
+            const pct = maxValue > 0 ? (row.value / maxValue) * 100 : 0;
+            return (
+              <tr
+                key={`${row.group}-${i}`}
+                className="border-b border-hairline-soft"
+              >
+                <td className="px-4 py-2.5 font-medium text-ink">
+                  {row.group ?? "(none)"}
+                </td>
+                <td className="px-4 py-2.5 text-right">
+                  <div className="flex items-center justify-end gap-3">
+                    <div className="h-1 w-24 overflow-hidden bg-hairline-soft">
+                      <div
+                        className="h-full bg-action"
+                        style={{ width: `${pct}%` }}
+                      />
+                    </div>
+                    <span className="num font-mono text-[13px] tabular-nums text-ink">
+                      {formatAggValue(aggregate, row.value)}
+                    </span>
+                  </div>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
   );
 }

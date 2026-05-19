@@ -771,6 +771,81 @@ _NL_VENDOR_RE = re.compile(
 _TODAY_PREFIX_RE = re.compile(r"^Today is \d{4}-\d{2}-\d{2}\.\s*Query:\s*", re.IGNORECASE)
 
 
+_NL_TOP_N_RE = re.compile(r"\btop\s+(\d{1,3})\b", re.IGNORECASE)
+
+
+def _detect_aggregate(lowered: str) -> tuple[dict[str, Any] | None, int | None, list[tuple[int, int]]]:
+    """Detect an aggregation directive in a NL query.
+
+    Returns (aggregate-dict-or-None, top_n-limit-or-None, handled-spans).
+    The aggregate dict matches the Aggregate Pydantic shape. `top_n` lets
+    the caller override StructuredQuery.limit for grouped results like
+    "top 5 vendors". Handled spans let the outer stub mark these regions
+    as translated so they don't leak into untranslated_intent.
+    """
+    handled: list[tuple[int, int]] = []
+
+    count_re = re.compile(r"\b(how many|number of|count of|count|total count)\b")
+    spend_re = re.compile(r"\b(total spend|total amount|sum of total|sum total|spend total|total of)\b")
+    avg_re = re.compile(r"\b(average|avg) (invoice|amount|total)\b")
+
+    op: str | None = None
+    field: str | None = None
+
+    m = count_re.search(lowered)
+    if m:
+        op = "count"
+        handled.append((m.start(), m.end()))
+    if op is None:
+        m = spend_re.search(lowered)
+        if m:
+            op = "sum"
+            field = "total"
+            handled.append((m.start(), m.end()))
+    if op is None:
+        m = avg_re.search(lowered)
+        if m:
+            op = "avg"
+            field = "total"
+            handled.append((m.start(), m.end()))
+
+    if op is None:
+        return None, None, handled
+
+    group_by: str | None = None
+    for kw, gb in (
+        ("per vendor", "vendor_name"),
+        ("by vendor", "vendor_name"),
+        ("for each vendor", "vendor_name"),
+        ("per status", "review_status"),
+        ("by status", "review_status"),
+        ("per currency", "currency"),
+        ("by currency", "currency"),
+    ):
+        idx = lowered.find(kw)
+        if idx >= 0:
+            group_by = gb
+            handled.append((idx, idx + len(kw)))
+            break
+
+    top_n: int | None = None
+    m_top = _NL_TOP_N_RE.search(lowered)
+    if m_top:
+        try:
+            top_n = max(1, min(500, int(m_top.group(1))))
+        except ValueError:
+            top_n = None
+        if group_by is None and "vendor" in lowered:
+            group_by = "vendor_name"
+        handled.append((m_top.start(), m_top.end()))
+        idx = lowered.find("vendor", m_top.end())
+        if idx >= 0 and idx - m_top.end() < 20:
+            handled.append((idx, idx + len("vendor")))
+
+    agg: dict[str, Any] = {"op": op, "field": field, "group_by": group_by}
+    return agg, top_n, handled
+
+
 def _stub_translate_nl(natural_language: str) -> dict[str, Any]:
     """Deterministic NL -> StructuredQuery payload for the stub provider.
 
@@ -781,7 +856,9 @@ def _stub_translate_nl(natural_language: str) -> dict[str, Any]:
     text = _TODAY_PREFIX_RE.sub("", natural_language.strip()).strip()
     lowered = text.lower()
     filters: list[dict[str, Any]] = []
-    handled_spans: list[tuple[int, int]] = []
+
+    aggregate, top_n, agg_spans = _detect_aggregate(lowered)
+    handled_spans: list[tuple[int, int]] = list(agg_spans)
 
     def _mark(match: re.Match[str]) -> None:
         handled_spans.append((match.start(), match.end()))
@@ -870,11 +947,14 @@ def _stub_translate_nl(natural_language: str) -> dict[str, Any]:
     tokens = [t for t in re.split(r"\s+|[,.]", cleaned) if t and t.lower() not in _NOISE_WORDS]
     cleaned = " ".join(tokens).strip()
 
-    return {
+    payload: dict[str, Any] = {
         "filters": filters,
-        "limit": 50,
+        "limit": top_n if top_n is not None else 50,
         "untranslated_intent": cleaned or None,
     }
+    if aggregate is not None:
+        payload["aggregate"] = aggregate
+    return payload
 
 def _stub_usage() -> dict[str, int]:
     return {

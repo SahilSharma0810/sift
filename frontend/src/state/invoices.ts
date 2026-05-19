@@ -10,17 +10,42 @@ export interface FilterClause {
   value: string | number | boolean | (string | number)[] | null;
 }
 
+export interface Aggregate {
+  op: "count" | "sum" | "avg";
+  field?: "total" | "subtotal" | "tax_total" | null;
+  group_by?:
+    | "vendor_name"
+    | "triage_state"
+    | "review_status"
+    | "currency"
+    | null;
+}
+
+export interface AggregateRow {
+  group: string | null;
+  value: number;
+}
+
+export interface AggregateResult {
+  op: string;
+  field: string | null;
+  group_by: string | null;
+  rows: AggregateRow[];
+}
+
 export interface StructuredQuery {
   filters: FilterClause[];
   sort?: [string, "asc" | "desc"] | null;
   limit?: number;
   untranslated_intent?: string | null;
+  aggregate?: Aggregate | null;
 }
 
 export const EMPTY_QUERY: StructuredQuery = {
   filters: [],
   limit: 50,
   untranslated_intent: null,
+  aggregate: null,
 };
 
 export function useTranslateMutation() {
@@ -50,7 +75,23 @@ export function useSearchQuery(
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(query),
       }),
-    enabled: options?.enabled ?? true,
+    enabled: (options?.enabled ?? true) && !query.aggregate,
+  });
+}
+
+export function useAggregateQuery(
+  query: StructuredQuery,
+  options?: { enabled?: boolean },
+) {
+  return useQuery({
+    queryKey: ["aggregate", JSON.stringify(query)] as const,
+    queryFn: () =>
+      api<AggregateResult>("/api/search/aggregate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(query),
+      }),
+    enabled: (options?.enabled ?? true) && !!query.aggregate,
   });
 }
 

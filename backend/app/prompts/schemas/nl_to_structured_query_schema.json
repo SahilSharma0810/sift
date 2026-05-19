@@ -63,6 +63,28 @@
       "untranslated_intent": {
         "type": ["string", "null"],
         "description": "Verbatim leftover phrasing the LLM couldn't translate. Surfaces as an amber notice in the UI. Never silently drop intent."
+      },
+      "aggregate": {
+        "type": ["object", "null"],
+        "description": "Optional aggregation directive. Set this when the user asks for counts, totals, averages, top-N rankings, or per-vendor / per-status / per-currency breakdowns (e.g. 'how many invoices', 'total spend by vendor', 'top 5 vendors by spend', 'average invoice amount'). Leave null for normal row-level filter queries. When set, the result shape switches from invoice rows to aggregate rows.",
+        "properties": {
+          "op": {
+            "type": "string",
+            "enum": ["count", "sum", "avg"],
+            "description": "count = rows matching filters. sum/avg require `field`."
+          },
+          "field": {
+            "type": ["string", "null"],
+            "enum": ["total", "subtotal", "tax_total", null],
+            "description": "Required for sum/avg, must be null for count."
+          },
+          "group_by": {
+            "type": ["string", "null"],
+            "enum": ["vendor_name", "triage_state", "review_status", "currency", null],
+            "description": "Optional GROUP BY column. When set, the result is a list of {group, value} rows sorted by value desc, capped at `limit`. Use for phrases like 'per vendor', 'by status', 'top 5 vendors'."
+          }
+        },
+        "required": ["op"]
       }
     },
     "required": ["filters"]

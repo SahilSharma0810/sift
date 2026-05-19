@@ -21,10 +21,10 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_current_clerk
 from app.db.session import get_session
 from app.domain.auth import ClerkOut
-from app.domain.models import InvoiceOut
+from app.domain.models import AggregateResult, InvoiceOut
 from app.domain.nl_schema import StructuredQuery
 from app.services.nl_translation_service import TranslationError, translate
-from app.services.search_service import run_query
+from app.services.search_service import run_aggregate_query, run_query
 
 router = APIRouter()
 
@@ -58,9 +58,30 @@ def run_search(
     The body is validated by FastAPI/Pydantic against `StructuredQuery`,
     so malformed clients receive a 422 with field-level errors automatically.
     The handler never sees a raw filter — only typed, whitelist-bounded
-    FilterClauses.
+    FilterClauses. If `aggregate` is set, this returns an empty list and
+    the caller should hit /aggregate instead.
     """
+    if query.aggregate is not None:
+        return []
     return run_query(session, query=query)
+
+
+@router.post("/aggregate", response_model=AggregateResult)
+def run_aggregate(
+    query: StructuredQuery,
+    _clerk: ClerkOut = Depends(get_current_clerk),
+    session: Session = Depends(get_session),
+) -> AggregateResult:
+    """Execute a StructuredQuery whose `aggregate` directive is set,
+    returning a count/sum/avg (optionally grouped). 422 if no aggregate
+    was provided — the caller must opt in.
+    """
+    if query.aggregate is None:
+        raise HTTPException(
+            status_code=422,
+            detail="query.aggregate is required for /aggregate endpoint",
+        )
+    return run_aggregate_query(session, query=query)
 
 def _flatten_for_export(invoice: InvoiceOut) -> dict[str, str | float | None]:
     """One row per invoice, columns mirror the inbox UI."""
