@@ -28,6 +28,7 @@ from pathlib import Path
 
 import pymupdf  # type: ignore[import-not-found]
 
+from app.adapters.storage.blob_store import get_blob_store
 from app.adapters.storage.user_repo import upsert_demo_user
 from app.config import get_settings
 from app.db.models import User
@@ -160,14 +161,6 @@ def _make_pdf(text: str, dest: Path, *, marker: tuple[float, float, float, float
     doc.save(str(dest))
     doc.close()
 
-def _persist_pdf(body_bytes: bytes, upload_dir: Path) -> Path:
-    upload_dir.mkdir(parents=True, exist_ok=True)
-    file_hash = hashlib.sha256(body_bytes).hexdigest()
-    target = upload_dir / f"{file_hash}.pdf"
-    if not target.exists():
-        target.write_bytes(body_bytes)
-    return target
-
 def main() -> None:
     settings = get_settings()
     if settings.llm_provider != "stub":
@@ -178,9 +171,10 @@ def main() -> None:
             settings.llm_provider,
         )
 
-    upload_dir = settings.upload_dir
     session = SessionLocal()
     staging = Path("/tmp/seed_demo")
+    store = get_blob_store()
+    log.info("blob store backend: %s", settings.blob_store)
 
     try:
         seed_demo_user(session)
@@ -191,12 +185,18 @@ def main() -> None:
             tmp_pdf = staging / f"{seed.label}.pdf"
             marker = _VISUAL_MARKERS.get(seed.label, (100, 200, 100, 100))
             _make_pdf(seed.body, tmp_pdf, marker=marker)
-            body_bytes = tmp_pdf.read_bytes()
-            final_path = _persist_pdf(body_bytes, upload_dir)
-            tmp_pdf.unlink(missing_ok=True)
+
+            file_hash = hashlib.sha256(tmp_pdf.read_bytes()).hexdigest()
+            storage_key = f"{file_hash}.pdf"
+
+            if not store.exists(storage_key):
+                store.put_path(storage_key, tmp_pdf)
+                log.info("  uploaded %s -> %s", storage_key, settings.blob_store)
+            else:
+                log.info("  blob already present: %s", storage_key)
 
             result = extract_from_pdf(
-                session, pdf_path=final_path, storage_key=final_path.name
+                session, pdf_path=tmp_pdf, storage_key=storage_key
             )
 
             if seed.confirm:

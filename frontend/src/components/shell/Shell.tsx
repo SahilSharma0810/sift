@@ -10,6 +10,7 @@ import {
 
 import { Icons } from "@/components/primitives/Icons";
 import { Kbd } from "@/components/primitives/Kbd";
+import { LoadingSplash } from "@/components/primitives/LoadingSplash";
 import { SiftMark } from "@/components/primitives/SiftMark";
 import { SearchPalette } from "@/components/search-palette/SearchPalette";
 import { ApiUsageIndicator } from "@/components/shell/ApiUsageIndicator";
@@ -128,11 +129,7 @@ function ShellInner() {
   }, [invoices]);
 
   if (meLoading) {
-    return (
-      <div className="grid h-screen place-items-center bg-canvas text-ink-60 text-sm">
-        Loading…
-      </div>
-    );
+    return <LoadingSplash />;
   }
   if (!me) {
     return <Navigate to="/login" replace />;

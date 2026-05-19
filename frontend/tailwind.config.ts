@@ -1,117 +1,144 @@
-import type { Config } from 'tailwindcss'
-import tailwindAnimate from 'tailwindcss-animate'
+import type { Config } from "tailwindcss";
+import tailwindAnimate from "tailwindcss-animate";
 
 export default {
-  darkMode: ['class'],
-  content: ['./index.html', './src/**/*.{ts,tsx}'],
+  darkMode: ["class"],
+  content: ["./index.html", "./src/**/*.{ts,tsx}"],
   theme: {
     extend: {
       colors: {
-        canvas: '#f5f5f7',
+        canvas: "#f5f5f7",
         surface: {
-          DEFAULT: '#ffffff',
-          recess: '#f5f5f7',
-          pearl: '#fafafc',
+          DEFAULT: "#ffffff",
+          recess: "#f5f5f7",
+          pearl: "#fafafc",
         },
-        tile: '#1d1d1f',
+        tile: "#1d1d1f",
         ink: {
-          DEFAULT: '#1d1d1f',
-          80: '#333333',
-          60: '#6e6e73',
-          48: '#86868b',
+          DEFAULT: "#1d1d1f",
+          80: "#333333",
+          60: "#6e6e73",
+          48: "#86868b",
         },
         light: {
-          DEFAULT: '#ffffff',
-          muted: '#a1a1a6',
-          subtle: '#6e6e73',
+          DEFAULT: "#ffffff",
+          muted: "#a1a1a6",
+          subtle: "#6e6e73",
         },
         hairline: {
-          DEFAULT: '#e0e0e0',
-          soft: '#ececec',
-          strong: '#c0c0c4',
-          dark: 'rgb(255 255 255 / 0.10)',
+          DEFAULT: "#e0e0e0",
+          soft: "#ececec",
+          strong: "#c0c0c4",
+          dark: "rgb(255 255 255 / 0.10)",
         },
         action: {
-          DEFAULT: '#0066cc',
-          focus: '#0071e3',
-          light: '#2997ff',
-          soft: '#e9f0f9',
+          DEFAULT: "#0066cc",
+          focus: "#0071e3",
+          light: "#2997ff",
+          soft: "#e9f0f9",
         },
         triage: {
           confident: {
-            DEFAULT: '#0a7c46',
-            tint: '#e8f3ec',
-            ring: '#c4e0cd',
+            DEFAULT: "#0a7c46",
+            tint: "#e8f3ec",
+            ring: "#c4e0cd",
           },
-          'needs-review': {
-            DEFAULT: '#b25b00',
-            tint: '#fbf0e3',
-            ring: '#ebd0a8',
+          "needs-review": {
+            DEFAULT: "#b25b00",
+            tint: "#fbf0e3",
+            ring: "#ebd0a8",
           },
           duplicate: {
-            DEFAULT: '#1e5fc2',
-            tint: '#e9f0fb',
-            ring: '#c4d4ee',
+            DEFAULT: "#1e5fc2",
+            tint: "#e9f0fb",
+            ring: "#c4d4ee",
           },
           unprocessable: {
-            DEFAULT: '#6e6e73',
-            tint: '#f0f0f2',
+            DEFAULT: "#6e6e73",
+            tint: "#f0f0f2",
           },
         },
         aside: {
           confident: {
-            DEFAULT: '#6fd393',
-            ring: '#1f4d2e',
-            tint: '#11281a',
+            DEFAULT: "#6fd393",
+            ring: "#1f4d2e",
+            tint: "#11281a",
           },
           review: {
-            DEFAULT: '#ffb95f',
-            ring: '#4e3a16',
-            tint: '#2a1e09',
+            DEFAULT: "#ffb95f",
+            ring: "#4e3a16",
+            tint: "#2a1e09",
           },
           duplicate: {
-            DEFAULT: '#8fb7ee',
-            ring: '#1d3a66',
-            tint: '#0d1f3a',
+            DEFAULT: "#8fb7ee",
+            ring: "#1d3a66",
+            tint: "#0d1f3a",
           },
         },
-        soc2: '#34c759',
-        'anomaly-amount-fg':       'oklch(0.45 0.13 25)',
-        'anomaly-amount-bg':       'oklch(0.96 0.04 25)',
-        'anomaly-amount-ring':     'oklch(0.88 0.07 25)',
-        'anomaly-frequency-fg':    'oklch(0.42 0.13 290)',
-        'anomaly-frequency-bg':    'oklch(0.96 0.04 290)',
-        'anomaly-frequency-ring':  'oklch(0.88 0.07 290)',
-        'anomaly-severity-high':   'oklch(0.55 0.18 25)',
+        soc2: "#34c759",
+        "anomaly-amount-fg": "oklch(0.45 0.13 25)",
+        "anomaly-amount-bg": "oklch(0.96 0.04 25)",
+        "anomaly-amount-ring": "oklch(0.88 0.07 25)",
+        "anomaly-frequency-fg": "oklch(0.42 0.13 290)",
+        "anomaly-frequency-bg": "oklch(0.96 0.04 290)",
+        "anomaly-frequency-ring": "oklch(0.88 0.07 290)",
+        "anomaly-severity-high": "oklch(0.55 0.18 25)",
       },
 
       fontFamily: {
         sans: [
           '"Plus Jakarta Sans"',
-          '-apple-system',
-          'BlinkMacSystemFont',
-          'system-ui',
-          'sans-serif',
+          "-apple-system",
+          "BlinkMacSystemFont",
+          "system-ui",
+          "sans-serif",
         ],
-        mono: ['"Geist Mono"', '"SF Mono"', 'ui-monospace', 'Menlo', 'monospace'],
+        mono: [
+          '"Geist Mono"',
+          '"SF Mono"',
+          "ui-monospace",
+          "Menlo",
+          "monospace",
+        ],
       },
 
       backgroundImage: {
-        'aside-glow':
-          'radial-gradient(circle, rgb(41 151 255 / 0.16) 0%, transparent 65%)',
+        "aside-glow":
+          "radial-gradient(circle, rgb(41 151 255 / 0.16) 0%, transparent 65%)",
       },
 
       keyframes: {
-        'fade-up': {
-          '0%': { opacity: '0', transform: 'translateY(4px)' },
-          '100%': { opacity: '1', transform: 'none' },
+        "fade-up": {
+          "0%": { opacity: "0", transform: "translateY(4px)" },
+          "100%": { opacity: "1", transform: "none" },
+        },
+        "loading-dot": {
+          "0%, 80%, 100%": { opacity: "0.2" },
+          "40%": { opacity: "1" },
+        },
+        indeterminate: {
+          "0%": { transform: "translateX(-100%)" },
+          "100%": { transform: "translateX(400%)" },
+        },
+        "sift-pulse": {
+          "0%, 100%": { opacity: "1" },
+          "50%": { opacity: "0.55" },
+        },
+        shimmer: {
+          "0%": { backgroundPosition: "-200% 0" },
+          "100%": { backgroundPosition: "200% 0" },
         },
       },
 
       animation: {
-        'fade-up': 'fade-up 220ms ease both',
+        "fade-up": "fade-up 220ms ease both",
+        "loading-dot": "loading-dot 1.4s ease-in-out infinite",
+        indeterminate:
+          "indeterminate 1.6s cubic-bezier(0.65, 0, 0.35, 1) infinite",
+        "sift-pulse": "sift-pulse 1.8s ease-in-out infinite",
+        shimmer: "shimmer 1.6s ease-in-out infinite",
       },
     },
   },
   plugins: [tailwindAnimate],
-} satisfies Config
+} satisfies Config;

@@ -1,16 +1,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 
 import { Btn } from "@/components/primitives/Btn";
 import { Icons } from "@/components/primitives/Icons";
 import { Kbd } from "@/components/primitives/Kbd";
+import { SkeletonRows } from "@/components/primitives/SkeletonRows";
 import { StatusBadge } from "@/components/primitives/StatusBadge";
 import { TriagePill } from "@/components/primitives/TriagePill";
 import { WhyChip } from "@/components/primitives/WhyChip";
 import {
   useConfirmMutation,
   useInboxQuery,
+  useInvoicePrefetcher,
   useUploadMutation,
 } from "@/state/invoices";
 import type { InvoiceOut, TriageState } from "@/types/generated/domain";
@@ -55,6 +57,8 @@ function reasonKey(
 export function InboxScreen() {
   const { data: invoices = [], isLoading, error } = useInboxQuery();
   const upload = useUploadMutation();
+  const navigate = useNavigate();
+  const prefetchInvoice = useInvoicePrefetcher();
   const [filter, setFilter] = useState<FilterId>("all");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const confirm = useConfirmMutation();
@@ -318,18 +322,10 @@ export function InboxScreen() {
           </thead>
           <tbody>
             {isLoading && (
-              <tr>
-                <td
-                  colSpan={8}
-                  style={{
-                    padding: 24,
-                    textAlign: "center",
-                    color: "var(--ink-60)",
-                  }}
-                >
-                  Loading…
-                </td>
-              </tr>
+              <SkeletonRows
+                rows={6}
+                cols={[16, 90, "42%", 64, 68, 72, "30%", 60]}
+              />
             )}
             {error && (
               <tr>
@@ -365,6 +361,10 @@ export function InboxScreen() {
                 <tr
                   key={inv.id}
                   data-selected={selected.has(inv.id) ? "true" : "false"}
+                  onClick={() => navigate(`/invoice/${inv.id}`)}
+                  onMouseEnter={() => prefetchInvoice(inv.id)}
+                  onFocus={() => prefetchInvoice(inv.id)}
+                  style={{ cursor: "pointer" }}
                 >
                   <td
                     onClick={(e) => {
